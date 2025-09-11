@@ -391,17 +391,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Helper function to generate city URL from address
   function generateCityUrl(address: string): string {
-    const parts = address.split(',');
+    const parts = address.split(',').map(p => p.trim());
+    
     if (parts.length < 2) return '';
     
-    // Extract city, state and ZIP (e.g., "2929 California Plaza, Omaha, NE 68131" -> "omaha-ne-68131")
-    const city = parts[parts.length - 2].trim().toLowerCase().replace(/\s+/g, '-');
-    const stateWithZip = parts[parts.length - 1].trim();
-    const stateZipParts = stateWithZip.split(' ');
-    const state = stateZipParts[0].toLowerCase();
-    const zip = stateZipParts[1] || '';
+    // Expected formats:
+    // "Street Address, City, State ZIP" -> ["Street Address", "City", "State ZIP"]
+    // "Street Address, City State ZIP" -> ["Street Address", "City State ZIP"]
     
-    return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
+    if (parts.length >= 3) {
+      // Format: "Street, City, State ZIP"
+      const city = parts[1].toLowerCase().replace(/\s+/g, '-');
+      const stateWithZip = parts[2];
+      const stateZipParts = stateWithZip.split(' ');
+      const state = stateZipParts[0].toLowerCase();
+      const zip = stateZipParts[1] || '';
+      
+      return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
+    } else if (parts.length === 2) {
+      // Format: "Street, City State ZIP"
+      const cityStateZip = parts[1];
+      const cityStateZipParts = cityStateZip.split(' ');
+      
+      if (cityStateZipParts.length >= 2) {
+        const city = cityStateZipParts[0].toLowerCase();
+        const state = cityStateZipParts[1].toLowerCase();
+        const zip = cityStateZipParts[2] || '';
+        
+        return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
+      }
+    }
+    
+    return '';
   }
 
   // Helper function to extract city/state from address for job naming
