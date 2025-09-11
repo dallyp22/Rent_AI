@@ -5,8 +5,18 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FileSpreadsheet } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+import { FileSpreadsheet, Save } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
@@ -24,11 +34,12 @@ interface PropertyWithAnalysis {
 
 export default function Optimize({ params }: { params: { id: string } }) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
   
   const [goal, setGoal] = useState("maximize-revenue");
   const [targetOccupancy, setTargetOccupancy] = useState([95]);
   const [riskTolerance, setRiskTolerance] = useState([2]); // 1=Low, 2=Medium, 3=High
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+  const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
@@ -55,13 +66,35 @@ export default function Optimize({ params }: { params: { id: string } }) {
       queryClient.setQueryData(['/api/properties', params.id, 'optimization'], data);
       toast({
         title: "Optimization Complete",
-        description: "Your pricing recommendations have been generated.",
+        description: `Generated recommendations for ${data.units.length} units.`,
       });
     },
     onError: () => {
       toast({
         title: "Optimization Failed",
         description: "Failed to generate recommendations. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const applyPricingMutation = useMutation({
+    mutationFn: async (unitPrices: Record<string, number>) => {
+      const res = await apiRequest("POST", `/api/properties/${params.id}/apply-pricing`, { unitPrices });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/properties', params.id] });
+      toast({
+        title: "Pricing Applied Successfully",
+        description: `Updated pricing for ${data.affectedUnits} units with an annual impact of $${data.totalAnnualImpact.toLocaleString()}.`,
+      });
+      setShowApplyDialog(false);
+    },
+    onError: () => {
+      toast({
+        title: "Failed to Apply Pricing",
+        description: "There was an error saving the pricing changes. Please try again.",
         variant: "destructive",
       });
     }
@@ -95,6 +128,15 @@ export default function Optimize({ params }: { params: { id: string } }) {
       case 3: return "High";
       default: return "Medium";
     }
+  };
+
+  const handleApplyChanges = (unitPrices: Record<string, number>) => {
+    setPendingPrices(unitPrices);
+    setShowApplyDialog(true);
+  };
+
+  const confirmApplyChanges = () => {
+    applyPricingMutation.mutate(pendingPrices);
   };
 
   const handleExportToExcel = async () => {
@@ -283,6 +325,7 @@ export default function Optimize({ params }: { params: { id: string } }) {
           <OptimizationTable
             units={optimizationQuery.data.units}
             report={optimizationQuery.data.report}
+            onApplyChanges={handleApplyChanges}
           />
         ) : (
           <div className="text-center py-8" data-testid="no-data-state">
@@ -299,23 +342,31 @@ export default function Optimize({ params }: { params: { id: string } }) {
           </div>
         )}
 
-        {/* Action Buttons */}
-        {optimizationQuery.data && (
-          <div className="mt-6 flex justify-between">
-            <Button variant="outline" data-testid="button-save-draft">
-              Save Draft
-            </Button>
-            <div className="space-x-3">
-              <Button variant="secondary" data-testid="button-schedule">
-                Schedule Implementation
-              </Button>
-              <Button data-testid="button-apply-recommendations">
-                Apply Recommendations
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Apply Changes Confirmation Dialog */}
+      <AlertDialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply Pricing Changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You are about to apply pricing changes to your property units. 
+              This action will update the recommended rent prices for all modified units.
+              <br /><br />
+              {Object.keys(pendingPrices).length} units will be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={confirmApplyChanges}
+              disabled={applyPricingMutation.isPending}
+            >
+              {applyPricingMutation.isPending ? "Applying..." : "Apply Changes"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, filterCriteriaSchema } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ 
@@ -484,7 +484,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { goal, targetOccupancy, riskTolerance } = req.body;
 
       const property = await storage.getProperty(propertyId);
-      const units = await storage.getPropertyUnits(propertyId);
+      
+      // Get the subject property's scraped units for comprehensive optimization
+      let subjectProperty = null;
+      let scrapedUnits: ScrapedUnit[] = [];
+      
+      // Find the subject scraped property
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      if (scrapingJobs.length > 0) {
+        for (const job of scrapingJobs) {
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          const subject = scrapedProperties.find(p => p.isSubjectProperty === true);
+          if (subject) {
+            subjectProperty = subject;
+            // Get all scraped units for this property
+            scrapedUnits = await storage.getScrapedUnitsByProperty(subject.id);
+            break;
+          }
+        }
+      }
+      
+      // If no scraped units, fall back to property units
+      let units = await storage.getPropertyUnits(propertyId);
+      
+      // If we have scraped units, create PropertyUnits from them if they don't exist
+      if (scrapedUnits.length > 0 && units.length === 0) {
+        console.log(`Creating ${scrapedUnits.length} PropertyUnits from scraped data for optimization`);
+        units = [];
+        for (const scrapedUnit of scrapedUnits) {
+          const unit = await storage.createPropertyUnit({
+            propertyId,
+            unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+            unitType: scrapedUnit.unitType,
+            currentRent: scrapedUnit.rent || "0",
+            status: scrapedUnit.status || "occupied"
+          });
+          units.push(unit);
+        }
+      }
       
       if (!property || units.length === 0) {
         return res.status(404).json({ message: "Property or units not found" });
@@ -518,8 +555,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       - Target Occupancy: ${targetOccupancy}%
       - Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
       
-      Current Unit Portfolio:
-      ${units.map(unit => `${unit.unitNumber}: ${unit.unitType} - Current Rent: $${unit.currentRent} - Status: ${unit.status}`).join('\n')}
+      Current Unit Portfolio (${units.length} units):
+      ${units.slice(0, 100).map(unit => `${unit.unitNumber}: ${unit.unitType} - Current Rent: $${unit.currentRent} - Status: ${unit.status}`).join('\n')}
+      ${units.length > 100 ? `... and ${units.length - 100} more units` : ''}
       
       Market Context:
       - Consider current market conditions for similar properties
@@ -527,13 +565,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       - Account for unit turnover costs and vacancy risks
       - Balance revenue optimization with occupancy targets
       
-      Please provide optimization recommendations in this exact JSON format:
+      Please provide optimization recommendations for ALL ${units.length} units in this exact JSON format:
       {
         "unitRecommendations": [
           {
             "unitNumber": "string",
             "currentRent": number,
             "recommendedRent": number,
+            "marketAverage": number,
             "change": number,
             "annualImpact": number,
             "confidenceLevel": "High|Medium|Low",
@@ -549,7 +588,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           "competitivePosition": "How this positions the property vs competitors", 
           "timeToLease": "Average days to lease at new rates"
         }
-      }`;
+      }
+      
+      Important: Generate recommendations for ALL ${units.length} units based on the optimization goal and parameters.`;
 
       const aiResponse = await openai.chat.completions.create({
         model: "gpt-4o", // Using gpt-4o which is widely available
@@ -567,7 +608,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const updatedUnit = await storage.updatePropertyUnit(unit.id, {
             recommendedRent: recommendation.recommendedRent.toString()
           });
-          updatedUnits.push(updatedUnit);
+          updatedUnits.push({
+            ...updatedUnit,
+            confidenceLevel: recommendation.confidenceLevel,
+            reasoning: recommendation.reasoning
+          });
+        }
+      }
+      
+      // Ensure all units are included even if not in recommendations
+      for (const unit of units) {
+        if (!updatedUnits.find(u => u.id === unit.id)) {
+          updatedUnits.push({
+            ...unit,
+            recommendedRent: unit.currentRent, // Default to current if no recommendation
+            confidenceLevel: "Low",
+            reasoning: "No optimization recommended - maintain current pricing"
+          });
         }
       }
 
@@ -604,6 +661,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching optimization report:", error);
       res.status(500).json({ message: "Failed to fetch optimization report" });
+    }
+  });
+
+  // Apply pricing changes
+  app.post("/api/properties/:id/apply-pricing", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const { unitPrices } = req.body; // { unitId: newPrice }
+      
+      if (!unitPrices || typeof unitPrices !== 'object') {
+        return res.status(400).json({ message: "unitPrices must be an object mapping unit IDs to prices" });
+      }
+
+      const updatedUnits = [];
+      let totalIncrease = 0;
+      let affectedUnits = 0;
+
+      for (const [unitId, newPrice] of Object.entries(unitPrices)) {
+        try {
+          const unit = await storage.updatePropertyUnit(unitId, {
+            recommendedRent: String(newPrice)
+          });
+          
+          if (unit) {
+            updatedUnits.push(unit);
+            const currentRent = parseFloat(unit.currentRent);
+            const appliedRent = parseFloat(String(newPrice));
+            
+            if (appliedRent !== currentRent) {
+              affectedUnits++;
+              totalIncrease += (appliedRent - currentRent) * 12; // Annual impact
+            }
+          }
+        } catch (unitError) {
+          console.error(`Failed to update unit ${unitId}:`, unitError);
+        }
+      }
+
+      res.json({
+        message: "Pricing changes applied successfully",
+        updatedUnits: updatedUnits.length,
+        affectedUnits,
+        totalAnnualImpact: totalIncrease
+      });
+    } catch (error) {
+      console.error("Error applying pricing changes:", error);
+      res.status(500).json({ message: "Failed to apply pricing changes" });
     }
   });
 
