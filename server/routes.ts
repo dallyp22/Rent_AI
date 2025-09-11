@@ -186,13 +186,16 @@ function parseUnitData(scrapezyResult: any): Array<{
   try {
     // Try to get the result from the response structure
     const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
+    console.log(`Parsing unit data. Result type: ${typeof resultText}, structure keys:`, typeof resultText === 'object' ? Object.keys(resultText) : 'N/A');
     
     if (typeof resultText === 'string') {
       try {
         const parsed = JSON.parse(resultText);
         
         // Check for different possible keys for unit data
-        const unitData = parsed.units || parsed.apartment_units || parsed.listings || parsed;
+        // Handle nested "root" structure that Scrapezy uses
+        const rootData = parsed.root || parsed;
+        const unitData = rootData.units || rootData.availableUnits || rootData.apartment_units || rootData.listings || parsed.units || parsed.apartment_units || parsed.listings || parsed;
         if (Array.isArray(unitData)) {
           units = unitData.filter(item => 
             item && 
@@ -217,7 +220,9 @@ function parseUnitData(scrapezyResult: any): Array<{
       }
     } else if (typeof resultText === 'object' && resultText !== null) {
       // Handle object response (already parsed)
-      const unitDataObj = resultText.units || resultText.apartment_units || resultText.listings;
+      // Handle nested "root" structure that Scrapezy uses
+      const rootData = resultText.root || resultText;
+      const unitDataObj = rootData.units || rootData.availableUnits || rootData.apartment_units || rootData.listings || resultText.units || resultText.apartment_units || resultText.listings;
       if (Array.isArray(unitDataObj)) {
         units = unitDataObj.filter(item => 
           item && 
