@@ -58,6 +58,9 @@ export interface IStorage {
   
   // Get subject property (marked as isSubjectProperty: true)
   getSubjectScrapedProperty(): Promise<ScrapedProperty | null>;
+  
+  // Get scraped property by ID
+  getScrapedProperty(id: string): Promise<ScrapedProperty | undefined>;
 }
 
 export class MemStorage implements IStorage {
@@ -346,6 +349,10 @@ export class MemStorage implements IStorage {
       property => property.isSubjectProperty === true
     );
     return subjectProperty || null;
+  }
+
+  async getScrapedProperty(id: string): Promise<ScrapedProperty | undefined> {
+    return this.scrapedProperties.get(id);
   }
 }
 

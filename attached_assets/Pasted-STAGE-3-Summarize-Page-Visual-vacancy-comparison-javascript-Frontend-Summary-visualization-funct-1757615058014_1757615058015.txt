@@ -1,0 +1,261 @@
+STAGE 3: Summarize Page
+Visual vacancy comparison
+javascript// Frontend: Summary visualization
+function renderSummaryPage(data) {
+    const { subjectVacancies, competitorVacancies } = data;
+    
+    // Create comparative bar chart
+    const chartConfig = {
+        type: 'bar',
+        data: {
+            labels: ['Studio', '1 Bedroom', '2 Bedroom', '3 Bedroom'],
+            datasets: [
+                {
+                    label: subjectProperty.name,
+                    data: subjectVacancies.map(v => v.avgRent),
+                    backgroundColor: 'rgba(59, 130, 246, 0.8)', // Blue for subject
+                    borderColor: 'rgb(59, 130, 246)',
+                    borderWidth: 2
+                },
+                ...competitorVacancies.map((comp, idx) => ({
+                    label: comp.name,
+                    data: comp.units.map(u => u.avgRent),
+                    backgroundColor: `rgba(${getCompetitorColor(idx)}, 0.5)`,
+                    borderColor: `rgb(${getCompetitorColor(idx)})`,
+                    borderWidth: 1
+                }))
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: 'Rent Comparison by Unit Type'
+                },
+                tooltip: {
+                    callbacks: {
+                        afterLabel: (context) => {
+                            const unitData = getUnitDetails(context);
+                            return [
+                                `Units Available: ${unitData.count}`,
+                                `Avg Sq Ft: ${unitData.avgSqFt}`,
+                                `Availability: ${unitData.availability}`
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+    };
+    
+    new Chart(document.getElementById('comparisonChart'), chartConfig);
+}
+Summary Page UI:
+┌──────────────────────────────────────────────────────┐
+│ 📊 VACANCY SUMMARY                                   │
+├──────────────────────────────────────────────────────┤
+│                                                       │
+│ [Interactive Bar Chart Area]                         │
+│  $2000 ┤                                             │
+│  $1800 ┤     ██                                      │
+│  $1600 ┤ ██  ██  ▓▓                                 │
+│  $1400 ┤ ██  ██  ▓▓  ░░                            │
+│  $1200 ┤ ██  ██  ▓▓  ░░  ░░                        │
+│        └─────────────────────────────                │
+│         Studio  1BR   2BR   3BR                      │
+│                                                       │
+│ ██ The Atlas  ▓▓ The Monico  ░░ Urban Village      │
+│                                                       │
+├──────────────────────────────────────────────────────┤
+│ 📈 Key Insights:                                     │
+│ • Your studios are priced 8% above market average    │
+│ • 2BR units show strongest competitive position      │
+│ • 15 total vacancies vs 23 competitor average       │
+│                                                       │
+│ [← Back] [Analyze →] [Export Summary]                │
+└──────────────────────────────────────────────────────┘
+STAGE 4: Analyze Page
+Interactive deep-dive analysis
+javascript// Frontend: Dynamic analysis filters
+class AnalysisPage {
+    constructor(data) {
+        this.data = data;
+        this.activeFilters = {
+            bedrooms: ['all'],
+            priceRange: 'all',
+            availability: 'all',
+            amenities: [],
+            sqftRange: 'all'
+        };
+    }
+    
+    renderFilterPanel() {
+        return `
+            <div class="filter-panel">
+                <!-- Bedroom Filter -->
+                <div class="filter-group">
+                    <h4>🛏️ Bedrooms</h4>
+                    <label><input type="checkbox" value="studio" onchange="updateAnalysis()"> Studio</label>
+                    <label><input type="checkbox" value="1br" onchange="updateAnalysis()"> 1 Bedroom</label>
+                    <label><input type="checkbox" value="2br" onchange="updateAnalysis()"> 2 Bedroom</label>
+                    <label><input type="checkbox" value="3br" onchange="updateAnalysis()"> 3 Bedroom</label>
+                </div>
+                
+                <!-- Price Range -->
+                <div class="filter-group">
+                    <h4>💰 Price Range</h4>
+                    <input type="range" min="800" max="3000" id="priceRange">
+                    <span id="priceDisplay">$800 - $3000</span>
+                </div>
+                
+                <!-- Availability -->
+                <div class="filter-group">
+                    <h4>📅 Availability</h4>
+                    <label><input type="radio" name="avail" value="now"> Available Now</label>
+                    <label><input type="radio" name="avail" value="30days"> Within 30 Days</label>
+                    <label><input type="radio" name="avail" value="60days"> Within 60 Days</label>
+                </div>
+                
+                <!-- Square Footage -->
+                <div class="filter-group">
+                    <h4>📏 Square Footage</h4>
+                    <input type="range" min="400" max="2000" id="sqftRange">
+                    <span id="sqftDisplay">400 - 2000 sq ft</span>
+                </div>
+            </div>
+        `;
+    }
+    
+    async updateAnalysis() {
+        const filteredData = this.applyFilters(this.data);
+        
+        // Re-run AI analysis with filtered data
+        const analysis = await fetch('/api/filtered-analysis', {
+            method: 'POST',
+            body: JSON.stringify({ 
+                filters: this.activeFilters,
+                data: filteredData 
+            })
+        });
+        
+        this.renderAnalysisResults(await analysis.json());
+    }
+}
+Analyze Page UI:
+┌──────────────────────────────────────────────────────┐
+│ 🔍 INTERACTIVE ANALYSIS                    [Export] │
+├────────────────────────┬─────────────────────────────┤
+│ Main Analysis Area     │ Filter Panel                │
+│                        │                             │
+│ 📊 Market Position     │ 🛏️ Bedrooms                │
+│ For 2BR Units:         │ □ Studio                    │
+│                        │ ✓ 1 Bedroom                 │
+│ Your Position: 65th    │ ✓ 2 Bedroom                 │
+│ percentile             │ □ 3 Bedroom                 │
+│                        │                             │
+│ Pricing Power: STRONG  │ 💰 Price Range              │
+│ ████████░░ 78%        │ [$1200]━━━━●━━[$2400]      │
+│                        │                             │
+│ Competitive Advantages:│ 📅 Availability             │
+│ • Newer construction   │ ◉ Now ○ 30d ○ 60d         │
+│ • Premium amenities    │                             │
+│ • Location score: 9.2  │ 📏 Square Footage           │
+│                        │ [600]━━●━━━━━[1200]        │
+│ Recommended Actions:   │                             │
+│ • Increase 1BR by 3%   │ [Apply Filters]             │
+│ • Hold 2BR pricing     │                             │
+└────────────────────────┴─────────────────────────────┘
+STAGE 5: Optimize Page
+Pricing optimization with Excel export
+javascript// Backend: Optimization engine
+app.post('/api/optimize-pricing', async (req, res) => {
+    const { subjectUnits, competitorData, optimizationGoals } = req.body;
+    
+    // AI-powered optimization
+    const optimizedPricing = await generateOptimizedPricing(
+        subjectUnits,
+        competitorData,
+        optimizationGoals
+    );
+    
+    // Generate Excel export
+    const excelBuffer = await generateExcelReport(optimizedPricing);
+    
+    res.json({
+        optimizedUnits: optimizedPricing,
+        exportUrl: `/api/download-excel/${sessionId}`,
+        summary: calculateOptimizationImpact(optimizedPricing)
+    });
+});
+
+// Excel generation
+async function generateExcelReport(data) {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Pricing Optimization');
+    
+    // Headers with styling
+    worksheet.columns = [
+        { header: 'Unit #', key: 'unit', width: 10 },
+        { header: 'Type', key: 'type', width: 15 },
+        { header: 'Beds', key: 'beds', width: 8 },
+        { header: 'Baths', key: 'baths', width: 8 },
+        { header: 'Sq Ft', key: 'sqft', width: 10 },
+        { header: 'Current Rent', key: 'currentRent', width: 12 },
+        { header: 'Market Avg', key: 'marketAvg', width: 12 },
+        { header: 'Optimized Rent', key: 'optimizedRent', width: 14 },
+        { header: 'Change ($)', key: 'changeAmount', width: 12 },
+        { header: 'Change (%)', key: 'changePercent', width: 12 },
+        { header: 'Confidence', key: 'confidence', width: 12 },
+        { header: 'Notes', key: 'notes', width: 30 }
+    ];
+    
+    // Add data with conditional formatting
+    data.forEach(unit => {
+        const row = worksheet.addRow(unit);
+        
+        // Color code based on recommendation
+        if (unit.changePercent > 0) {
+            row.getCell('optimizedRent').fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFE5F5E5' } // Light green
+            };
+        } else if (unit.changePercent < 0) {
+            row.getCell('optimizedRent').fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFFFE5E5' } // Light red
+            };
+        }
+    });
+    
+    return workbook.xlsx.writeBuffer();
+}
+Optimize Page UI:
+┌──────────────────────────────────────────────────────┐
+│ 🎯 PRICING OPTIMIZATION                              │
+├──────────────────────────────────────────────────────┤
+│ Optimization Goals:                                  │
+│ ◉ Maximize Revenue  ○ Maximize Occupancy            │
+│ ○ Balanced Approach ○ Custom                        │
+│                                                       │
+│ Target Occupancy: [━━━━━━●━━━] 92%                  │
+│ Risk Tolerance:   [━━●━━━━━━━] Low                  │
+├──────────────────────────────────────────────────────┤
+│ Unit  Type    Current  Market  Optimized  Change    │
+│ 101   Studio  $1,295   $1,250  $1,275    -$20 ↓    │
+│ 102   Studio  $1,295   $1,250  $1,275    -$20 ↓    │
+│ 201   1BR     $1,495   $1,450  $1,475    -$20 ↓    │
+│ 202   1BR     $1,495   $1,450  $1,525    +$30 ↑    │
+│ 301   2BR     $1,895   $1,850  $1,925    +$30 ↑    │
+│ 302   2BR     $1,895   $1,850  $1,925    +$30 ↑    │
+├──────────────────────────────────────────────────────┤
+│ 📊 Projected Impact:                                 │
+│ • Monthly Revenue Change: +$240 (1.8% increase)     │
+│ • Occupancy Impact: -1.2% (still above target)      │
+│ • Time to Lease: Reduced by 3.5 days average        │
+│ • Competitive Position: Improves from 65th to 72nd   │
+│                                                       │
+│ [Apply Changes] [Export to Excel] [Save Scenario]    │
+└──────────────────────────────────────────────────────┘

@@ -683,6 +683,186 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Comprehensive vacancy summary API endpoint
+  app.get("/api/vacancy/summary", async (req, res) => {
+    try {
+      const { propertyId, competitorIds } = req.query;
+      
+      // Validate parameters
+      if (!propertyId) {
+        return res.status(400).json({ message: "propertyId is required" });
+      }
+      
+      const competitorIdsArray = Array.isArray(competitorIds) ? competitorIds : 
+                                 competitorIds ? [competitorIds] : [];
+
+      if (competitorIdsArray.length === 0) {
+        return res.status(400).json({ message: "At least one competitorId is required" });
+      }
+
+      console.log(`Vacancy summary request for property ${propertyId} with ${competitorIdsArray.length} competitors`);
+
+      // Get subject property and competitors
+      const subjectProperty = await storage.getScrapedProperty(propertyId as string);
+      if (!subjectProperty) {
+        return res.status(404).json({ message: "Subject property not found" });
+      }
+
+      const competitorProperties = await storage.getSelectedScrapedProperties(competitorIdsArray as string[]);
+      if (competitorProperties.length === 0) {
+        return res.status(404).json({ message: "No competitor properties found" });
+      }
+
+      // Helper function to normalize unit types
+      const normalizeUnitType = (unitType: string): string => {
+        if (!unitType) return 'Studio';
+        const type = unitType.toLowerCase().trim();
+        
+        if (type.includes('studio') || type.includes('0br') || type === '0') {
+          return 'Studio';
+        } else if (type.includes('1br') || type.includes('1 br') || type === '1') {
+          return '1BR';
+        } else if (type.includes('2br') || type.includes('2 br') || type === '2') {
+          return '2BR';
+        } else if (type.includes('3br') || type.includes('3 br') || type === '3' || 
+                   type.includes('4br') || type.includes('4 br') || type === '4' ||
+                   type.includes('5br') || type.includes('5 br') || type === '5') {
+          return '3BR+';
+        } else {
+          // Try to extract bedroom count from the string
+          const match = type.match(/(\d+)/);
+          if (match) {
+            const bedrooms = parseInt(match[1]);
+            if (bedrooms === 0) return 'Studio';
+            if (bedrooms === 1) return '1BR';
+            if (bedrooms === 2) return '2BR';
+            if (bedrooms >= 3) return '3BR+';
+          }
+          return 'Studio'; // Default fallback
+        }
+      };
+
+      // Helper function to calculate vacancy data for a property
+      const calculateVacancyData = async (property: any) => {
+        const units = await storage.getScrapedUnitsByProperty(property.id);
+        
+        // Group units by type
+        const unitTypeGroups: { [key: string]: typeof units } = {
+          'Studio': [],
+          '1BR': [],
+          '2BR': [],
+          '3BR+': []
+        };
+
+        units.forEach(unit => {
+          const normalizedType = normalizeUnitType(unit.unitType);
+          unitTypeGroups[normalizedType].push(unit);
+        });
+
+        // Calculate stats for each unit type
+        const unitTypes = Object.keys(unitTypeGroups).map(type => {
+          const typeUnits = unitTypeGroups[type];
+          const totalUnits = typeUnits.length;
+          const availableUnits = typeUnits.filter(u => 
+            u.status === 'available' || 
+            (u.availabilityDate && u.availabilityDate.toLowerCase().includes('available'))
+          ).length;
+          
+          const rentPrices = typeUnits
+            .map(u => u.rent ? parseFloat(u.rent.toString()) : null)
+            .filter(rent => rent !== null && rent > 0) as number[];
+          
+          const sqftValues = typeUnits
+            .map(u => u.squareFootage)
+            .filter(sqft => sqft !== null && sqft > 0) as number[];
+
+          return {
+            type,
+            totalUnits,
+            availableUnits,
+            vacancyRate: totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0,
+            avgRent: rentPrices.length > 0 ? rentPrices.reduce((sum, rent) => sum + rent, 0) / rentPrices.length : 0,
+            avgSqFt: sqftValues.length > 0 ? sqftValues.reduce((sum, sqft) => sum + sqft, 0) / sqftValues.length : 0,
+            rentRange: rentPrices.length > 0 ? {
+              min: Math.min(...rentPrices),
+              max: Math.max(...rentPrices)
+            } : { min: 0, max: 0 }
+          };
+        }).filter(typeData => typeData.totalUnits > 0); // Only include unit types that exist
+
+        // Calculate overall vacancy rate
+        const totalUnits = units.length;
+        const totalAvailable = units.filter(u => 
+          u.status === 'available' || 
+          (u.availabilityDate && u.availabilityDate.toLowerCase().includes('available'))
+        ).length;
+        const overallVacancyRate = totalUnits > 0 ? (totalAvailable / totalUnits) * 100 : 0;
+
+        return {
+          id: property.id,
+          name: property.name,
+          vacancyRate: parseFloat(overallVacancyRate.toFixed(1)),
+          unitTypes
+        };
+      }
+
+      // Calculate data for subject property
+      const subjectData = await calculateVacancyData(subjectProperty);
+
+      // Calculate data for competitors
+      const competitorData = await Promise.all(
+        competitorProperties.map(comp => calculateVacancyData(comp))
+      );
+
+      // Calculate market insights
+      const competitorVacancyRates = competitorData.map(c => c.vacancyRate);
+      const competitorAvgVacancy = competitorVacancyRates.length > 0 
+        ? competitorVacancyRates.reduce((sum, rate) => sum + rate, 0) / competitorVacancyRates.length
+        : 0;
+
+      const totalCompetitorVacancies = competitorData.reduce((sum, comp) => {
+        return sum + comp.unitTypes.reduce((typeSum, type) => typeSum + type.availableUnits, 0);
+      }, 0);
+
+      // Find strongest unit type (lowest vacancy rate)
+      const subjectUnitTypes = subjectData.unitTypes.filter(type => type.totalUnits > 0);
+      const strongestUnitType = subjectUnitTypes.length > 0 
+        ? subjectUnitTypes.reduce((strongest, current) => 
+            current.vacancyRate < strongest.vacancyRate ? current : strongest
+          ).type
+        : 'N/A';
+
+      // Calculate subject vs market comparison
+      const vacancyDifference = subjectData.vacancyRate - competitorAvgVacancy;
+      const subjectVsMarket = Math.abs(vacancyDifference) < 0.1 
+        ? "At market average"
+        : vacancyDifference > 0 
+          ? `${Math.abs(vacancyDifference).toFixed(1)}% above market average`
+          : `${Math.abs(vacancyDifference).toFixed(1)}% below market average`;
+
+      const response = {
+        subjectProperty: subjectData,
+        competitors: competitorData,
+        marketInsights: {
+          subjectVsMarket,
+          strongestUnitType,
+          totalVacancies: subjectData.unitTypes.reduce((sum, type) => sum + type.availableUnits, 0) + totalCompetitorVacancies,
+          competitorAvgVacancies: parseFloat(competitorAvgVacancy.toFixed(1))
+        }
+      };
+
+      console.log(`Vacancy summary completed for ${subjectData.name}: ${subjectData.vacancyRate}% vacancy rate`);
+      res.json(response);
+
+    } catch (error) {
+      console.error("Error generating vacancy summary:", error);
+      res.status(500).json({ 
+        message: "Failed to generate vacancy summary", 
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
 
   // Address normalization utilities for better property matching
   function normalizeAddress(address: string): string {
