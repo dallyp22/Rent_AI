@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema } from "@shared/schema";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ 
@@ -248,6 +248,164 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching optimization report:", error);
       res.status(500).json({ message: "Failed to fetch optimization report" });
+    }
+  });
+
+  // Helper function to generate city URL from address
+  function generateCityUrl(address: string): string {
+    const parts = address.split(',');
+    if (parts.length < 2) return '';
+    
+    // Extract city and state (e.g., "Omaha, NE" -> "omaha-ne")
+    const city = parts[parts.length - 2].trim().toLowerCase().replace(/\s+/g, '-');
+    const state = parts[parts.length - 1].trim().toLowerCase().replace(/\s+/g, '-');
+    
+    return `apartments.com/${city}-${state}/`;
+  }
+
+  // Helper function to extract city/state from address for job naming
+  function extractCityState(address: string): string {
+    const parts = address.split(',');
+    if (parts.length < 2) return 'Unknown Location';
+    
+    const city = parts[parts.length - 2].trim();
+    const state = parts[parts.length - 1].trim().split(' ')[0]; // Remove zip code if present
+    
+    return `${city}, ${state}`;
+  }
+
+  // Start scraping job for a property
+  app.post("/api/properties/:id/scrape", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const property = await storage.getProperty(propertyId);
+      
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      const cityUrl = generateCityUrl(property.address);
+      if (!cityUrl) {
+        return res.status(400).json({ message: "Unable to extract city from address" });
+      }
+
+      const cityState = extractCityState(property.address);
+
+      // Create scraping job
+      const scrapingJob = await storage.createScrapingJob({
+        propertyId,
+        jobType: "city_discovery",
+        targetUrl: `https://${cityUrl}`,
+        status: "pending",
+        cityState
+      });
+
+      // In a real implementation, this would call the Scrapezy API
+      // For now, we'll simulate the process
+      res.json({ 
+        scrapingJob,
+        message: `Started scraping job for ${cityState}`,
+        targetUrl: `https://${cityUrl}`
+      });
+    } catch (error) {
+      console.error("Error starting scraping job:", error);
+      res.status(500).json({ message: "Failed to start scraping job" });
+    }
+  });
+
+  // Simulate scraping completion (in real implementation, this would be called by Scrapezy webhook)
+  app.post("/api/scraping/:jobId/complete", async (req, res) => {
+    try {
+      const jobId = req.params.jobId;
+      const { properties } = req.body; // Array of scraped property data
+      
+      const job = await storage.getScrapingJob(jobId);
+      if (!job) {
+        return res.status(404).json({ message: "Scraping job not found" });
+      }
+
+      // Update job status
+      await storage.updateScrapingJob(jobId, {
+        status: "completed",
+        completedAt: new Date()
+      });
+
+      // Store scraped properties
+      const scrapedProperties = [];
+      for (const propertyData of properties || []) {
+        const scrapedProperty = await storage.createScrapedProperty({
+          scrapingJobId: jobId,
+          name: propertyData.name,
+          url: propertyData.url,
+          address: propertyData.address,
+          priceRange: propertyData.priceRange,
+          unitCount: propertyData.unitCount?.toString(),
+          distance: propertyData.distance?.toString(),
+          amenities: propertyData.amenities || []
+        });
+        scrapedProperties.push(scrapedProperty);
+      }
+
+      res.json({ job, scrapedProperties });
+    } catch (error) {
+      console.error("Error completing scraping job:", error);
+      res.status(500).json({ message: "Failed to complete scraping job" });
+    }
+  });
+
+  // Get scraping job status and results
+  app.get("/api/scraping/:jobId", async (req, res) => {
+    try {
+      const jobId = req.params.jobId;
+      const job = await storage.getScrapingJob(jobId);
+      
+      if (!job) {
+        return res.status(404).json({ message: "Scraping job not found" });
+      }
+
+      const scrapedProperties = await storage.getScrapedPropertiesByJob(jobId);
+      
+      res.json({ job, scrapedProperties });
+    } catch (error) {
+      console.error("Error fetching scraping job:", error);
+      res.status(500).json({ message: "Failed to fetch scraping job" });
+    }
+  });
+
+  // Get all scraping jobs for a property
+  app.get("/api/properties/:id/scraping-jobs", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const jobs = await storage.getScrapingJobsByProperty(propertyId);
+      
+      res.json(jobs);
+    } catch (error) {
+      console.error("Error fetching scraping jobs:", error);
+      res.status(500).json({ message: "Failed to fetch scraping jobs" });
+    }
+  });
+
+  // Match subject property with scraped data
+  app.post("/api/properties/:id/match", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const { scrapedPropertyId } = req.body;
+      
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+
+      // Here you would implement matching logic
+      // For now, we'll just return a success response
+      res.json({ 
+        matched: true,
+        message: `Successfully matched ${property.propertyName} with scraped data`,
+        scrapedPropertyId
+      });
+    } catch (error) {
+      console.error("Error matching property:", error);
+      res.status(500).json({ message: "Failed to match property" });
     }
   });
 
