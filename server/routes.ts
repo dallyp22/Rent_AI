@@ -394,9 +394,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const parts = address.split(',');
     if (parts.length < 2) return '';
     
-    // Extract city and state (e.g., "Omaha, NE" -> "omaha-ne")
+    // Extract city and state (e.g., "Omaha, NE 68131" -> "omaha-ne")
     const city = parts[parts.length - 2].trim().toLowerCase().replace(/\s+/g, '-');
-    const state = parts[parts.length - 1].trim().toLowerCase().replace(/\s+/g, '-');
+    const stateWithZip = parts[parts.length - 1].trim();
+    const state = stateWithZip.split(' ')[0].toLowerCase(); // Only take the state part, ignore ZIP
     
     return `apartments.com/${city}-${state}/`;
   }
