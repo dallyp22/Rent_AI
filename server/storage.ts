@@ -143,7 +143,19 @@ export class MemStorage implements IStorage {
 
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
-    const property: Property = { ...insertProperty, id, createdAt: new Date() };
+    const property: Property = { 
+      ...insertProperty, 
+      id, 
+      createdAt: new Date(),
+      city: insertProperty.city ?? null,
+      state: insertProperty.state ?? null,
+      propertyType: insertProperty.propertyType ?? null,
+      totalUnits: insertProperty.totalUnits ?? null,
+      builtYear: insertProperty.builtYear ?? null,
+      squareFootage: insertProperty.squareFootage ?? null,
+      parkingSpaces: insertProperty.parkingSpaces ?? null,
+      amenities: insertProperty.amenities ? [...insertProperty.amenities] : null
+    };
     this.properties.set(id, property);
     return property;
   }
@@ -158,7 +170,13 @@ export class MemStorage implements IStorage {
 
   async createPropertyAnalysis(insertAnalysis: InsertPropertyAnalysis): Promise<PropertyAnalysis> {
     const id = randomUUID();
-    const analysis: PropertyAnalysis = { ...insertAnalysis, id, createdAt: new Date() };
+    const analysis: PropertyAnalysis = { 
+      ...insertAnalysis, 
+      id, 
+      createdAt: new Date(),
+      competitiveAdvantages: Array.isArray(insertAnalysis.competitiveAdvantages) ? [...insertAnalysis.competitiveAdvantages] : [],
+      recommendations: Array.isArray(insertAnalysis.recommendations) ? [...insertAnalysis.recommendations] : []
+    };
     this.propertyAnalyses.set(insertAnalysis.propertyId, analysis);
     return analysis;
   }
@@ -171,7 +189,12 @@ export class MemStorage implements IStorage {
 
   async createCompetitorProperty(insertProperty: InsertCompetitorProperty): Promise<CompetitorProperty> {
     const id = randomUUID();
-    const property: CompetitorProperty = { ...insertProperty, id, createdAt: new Date() };
+    const property: CompetitorProperty = { 
+      ...insertProperty, 
+      id, 
+      createdAt: new Date(),
+      amenities: Array.isArray(insertProperty.amenities) ? [...insertProperty.amenities] : []
+    };
     this.competitorProperties.set(id, property);
     return property;
   }
@@ -186,7 +209,13 @@ export class MemStorage implements IStorage {
 
   async createPropertyUnit(insertUnit: InsertPropertyUnit): Promise<PropertyUnit> {
     const id = randomUUID();
-    const unit: PropertyUnit = { ...insertUnit, id, createdAt: new Date() };
+    const unit: PropertyUnit = { 
+      ...insertUnit, 
+      id, 
+      createdAt: new Date(),
+      status: insertUnit.status || "occupied",
+      recommendedRent: insertUnit.recommendedRent ?? null
+    };
     this.propertyUnits.set(id, unit);
     return unit;
   }
@@ -226,7 +255,11 @@ export class MemStorage implements IStorage {
       ...insertJob, 
       id, 
       createdAt: new Date(),
-      completedAt: null
+      completedAt: null,
+      scrapezyJobId: insertJob.scrapezyJobId ?? null,
+      status: insertJob.status || "pending",
+      results: insertJob.results ?? null,
+      errorMessage: insertJob.errorMessage ?? null
     };
     this.scrapingJobs.set(id, job);
     return job;
@@ -253,7 +286,14 @@ export class MemStorage implements IStorage {
 
   async createScrapedProperty(insertProperty: InsertScrapedProperty): Promise<ScrapedProperty> {
     const id = randomUUID();
-    const property: ScrapedProperty = { ...insertProperty, id, createdAt: new Date() };
+    const property: ScrapedProperty = { 
+      ...insertProperty, 
+      id, 
+      createdAt: new Date(),
+      distance: insertProperty.distance ?? null,
+      isSubjectProperty: insertProperty.isSubjectProperty ?? null,
+      matchScore: insertProperty.matchScore ?? null
+    };
     this.scrapedProperties.set(id, property);
     return property;
   }
@@ -276,7 +316,18 @@ export class MemStorage implements IStorage {
 
   async createScrapedUnit(insertUnit: InsertScrapedUnit): Promise<ScrapedUnit> {
     const id = randomUUID();
-    const unit: ScrapedUnit = { ...insertUnit, id, createdAt: new Date() };
+    const unit: ScrapedUnit = { 
+      ...insertUnit, 
+      id, 
+      createdAt: new Date(),
+      squareFootage: insertUnit.squareFootage ?? null,
+      status: insertUnit.status ?? null,
+      unitNumber: insertUnit.unitNumber ?? null,
+      bedrooms: insertUnit.bedrooms ?? null,
+      bathrooms: insertUnit.bathrooms ?? null,
+      rent: insertUnit.rent ?? null,
+      availabilityDate: insertUnit.availabilityDate ?? null
+    };
     this.scrapedUnits.set(id, unit);
     return unit;
   }

@@ -2,10 +2,10 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowRight } from "lucide-react";
-import type { CompetitorProperty } from "@shared/schema";
+import type { ScrapedProperty } from "@shared/schema";
 
 interface CompetitorSelectionProps {
-  competitors: CompetitorProperty[];
+  competitors: ScrapedProperty[];
   onContinue: (selectedIds: string[]) => void;
 }
 
@@ -56,27 +56,24 @@ export default function CompetitorSelection({ competitors, onContinue }: Competi
                 <h4 className="font-semibold" data-testid={`name-${property.id}`}>
                   {property.name}
                 </h4>
-                <div className="flex items-center space-x-4 text-sm text-muted-foreground">
-                  <span data-testid={`distance-${property.id}`}>
-                    {property.distance} miles away
-                  </span>
-                  <span className="font-semibold text-primary" data-testid={`price-range-${property.id}`}>
-                    {property.priceRange}
-                  </span>
-                </div>
+                {property.distance && (
+                  <div className="text-sm text-muted-foreground">
+                    <span data-testid={`distance-${property.id}`}>
+                      {property.distance} miles away
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="text-sm text-muted-foreground mt-1" data-testid={`details-${property.id}`}>
-                {property.address} • {property.totalUnits} Units • Built {property.builtYear} • {property.amenities.join(", ")}
+                {property.address}
               </div>
-              <div className="flex items-center space-x-4 text-xs text-muted-foreground mt-2">
-                <span data-testid={`match-score-${property.id}`}>
-                  Match Score: {property.matchScore}%
-                </span>
-                <span>•</span>
-                <span data-testid={`vacancy-rate-${property.id}`}>
-                  Vacancy Rate: {property.vacancyRate}%
-                </span>
-              </div>
+              {property.matchScore && (
+                <div className="text-xs text-muted-foreground mt-2">
+                  <span data-testid={`match-score-${property.id}`}>
+                    Match Score: {property.matchScore}%
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         ))}

@@ -12,12 +12,12 @@ const SCRAPEZY_API_KEY = process.env.SCRAPEZY_API_KEY;
 const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
 
 // Scrapezy API integration functions
-async function callScrapezyScraping(url: string) {
+async function callScrapezyScraping(url: string, customPrompt?: string) {
   if (!SCRAPEZY_API_KEY) {
     throw new Error("Scrapezy API key not configured");
   }
 
-  const prompt = "Extract apartment listings from this apartments.com page. For each apartment property listing, extract: 1) The complete URL link to the individual apartment page (must start with https://www.apartments.com/), 2) The property/apartment name or title, 3) The address or location information. Return as JSON array with objects containing \"url\", \"name\", and \"address\" fields.";
+  const prompt = customPrompt || "Extract apartment listings from this apartments.com page. For each apartment property listing, extract: 1) The complete URL link to the individual apartment page (must start with https://www.apartments.com/), 2) The property/apartment name or title, 3) The address or location information. Return as JSON array with objects containing \"url\", \"name\", and \"address\" fields.";
 
   // Create job
   const jobResponse = await fetch(SCRAPEZY_BASE_URL, {
@@ -171,6 +171,112 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
   return validProperties;
 }
 
+// Parse Scrapezy results to extract unit details
+function parseUnitData(scrapezyResult: any): Array<{
+  unitNumber?: string;
+  unitType: string;
+  bedrooms?: number;
+  bathrooms?: number;
+  squareFootage?: number;
+  rent?: number;
+  availabilityDate?: string;
+}> {
+  let units = [];
+  
+  try {
+    // Try to get the result from the response structure
+    const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
+    
+    if (typeof resultText === 'string') {
+      try {
+        const parsed = JSON.parse(resultText);
+        
+        // Check for different possible keys for unit data
+        const unitData = parsed.units || parsed.apartment_units || parsed.listings || parsed;
+        if (Array.isArray(unitData)) {
+          units = unitData.filter(item => 
+            item && 
+            typeof item === 'object' && 
+            (item.unitType || item.unit_type || item.type)
+          );
+        }
+      } catch (parseError) {
+        console.warn('Failed to parse JSON result for units, trying fallback parsing');
+        // Fallback: try to extract basic unit info from text
+        const lines = resultText.split('\n');
+        for (const line of lines) {
+          if (line.includes('BR') || line.includes('Studio') || line.includes('bedroom')) {
+            units.push({
+              unitType: line.trim(),
+              bedrooms: extractBedroomCount(line),
+              bathrooms: extractBathroomCount(line),
+              rent: extractRentPrice(line)
+            });
+          }
+        }
+      }
+    } else if (typeof resultText === 'object' && resultText !== null) {
+      // Handle object response (already parsed)
+      const unitDataObj = resultText.units || resultText.apartment_units || resultText.listings;
+      if (Array.isArray(unitDataObj)) {
+        units = unitDataObj.filter(item => 
+          item && 
+          typeof item === 'object' && 
+          (item.unitType || item.unit_type || item.type)
+        );
+      } else if (Array.isArray(resultText)) {
+        units = resultText.filter(item => 
+          item && 
+          typeof item === 'object' && 
+          (item.unitType || item.unit_type || item.type)
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Error parsing Scrapezy unit result:', error);
+  }
+
+  // Normalize and validate unit data
+  const validUnits = units
+    .map(unit => ({
+      unitNumber: unit.unitNumber || unit.unit_number || null,
+      unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
+      bedrooms: parseNumber(unit.bedrooms || unit.bedroom_count),
+      bathrooms: parseNumber(unit.bathrooms || unit.bathroom_count),
+      squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
+      rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
+      availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || null
+    }))
+    .filter(unit => unit.unitType && unit.unitType !== 'Unknown');
+
+  return validUnits;
+}
+
+// Helper functions for unit data parsing
+function extractBedroomCount(text: string): number | undefined {
+  const match = text.match(/(\d+)\s*BR|(\d+)\s*bedroom/i);
+  return match ? parseInt(match[1] || match[2]) : undefined;
+}
+
+function extractBathroomCount(text: string): number | undefined {
+  const match = text.match(/(\d+(?:\.\d+)?)\s*BA|(\d+(?:\.\d+)?)\s*bathroom/i);
+  return match ? parseFloat(match[1] || match[2]) : undefined;
+}
+
+function extractRentPrice(text: string): number | undefined {
+  const match = text.match(/\$(\d{1,3}(?:,\d{3})*)/);
+  return match ? parseInt(match[1].replace(/,/g, '')) : undefined;
+}
+
+function parseNumber(value: any): number | undefined {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const num = parseFloat(value.replace(/[,$]/g, ''));
+    return isNaN(num) ? undefined : num;
+  }
+  return undefined;
+}
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -248,19 +354,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get all scraped competitor properties using proper storage method
       const scrapedCompetitors = await storage.getAllScrapedCompetitors();
       
-      // Convert scraped properties to competitor format for UI compatibility
+      // Return only authentic scraped data - no placeholder values
       const competitors = scrapedCompetitors.map(scrapedProp => ({
         id: scrapedProp.id,
         name: scrapedProp.name,
         address: scrapedProp.address,
-        distance: scrapedProp.distance || "0.5", // Default distance if null
-        priceRange: "$1,200-$1,800", // Placeholder - would come from Scrapezy in future
-        totalUnits: 100, // Placeholder - would come from Scrapezy in future  
-        builtYear: 2015, // Placeholder - would come from Scrapezy in future
-        amenities: ["Pool", "Gym", "Parking"], // Placeholder - would come from Scrapezy in future
-        matchScore: scrapedProp.matchScore || "75.0", // Use scraped match score or default
-        vacancyRate: "8.5", // Placeholder - would come from Scrapezy in future
-        createdAt: scrapedProp.createdAt
+        url: scrapedProp.url,
+        distance: scrapedProp.distance,
+        matchScore: scrapedProp.matchScore,
+        createdAt: scrapedProp.createdAt,
+        isSubjectProperty: scrapedProp.isSubjectProperty
       }));
 
       console.log(`Returning ${competitors.length} scraped properties as competitors`);
@@ -282,19 +385,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Use scraped properties instead of legacy competitors
       const scrapedProperties = await storage.getSelectedScrapedProperties(ids);
       
-      // Convert to competitor format for UI compatibility
+      // Return only authentic scraped data - no placeholder values
       const competitors = scrapedProperties.map(scrapedProp => ({
         id: scrapedProp.id,
         name: scrapedProp.name,
         address: scrapedProp.address,
-        distance: scrapedProp.distance || "0.5",
-        priceRange: "$1,200-$1,800", // Placeholder
-        totalUnits: 100, // Placeholder  
-        builtYear: 2015, // Placeholder
-        amenities: ["Pool", "Gym", "Parking"], // Placeholder
-        matchScore: scrapedProp.matchScore || "75.0",
-        vacancyRate: "8.5", // Placeholder
-        createdAt: scrapedProp.createdAt
+        url: scrapedProp.url,
+        distance: scrapedProp.distance,
+        matchScore: scrapedProp.matchScore,
+        createdAt: scrapedProp.createdAt,
+        isSubjectProperty: scrapedProp.isSubjectProperty
       }));
 
       res.json(competitors);
@@ -450,6 +550,318 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Scrape unit-level data for selected competitor properties
+  app.post("/api/competitors/scrape-units", async (req, res) => {
+    try {
+      const { competitorIds } = req.body;
+      
+      if (!Array.isArray(competitorIds) || competitorIds.length === 0) {
+        return res.status(400).json({ message: "competitorIds must be a non-empty array" });
+      }
+
+      // Get selected competitor properties
+      const selectedCompetitors = await storage.getSelectedScrapedProperties(competitorIds);
+      
+      if (selectedCompetitors.length === 0) {
+        return res.status(404).json({ message: "No competitor properties found" });
+      }
+
+      const results = [];
+      
+      // Process each competitor property
+      for (const competitor of selectedCompetitors) {
+        try {
+          console.log(`Starting unit scraping for property: ${competitor.name} at ${competitor.url}`);
+          
+          // Create scraping job for unit details
+          const scrapingJob = await storage.createScrapingJob({
+            propertyId: "temp-" + competitor.id, // Using temp ID since this is for competitor, not subject property
+            stage: "unit_details",
+            cityUrl: competitor.url,
+            status: "processing"
+          });
+
+          // Call Scrapezy API for unit-level data
+          const unitPrompt = `Extract detailed unit information from this apartments.com property page. For each available apartment unit, extract: 1) Unit number or identifier (if available), 2) Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA"), 3) Number of bedrooms (as integer), 4) Number of bathrooms (as decimal like 1.0, 1.5, 2.0), 5) Square footage (as integer, if available), 6) Monthly rent price (as number, extract only the numerical value), 7) Availability date or status. Return as JSON array with objects containing "unitNumber", "unitType", "bedrooms", "bathrooms", "squareFootage", "rent", "availabilityDate" fields.`;
+
+          const scrapezyResult = await callScrapezyScraping(competitor.url, unitPrompt);
+          
+          // Parse the scraped unit data
+          const unitData = parseUnitData(scrapezyResult);
+          
+          console.log(`Found ${unitData.length} units for property: ${competitor.name}`);
+          
+          // Save scraped units to storage
+          const savedUnits = [];
+          for (const unit of unitData) {
+            try {
+              const savedUnit = await storage.createScrapedUnit({
+                propertyId: competitor.id,
+                unitNumber: unit.unitNumber,
+                unitType: unit.unitType,
+                bedrooms: unit.bedrooms,
+                bathrooms: unit.bathrooms?.toString() || null,
+                squareFootage: unit.squareFootage,
+                rent: unit.rent?.toString() || null,
+                availabilityDate: unit.availabilityDate,
+                status: unit.availabilityDate && unit.availabilityDate.toLowerCase().includes('available') ? 'available' : 'occupied'
+              });
+              savedUnits.push(savedUnit);
+            } catch (unitError) {
+              console.warn(`Failed to save unit for ${competitor.name}:`, unitError);
+            }
+          }
+
+          // Update scraping job status
+          await storage.updateScrapingJob(scrapingJob.id, {
+            status: "completed",
+            results: unitData,
+            completedAt: new Date()
+          });
+
+          results.push({
+            competitorId: competitor.id,
+            competitorName: competitor.name,
+            competitorAddress: competitor.address,
+            scrapingJobId: scrapingJob.id,
+            unitsFound: savedUnits.length,
+            units: savedUnits
+          });
+
+        } catch (competitorError) {
+          console.error(`Error scraping units for ${competitor.name}:`, competitorError);
+          
+          const errorMessage = competitorError instanceof Error ? competitorError.message : "Failed to scrape unit data";
+          
+          results.push({
+            competitorId: competitor.id,
+            competitorName: competitor.name,
+            competitorAddress: competitor.address,
+            error: errorMessage,
+            unitsFound: 0,
+            units: []
+          });
+        }
+      }
+
+      res.json({
+        message: "Unit scraping completed",
+        processedProperties: results.length,
+        totalUnitsFound: results.reduce((sum, result) => sum + result.unitsFound, 0),
+        results
+      });
+
+    } catch (error) {
+      console.error("Error in unit scraping workflow:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      res.status(500).json({ message: "Failed to scrape unit data", error: errorMessage });
+    }
+  });
+
+  // Address normalization utilities for better property matching
+  function normalizeAddress(address: string): string {
+    if (!address) return '';
+    
+    return address
+      .toLowerCase()
+      .trim()
+      // Remove common punctuation
+      .replace(/[.,;#]/g, '')
+      // Normalize street abbreviations
+      .replace(/\bstreet\b/g, 'st')
+      .replace(/\bavenue\b/g, 'ave')
+      .replace(/\bboulevard\b/g, 'blvd')
+      .replace(/\bdrive\b/g, 'dr')
+      .replace(/\broad\b/g, 'rd')
+      .replace(/\blane\b/g, 'ln')
+      .replace(/\bplaza\b/g, 'plz')
+      .replace(/\bcircle\b/g, 'cir')
+      .replace(/\bparkway\b/g, 'pkwy')
+      .replace(/\bcourt\b/g, 'ct')
+      // Normalize directional abbreviations
+      .replace(/\bnorth\b/g, 'n')
+      .replace(/\bsouth\b/g, 's')
+      .replace(/\beast\b/g, 'e')
+      .replace(/\bwest\b/g, 'w')
+      .replace(/\bnortheast\b/g, 'ne')
+      .replace(/\bnorthwest\b/g, 'nw')
+      .replace(/\bsoutheast\b/g, 'se')
+      .replace(/\bsouthwest\b/g, 'sw')
+      // Remove extra whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function extractStreetNumber(address: string): string {
+    const match = address.match(/^(\d+)/);
+    return match ? match[1] : '';
+  }
+
+  function extractStreetName(address: string): string {
+    // Extract everything after the street number but before city/state
+    const normalized = normalizeAddress(address);
+    const parts = normalized.split(',');
+    if (parts.length === 0) return normalized;
+    
+    const streetPart = parts[0].trim();
+    // Remove the street number
+    return streetPart.replace(/^\d+\s*/, '').trim();
+  }
+
+  function normalizePropertyName(name: string): string {
+    if (!name) return '';
+    
+    return name
+      .toLowerCase()
+      .trim()
+      // Remove common property prefixes/suffixes
+      .replace(/^(the)\s+/i, '')
+      .replace(/\s+(apartments?|apt|residences?|homes?|towers?|place|commons?)$/i, '')
+      // Remove extra whitespace
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  // Calculate similarity score between two strings (0-100)
+  function calculateStringSimilarity(str1: string, str2: string): number {
+    if (!str1 || !str2) return 0;
+    if (str1 === str2) return 100;
+    
+    // Levenshtein distance implementation
+    const matrix = [];
+    const len1 = str1.length;
+    const len2 = str2.length;
+    
+    // Initialize matrix
+    for (let i = 0; i <= len1; i++) {
+      matrix[i] = [i];
+    }
+    for (let j = 0; j <= len2; j++) {
+      matrix[0][j] = j;
+    }
+    
+    // Fill matrix
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        if (str1[i - 1] === str2[j - 1]) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+    
+    const maxLen = Math.max(len1, len2);
+    const similarity = maxLen === 0 ? 100 : ((maxLen - matrix[len1][len2]) / maxLen) * 100;
+    return Math.round(similarity);
+  }
+
+  // Advanced property matching logic
+  function calculatePropertyMatch(subjectProperty: any, scrapedProperty: any): { isMatch: boolean; score: number; reasons: string[] } {
+    const reasons: string[] = [];
+    let totalScore = 0;
+    let maxPossibleScore = 0;
+    
+    // Extract and normalize subject property data
+    const subjectName = normalizePropertyName(subjectProperty.propertyName || '');
+    const subjectAddress = normalizeAddress(subjectProperty.address || '');
+    const subjectStreetNumber = extractStreetNumber(subjectProperty.address || '');
+    const subjectStreetName = extractStreetName(subjectProperty.address || '');
+    
+    // Extract and normalize scraped property data
+    const scrapedName = normalizePropertyName(scrapedProperty.name || '');
+    const scrapedAddress = normalizeAddress(scrapedProperty.address || '');
+    const scrapedStreetNumber = extractStreetNumber(scrapedProperty.address || '');
+    const scrapedStreetName = extractStreetName(scrapedProperty.address || '');
+    
+    // 1. Exact street number match (30 points) - very important for properties
+    maxPossibleScore += 30;
+    if (subjectStreetNumber && scrapedStreetNumber) {
+      if (subjectStreetNumber === scrapedStreetNumber) {
+        totalScore += 30;
+        reasons.push(`Exact street number match: ${subjectStreetNumber}`);
+      } else {
+        reasons.push(`Street number mismatch: ${subjectStreetNumber} vs ${scrapedStreetNumber}`);
+      }
+    }
+    
+    // 2. Street name similarity (25 points)
+    maxPossibleScore += 25;
+    if (subjectStreetName && scrapedStreetName) {
+      const streetSimilarity = calculateStringSimilarity(subjectStreetName, scrapedStreetName);
+      if (streetSimilarity >= 80) {
+        const streetPoints = Math.round((streetSimilarity / 100) * 25);
+        totalScore += streetPoints;
+        reasons.push(`Street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
+      } else {
+        reasons.push(`Low street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
+      }
+    }
+    
+    // 3. Property name similarity (20 points)
+    maxPossibleScore += 20;
+    if (subjectName && scrapedName) {
+      const nameSimilarity = calculateStringSimilarity(subjectName, scrapedName);
+      if (nameSimilarity >= 50) {
+        const namePoints = Math.round((nameSimilarity / 100) * 20);
+        totalScore += namePoints;
+        reasons.push(`Property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+      } else {
+        // Check if one name contains the other
+        if (subjectName.includes(scrapedName) || scrapedName.includes(subjectName)) {
+          totalScore += 10;
+          reasons.push(`Property name partial match: "${subjectName}" and "${scrapedName}"`);
+        } else {
+          reasons.push(`Low property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+        }
+      }
+    }
+    
+    // 4. Full address similarity (15 points)
+    maxPossibleScore += 15;
+    const fullAddressSimilarity = calculateStringSimilarity(subjectAddress, scrapedAddress);
+    if (fullAddressSimilarity >= 70) {
+      const addressPoints = Math.round((fullAddressSimilarity / 100) * 15);
+      totalScore += addressPoints;
+      reasons.push(`Full address similarity: ${fullAddressSimilarity}%`);
+    }
+    
+    // 5. City/State context (10 points) - from subject property schema
+    maxPossibleScore += 10;
+    if (subjectProperty.city || subjectProperty.state) {
+      const subjectCity = normalizeAddress(subjectProperty.city || '');
+      const subjectState = normalizeAddress(subjectProperty.state || '');
+      
+      if (subjectCity && scrapedAddress.includes(subjectCity)) {
+        totalScore += 5;
+        reasons.push(`City match in scraped address: ${subjectCity}`);
+      }
+      if (subjectState && scrapedAddress.includes(subjectState)) {
+        totalScore += 5;
+        reasons.push(`State match in scraped address: ${subjectState}`);
+      }
+    }
+    
+    // Calculate final score percentage
+    const finalScore = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
+    
+    // Match thresholds:
+    // - 85%+ = Highly likely match (for exact matches with same street number)
+    // - 70%+ = Likely match (for properties with similar names/addresses)
+    // - 50%+ = Possible match (requires manual review)
+    const isMatch = finalScore >= 70;
+    
+    return {
+      isMatch,
+      score: finalScore,
+      reasons
+    };
+  }
+
   // Helper function to generate city URL from address
   function generateCityUrl(address: string): string {
     const parts = address.split(',').map(p => p.trim());
@@ -566,14 +978,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             continue;
           }
 
-          // Simple matching logic - check if property name or address matches
-          const isSubjectProperty = 
-            propertyData.name.toLowerCase().includes(property.propertyName?.toLowerCase() || '') ||
-            propertyData.address.toLowerCase().includes(property.address.split(',')[0].toLowerCase());
+          // Advanced property matching with scoring and detailed logging
+          const matchResult = calculatePropertyMatch(property, propertyData);
+          const isSubjectProperty = matchResult.isMatch;
+          
+          // Log detailed matching information
+          console.log(`\n--- Property Match Analysis ---`);
+          console.log(`Subject: "${property.propertyName}" at "${property.address}"`);
+          console.log(`Scraped: "${propertyData.name}" at "${propertyData.address}"`);
+          console.log(`Match Score: ${matchResult.score}%`);
+          console.log(`Is Match: ${isSubjectProperty}`);
+          console.log(`Reasons:`);
+          matchResult.reasons.forEach(reason => console.log(`  - ${reason}`));
+          console.log(`----------------------------\n`);
 
           if (isSubjectProperty) {
             subjectPropertyFound = true;
-            console.log('Found subject property match:', propertyData.name);
+            console.log('✅ FOUND SUBJECT PROPERTY MATCH:', propertyData.name, `(Score: ${matchResult.score}%)`);
           }
 
           const scrapedProperty = await storage.createScrapedProperty({
@@ -582,7 +1003,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             url: propertyData.url,
             address: propertyData.address,
             distance: null,
-            matchScore: isSubjectProperty ? "100.0" : null,
+            matchScore: matchResult.score.toString(),
             isSubjectProperty
           });
           scrapedProperties.push(scrapedProperty);
@@ -764,6 +1185,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to match property" });
     }
   });
+
+  // Test endpoint for matching logic - can be removed in production if desired
 
   const httpServer = createServer(app);
   return httpServer;
