@@ -394,12 +394,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const parts = address.split(',');
     if (parts.length < 2) return '';
     
-    // Extract city and state (e.g., "Omaha, NE 68131" -> "omaha-ne")
+    // Extract city, state and ZIP (e.g., "2929 California Plaza, Omaha, NE 68131" -> "omaha-ne-68131")
     const city = parts[parts.length - 2].trim().toLowerCase().replace(/\s+/g, '-');
     const stateWithZip = parts[parts.length - 1].trim();
-    const state = stateWithZip.split(' ')[0].toLowerCase(); // Only take the state part, ignore ZIP
+    const stateZipParts = stateWithZip.split(' ');
+    const state = stateZipParts[0].toLowerCase();
+    const zip = stateZipParts[1] || '';
     
-    return `apartments.com/${city}-${state}/`;
+    return zip ? `apartments.com/${city}-${state}-${zip}/` : `apartments.com/${city}-${state}/`;
   }
 
   // Helper function to extract city/state from address for job naming
