@@ -14,9 +14,10 @@ interface PropertyWithAnalysis {
 }
 
 interface ScrapingResult {
-  competitorId: string;
-  competitorName: string;
-  competitorAddress: string;
+  propertyId: string;
+  propertyName: string;
+  propertyAddress: string;
+  isSubjectProperty: boolean;
   scrapingJobId?: string;
   unitsFound: number;
   units: any[];
@@ -162,9 +163,19 @@ export default function Summarize({ params }: { params: { id: string } }) {
             {scrapingStage === 'scraping' && (
               <div className="space-y-3" data-testid="scraping-progress">
                 <p className="text-sm text-muted-foreground">
-                  Collecting detailed unit information from selected properties. This may take a few minutes...
+                  Collecting detailed unit information from subject property and selected competitors. This may take a few minutes...
                 </p>
                 <div className="space-y-2">
+                  {/* Note: During scraping, we show selected competitors. The backend will automatically include the subject property */}
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md">
+                    <div className="flex items-center">
+                      <Loader2 className="h-3 w-3 mr-2 animate-spin text-blue-500" />
+                      <div>
+                        <span className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Subject Property</span>
+                        <div className="text-sm">Collecting unit data...</div>
+                      </div>
+                    </div>
+                  </div>
                   {selectedCompetitors.map((competitor) => (
                     <div key={competitor.id} className="flex items-center p-3 bg-muted rounded-md">
                       <Loader2 className="h-3 w-3 mr-2 animate-spin text-blue-500" />
@@ -178,25 +189,53 @@ export default function Summarize({ params }: { params: { id: string } }) {
             {scrapingStage === 'completed' && scrapingResults.length > 0 && (
               <div className="space-y-3" data-testid="scraping-results">
                 <p className="text-sm text-muted-foreground">
-                  Successfully collected unit data from {scrapingResults.filter(r => !r.error).length} properties.
+                  Successfully collected unit data from {scrapingResults.filter(r => !r.error).length} properties
+                  {scrapingResults.some(r => r.isSubjectProperty) ? ' (including subject property)' : ''}.
                 </p>
-                <div className="space-y-2">
-                  {scrapingResults.map((result) => (
-                    <div key={result.competitorId} className="flex items-center justify-between p-3 bg-muted rounded-md" data-testid={`result-${result.competitorId}`}>
+                
+                {/* Subject Property Display */}
+                {scrapingResults.filter(r => r.isSubjectProperty).map((result) => (
+                  <div key={result.propertyId} className="p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg" data-testid={`subject-property-${result.propertyId}`}>
+                    <div className="flex items-center justify-between">
                       <div className="flex items-center">
                         {result.error ? (
                           <XCircle className="h-4 w-4 mr-2 text-red-500" />
                         ) : (
                           <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
                         )}
-                        <span className="text-sm font-medium">{result.competitorName}</span>
+                        <div>
+                          <span className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide">Subject Property</span>
+                          <div className="text-sm font-semibold">{result.propertyName}</div>
+                        </div>
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {result.error ? 'Failed to collect data' : `${result.unitsFound} units found`}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
+                
+                {/* Competitor Properties Display */}
+                {scrapingResults.filter(r => !r.isSubjectProperty).length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-muted-foreground mt-4">Competitor Properties</h4>
+                    {scrapingResults.filter(r => !r.isSubjectProperty).map((result) => (
+                      <div key={result.propertyId} className="flex items-center justify-between p-3 bg-muted rounded-md" data-testid={`competitor-result-${result.propertyId}`}>
+                        <div className="flex items-center">
+                          {result.error ? (
+                            <XCircle className="h-4 w-4 mr-2 text-red-500" />
+                          ) : (
+                            <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                          )}
+                          <span className="text-sm font-medium">{result.propertyName}</span>
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {result.error ? 'Failed to collect data' : `${result.unitsFound} units found`}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
