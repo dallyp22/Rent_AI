@@ -55,6 +55,9 @@ export interface IStorage {
   
   createScrapedUnit(unit: InsertScrapedUnit): Promise<ScrapedUnit>;
   getScrapedUnitsByProperty(propertyId: string): Promise<ScrapedUnit[]>;
+  
+  // Get subject property (marked as isSubjectProperty: true)
+  getSubjectScrapedProperty(): Promise<ScrapedProperty | null>;
 }
 
 export class MemStorage implements IStorage {
@@ -336,6 +339,13 @@ export class MemStorage implements IStorage {
     return Array.from(this.scrapedUnits.values()).filter(
       unit => unit.propertyId === propertyId
     );
+  }
+
+  async getSubjectScrapedProperty(): Promise<ScrapedProperty | null> {
+    const subjectProperty = Array.from(this.scrapedProperties.values()).find(
+      property => property.isSubjectProperty === true
+    );
+    return subjectProperty || null;
   }
 }
 

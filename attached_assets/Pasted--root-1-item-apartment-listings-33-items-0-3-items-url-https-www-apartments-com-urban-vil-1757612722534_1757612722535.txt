@@ -1,0 +1,169 @@
+"root":{1 item
+"apartment_listings":[33 items
+0:{3 items
+"url":"https://www.apartments.com/urban-village-midtown-omaha-ne/shptnc7/"
+"name":"Urban Village Midtown"
+"address":"3009 Harney St, Omaha, NE 68131"
+}
+1:{3 items
+"url":"https://www.apartments.com/the-atlas-omaha-ne/2br2de9/"
+"name":"The Atlas"
+"address":"2929 California St, Omaha, NE 68131"
+}
+2:{3 items
+"url":"https://www.apartments.com/spaces-omaha-ne/xc8c49m/"
+"name":"SPACES"
+"address":"501 Park Ave, Omaha, NE 68105"
+}
+3:{3 items
+"url":"https://www.apartments.com/digs-on-park-ave-omaha-ne/y2yddgt/"
+"name":"Digs on Park Ave"
+"address":"522 Park Ave, Omaha, NE 68105"
+}
+4:{3 items
+"url":"https://www.apartments.com/37-west-farnam-omaha-ne/r0kfcj2/"
+"name":"37 West Farnam"
+"address":"3737 Farnam St, Omaha, NE 68131"
+}
+5:{3 items
+"url":"https://www.apartments.com/midtown-crossing-apartments-omaha-ne/sp9rj87/"
+"name":"Midtown Crossing Apartments"
+"address":"233 S 33rd St, Omaha, NE 68131"
+}
+6:{3 items
+"url":"https://www.apartments.com/the-artisan-at-39th-omaha-ne/jvezyz4/"
+"name":"The Artisan at 39th"
+"address":"120 N 39th St, Omaha, NE 68131"
+}
+7:{3 items
+"url":"https://www.apartments.com/blackstone-corner-omaha-ne/q36893y/"
+"name":"Blackstone Corner"
+"address":"3618 Farnam St, Omaha, NE 68131"
+}
+8:{3 items
+"url":"https://www.apartments.com/the-traveler-apartments-omaha-ne/hmrf1h3/"
+"name":"The Traveler Apartments"
+"address":"4400 Douglas St, Omaha, NE 68131"
+}
+9:{3 items
+"url":"https://www.apartments.com/turner-park-apartments-omaha-ne/dwrg9lj/"
+"name":"Turner Park Apartments"
+"address":"3102-3106 Dodge St, Omaha, NE 68131"
+}
+10:{3 items
+"url":"https://www.apartments.com/blackstone-apartments-omaha-ne/tzmmyl9/"
+"name":"Blackstone Apartments"
+"address":"120 S 36th St, Omaha, NE 68131"
+}
+11:{3 items
+"url":"https://www.apartments.com/the-brenton-omaha-ne/m55wfkk/"
+"name":"The Brenton"
+"address":"534-542 Park Ave, Omaha, NE 68105"
+}
+12:{3 items
+"url":"https://www.apartments.com/capitol-rows-omaha-ne/mw1g1gh/"
+"name":"Capitol Rows"
+"address":"2222 Davenport St, Omaha, NE 68102"
+}
+13:{3 items
+"url":"https://www.apartments.com/howard-street-omaha-ne/7vkn8ww/"
+"name":"Howard Street"
+"address":"3402 Howard St, Omaha, NE 68105"
+}
+14:{3 items
+"url":"https://www.apartments.com/the-shuttle-omaha-ne/fftwe5t/"
+"name":"The Shuttle"
+"address":"3325 California St, Omaha, NE 68131"
+}
+15:{3 items
+"url":"https://www.apartments.com/the-austin-at-midtown-omaha-ne/61me96s/"
+"name":"The Austin at Midtown"
+"address":"3703 Davenport St, Omaha, NE 68131"
+}
+16:{3 items
+"url":"https://www.apartments.com/harney-place-apartments-omaha-ne/kdhhf99/"
+"name":"Harney Place Apartments"
+"address":"3327 Harney St, Omaha, NE 68131"
+}
+17:{3 items
+"url":"https://www.apartments.com/nico-omaha-ne/7phzd7x/"
+"name":"Nico"
+"address":"3024 Harney St, Omaha, NE 68131"
+}
+18:{3 items
+"url":"https://www.apartments.com/marcon-blackstone-apartments-omaha-ne/wxh84fk/"
+"name":"MarCon Blackstone Apartments"
+"address":"211 S 37th St, Omaha, NE 68131"
+}
+19:{3 items
+"url":"https://www.apartments.com/the-highline-omaha-ne/5c32kkn/"
+"name":"The Highline"
+"address":"2223 Dodge St, Omaha, NE 68102"
+}
+20:{3 items
+"url":"https://www.apartments.com/120-s-38th-ave-omaha-ne-unit-36/esc48qq/"
+"name":"120 S 38th Ave Unit 36"
+"address":"120 S 38th Ave Unit 36, Omaha, NE 68131"
+}
+21:{3 items
+"url":"https://www.apartments.com/123-n-42nd-st-omaha-ne/rbd2s93/"
+"name":"123 N 42nd St"
+"address":"123 N 42nd St, Omaha, NE 68131"
+}
+22:{3 items
+"url":"https://www.apartments.com/3430-webster-st-omaha-ne/jngq197/"
+"name":"3430 Webster St"
+"address":"3430 Webster St, Omaha, NE 68131"
+}
+23:{3 items
+"url":"https://www.apartments.com/3550-cass-st-omaha-ne/fzj5x3s/"
+"name":"3550 Cass St"
+"address":"3550 Cass St, Omaha, NE 68131"
+}
+24:{3 items
+"url":"https://www.apartments.com/108-s-36th-st-omaha-ne/epf0r0q/"
+"name":"108 S 36th St"
+"address":"108 S 36th St, Omaha, NE 68131"
+}
+25:{3 items
+"url":"https://www.apartments.com/123-n-37th-st-omaha-ne-unit-4-downstairs/snncj94/"
+"name":"123 N 37th St"
+"address":"123 N 37th St, Omaha, NE 68131"
+}
+26:{3 items
+"url":"https://www.apartments.com/828-n-41st-ave-omaha-ne/ywgmsfv/"
+"name":"828 N 41st Ave"
+"address":"828 N 41st Ave, Omaha, NE 68131"
+}
+27:{3 items
+"url":"https://www.apartments.com/122-n-35th-st-omaha-ne/06nd5w0/"
+"name":"122 N 35th St"
+"address":"122 N 35th St, Omaha, NE 68131"
+}
+28:{3 items
+"url":"https://www.apartments.com/120-s-38th-ave-omaha-ne-unit-35/vxj568f/"
+"name":"120 S 38th Ave Unit 35"
+"address":"120 S 38th Ave Unit 35, Omaha, NE 68131"
+}
+29:{3 items
+"url":"https://www.apartments.com/3518-lincoln-blvd-omaha-ne/7d0jkfx/"
+"name":"3518 Lincoln Blvd"
+"address":"3518 Lincoln Blvd, Omaha, NE 68131"
+}
+30:{3 items
+"url":"https://www.apartments.com/2315-harney-st-omaha-ne-unit-203/jg0v6x4/"
+"name":"2315 Harney St Unit 203"
+"address":"2315 Harney St Unit 203, Omaha, NE 68102"
+}
+31:{3 items
+"url":"https://www.apartments.com/132-n-33rd-st-omaha-ne-unit-132-n-33rd-2/s8lzq37/"
+"name":"132 N 33rd St Unit 132 N 33RD 2"
+"address":"132 N 33rd St Unit 132 N 33RD 2, Omaha, NE 68131"
+}
+32:{3 items
+"url":"https://www.apartments.com/132-n-33rd-st-omaha-ne-unit-132-n-33rd-1/se7zkv4/"
+"name":"132 N 33rd St Unit 132 N 33RD 1"
+"address":"132 N 33rd St Unit 132 N 33RD 1, Omaha, NE 68131"
+}
+]
+}

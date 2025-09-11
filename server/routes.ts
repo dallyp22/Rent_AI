@@ -550,7 +550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Scrape unit-level data for selected competitor properties
+  // Scrape unit-level data for selected competitor properties (automatically includes subject property)
   app.post("/api/competitors/scrape-units", async (req, res) => {
     try {
       const { competitorIds } = req.body;
@@ -566,37 +566,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ message: "No competitor properties found" });
       }
 
+      // Get the subject property and prepend it to the list if it exists
+      const subjectProperty = await storage.getSubjectScrapedProperty();
+      console.log(`DEBUG: getSubjectScrapedProperty returned:`, subjectProperty);
+      
+      const propertiesToProcess = [];
+      
+      if (subjectProperty) {
+        propertiesToProcess.push(subjectProperty);
+        console.log(`Including subject property: ${subjectProperty.name} in unit scraping batch`);
+      } else {
+        console.log('No subject property found with isSubjectProperty === true');
+      }
+      
+      // Add all selected competitors
+      propertiesToProcess.push(...selectedCompetitors);
+      
+      console.log(`DEBUG: Total properties to process: ${propertiesToProcess.length} (${subjectProperty ? 'with' : 'without'} subject property)`);
+
       const results = [];
       
-      // Process each competitor property
-      for (const competitor of selectedCompetitors) {
+      // Process each property (subject + competitors)
+      for (const property of propertiesToProcess) {
         try {
-          console.log(`Starting unit scraping for property: ${competitor.name} at ${competitor.url}`);
+          console.log(`Starting unit scraping for property: ${property.name} at ${property.url}`);
           
           // Create scraping job for unit details
           const scrapingJob = await storage.createScrapingJob({
-            propertyId: "temp-" + competitor.id, // Using temp ID since this is for competitor, not subject property
+            propertyId: property.isSubjectProperty ? property.id : "temp-" + property.id,
             stage: "unit_details",
-            cityUrl: competitor.url,
+            cityUrl: property.url,
             status: "processing"
           });
 
           // Call Scrapezy API for unit-level data
           const unitPrompt = `Extract detailed unit information from this apartments.com property page. For each available apartment unit, extract: 1) Unit number or identifier (if available), 2) Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA"), 3) Number of bedrooms (as integer), 4) Number of bathrooms (as decimal like 1.0, 1.5, 2.0), 5) Square footage (as integer, if available), 6) Monthly rent price (as number, extract only the numerical value), 7) Availability date or status. Return as JSON array with objects containing "unitNumber", "unitType", "bedrooms", "bathrooms", "squareFootage", "rent", "availabilityDate" fields.`;
 
-          const scrapezyResult = await callScrapezyScraping(competitor.url, unitPrompt);
+          const scrapezyResult = await callScrapezyScraping(property.url, unitPrompt);
           
           // Parse the scraped unit data
           const unitData = parseUnitData(scrapezyResult);
           
-          console.log(`Found ${unitData.length} units for property: ${competitor.name}`);
+          console.log(`Found ${unitData.length} units for property: ${property.name}`);
           
           // Save scraped units to storage
           const savedUnits = [];
           for (const unit of unitData) {
             try {
               const savedUnit = await storage.createScrapedUnit({
-                propertyId: competitor.id,
+                propertyId: property.id,
                 unitNumber: unit.unitNumber,
                 unitType: unit.unitType,
                 bedrooms: unit.bedrooms,
@@ -608,7 +626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               });
               savedUnits.push(savedUnit);
             } catch (unitError) {
-              console.warn(`Failed to save unit for ${competitor.name}:`, unitError);
+              console.warn(`Failed to save unit for ${property.name}:`, unitError);
             }
           }
 
@@ -620,23 +638,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
 
           results.push({
-            competitorId: competitor.id,
-            competitorName: competitor.name,
-            competitorAddress: competitor.address,
+            propertyId: property.id,
+            propertyName: property.name,
+            propertyAddress: property.address,
+            isSubjectProperty: property.isSubjectProperty || false,
             scrapingJobId: scrapingJob.id,
             unitsFound: savedUnits.length,
             units: savedUnits
           });
 
-        } catch (competitorError) {
-          console.error(`Error scraping units for ${competitor.name}:`, competitorError);
+        } catch (propertyError) {
+          console.error(`Error scraping units for ${property.name}:`, propertyError);
           
-          const errorMessage = competitorError instanceof Error ? competitorError.message : "Failed to scrape unit data";
+          const errorMessage = propertyError instanceof Error ? propertyError.message : "Failed to scrape unit data";
           
           results.push({
-            competitorId: competitor.id,
-            competitorName: competitor.name,
-            competitorAddress: competitor.address,
+            propertyId: property.id,
+            propertyName: property.name,
+            propertyAddress: property.address,
+            isSubjectProperty: property.isSubjectProperty || false,
             error: errorMessage,
             unitsFound: 0,
             units: []
@@ -657,6 +677,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to scrape unit data", error: errorMessage });
     }
   });
+
 
   // Address normalization utilities for better property matching
   function normalizeAddress(address: string): string {

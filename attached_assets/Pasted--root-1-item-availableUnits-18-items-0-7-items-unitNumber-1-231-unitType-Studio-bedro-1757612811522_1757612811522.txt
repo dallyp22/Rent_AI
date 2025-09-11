@@ -1,0 +1,166 @@
+"root":{1 item
+"availableUnits":[18 items
+0:{7 items
+"unitNumber":"1-231"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":568
+"rent":895
+"availabilityDate":"Now"
+}
+1:{7 items
+"unitNumber":"1-331"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":568
+"rent":975
+"availabilityDate":"Nov 10"
+}
+2:{7 items
+"unitNumber":"1-332"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":581
+"rent":960
+"availabilityDate":"Now"
+}
+3:{7 items
+"unitNumber":"1-432"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":581
+"rent":970
+"availabilityDate":"Sep 24"
+}
+4:{7 items
+"unitNumber":"1-443"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":544
+"rent":980
+"availabilityDate":"Now"
+}
+5:{7 items
+"unitNumber":"1-119"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":641
+"rent":980
+"availabilityDate":"Now"
+}
+6:{7 items
+"unitNumber":"1-310"
+"unitType":"Studio"
+"bedrooms":0
+"bathrooms":1
+"squareFootage":578
+"rent":990
+"availabilityDate":"Nov 7"
+}
+7:{7 items
+"unitNumber":"1-441"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":613
+"rent":1115
+"availabilityDate":"Now"
+}
+8:{7 items
+"unitNumber":"1-317"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":606
+"rent":1075
+"availabilityDate":"Now"
+}
+9:{7 items
+"unitNumber":"1-433"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":614
+"rent":1100
+"availabilityDate":"Oct 6"
+}
+10:{7 items
+"unitNumber":"1-225"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":652
+"rent":1145
+"availabilityDate":"Now"
+}
+11:{7 items
+"unitNumber":"1-338"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":649
+"rent":1110
+"availabilityDate":"Now"
+}
+12:{7 items
+"unitNumber":"1-220"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":687
+"rent":1195
+"availabilityDate":"Now"
+}
+13:{7 items
+"unitNumber":"1-205"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":882
+"rent":1365
+"availabilityDate":"Now"
+}
+14:{7 items
+"unitNumber":"1-412"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":886
+"rent":1505
+"availabilityDate":"Sep 18"
+}
+15:{7 items
+"unitNumber":"1-230"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":659
+"rent":1185
+"availabilityDate":"Nov 12"
+}
+16:{7 items
+"unitNumber":"1-400"
+"unitType":"2BR/2BA"
+"bedrooms":2
+"bathrooms":2
+"squareFootage":939
+"rent":1715
+"availabilityDate":"Sep 16"
+}
+17:{7 items
+"unitNumber":"1-246"
+"unitType":"2BR/2BA"
+"bedrooms":2
+"bathrooms":2
+"squareFootage":1001
+"rent":1735
+"availabilityDate":"Oct 2"
+}
+]
+}

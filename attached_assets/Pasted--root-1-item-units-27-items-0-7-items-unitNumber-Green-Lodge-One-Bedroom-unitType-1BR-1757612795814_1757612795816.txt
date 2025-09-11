@@ -1,0 +1,247 @@
+"root":{1 item
+"units":[27 items
+0:{7 items
+"unitNumber":"Green Lodge - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":900
+"rent":995
+"availabilityDate":"Available Now"
+}
+1:{7 items
+"unitNumber":"The Slip In - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":525
+"rent":995
+"availabilityDate":"Available Now"
+}
+2:{7 items
+"unitNumber":"The Ten on Jackson - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":650
+"rent":995
+"availabilityDate":"Available Now"
+}
+3:{7 items
+"unitNumber":"Art Deco"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":500
+"rent":995
+"availabilityDate":"Available Now"
+}
+4:{7 items
+"unitNumber":"Selma - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":1100
+"rent":1195
+"availabilityDate":"Available Now"
+}
+5:{7 items
+"unitNumber":"Terrace on Jackson - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":817
+"rent":1195
+"availabilityDate":"Available Now"
+}
+6:{7 items
+"unitNumber":"The State - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":670
+"rent":1095
+"availabilityDate":"Available Now"
+}
+7:{7 items
+"unitNumber":"The Jackson - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":1080
+"rent":1095
+"availabilityDate":"Available Now"
+}
+8:{7 items
+"unitNumber":"Madison - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":900
+"rent":1295
+"availabilityDate":"Available Now"
+}
+9:{7 items
+"unitNumber":"The Barnard Flats - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":850
+"rent":1395
+"availabilityDate":"Available Now"
+}
+10:{7 items
+"unitNumber":"The Harney - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":1000
+"rent":1295
+"availabilityDate":"Available Now"
+}
+11:{7 items
+"unitNumber":"Lofts on Harney - One Bedroom"
+"unitType":"1BR/1BA"
+"bedrooms":1
+"bathrooms":1
+"squareFootage":1000
+"rent":1295
+"availabilityDate":"Available Now"
+}
+12:{7 items
+"unitNumber":"Madison - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":800
+"rent":1125
+"availabilityDate":"Available Now"
+}
+13:{7 items
+"unitNumber":"The Henry - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":825
+"rent":1195
+"availabilityDate":"Available Now"
+}
+14:{7 items
+"unitNumber":"Field Club - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":750
+"rent":1295
+"availabilityDate":"Available Now"
+}
+15:{7 items
+"unitNumber":"The State - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":1379
+"rent":1395
+"availabilityDate":"Available Now"
+}
+16:{7 items
+"unitNumber":"Courtyard - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":950
+"rent":1595
+"availabilityDate":"Available Now"
+}
+17:{7 items
+"unitNumber":"The Jackson - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":1100
+"rent":1425
+"availabilityDate":"Available Now"
+}
+18:{7 items
+"unitNumber":"Selma - Two Bedrom"
+"unitType":"2BR/2BA"
+"bedrooms":2
+"bathrooms":2
+"squareFootage":1400
+"rent":1495
+"availabilityDate":"Available Now"
+}
+19:{7 items
+"unitNumber":"Terrace on Jackson - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":1100
+"rent":1595
+"availabilityDate":"Available Now"
+}
+20:{7 items
+"unitNumber":"The Unitah - Two Bedroom"
+"unitType":"2BR/2BA"
+"bedrooms":2
+"bathrooms":2
+"squareFootage":1250
+"rent":1795
+"availabilityDate":"Available Now"
+}
+21:{7 items
+"unitNumber":"The Barnard Flats - Two Bedroom"
+"unitType":"2BR/1BA"
+"bedrooms":2
+"bathrooms":1
+"squareFootage":1200
+"rent":1795
+"availabilityDate":"Available Now"
+}
+22:{7 items
+"unitNumber":"Terrace on Jackson - Three Bedroom"
+"unitType":"3BR/1BA"
+"bedrooms":3
+"bathrooms":1
+"squareFootage":1200
+"rent":1595
+"availabilityDate":"Available Now"
+}
+23:{7 items
+"unitNumber":"Courtyard - Three Bedroom"
+"unitType":"3BR/1BA"
+"bedrooms":3
+"bathrooms":1
+"squareFootage":1200
+"rent":1695
+"availabilityDate":"Available Now"
+}
+24:{7 items
+"unitNumber":"The Duet - Three Bedroom"
+"unitType":"3BR/3BA"
+"bedrooms":3
+"bathrooms":3
+"squareFootage":1764
+"rent":2295
+"availabilityDate":"Available Now"
+}
+25:{7 items
+"unitNumber":"The Portland - Three Bedroom"
+"unitType":"3BR/3BA"
+"bedrooms":3
+"bathrooms":3
+"squareFootage":1650
+"rent":2195
+"availabilityDate":"Available Now"
+}
+26:{7 items
+"unitNumber":"Flats on 41 - Three Bedroom"
+"unitType":"3BR/2.5BA"
+"bedrooms":3
+"bathrooms":2.5
+"squareFootage":1640
+"rent":2495
+"availabilityDate":"Available Now"
+}
+]
+}
