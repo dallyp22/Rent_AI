@@ -548,11 +548,8 @@ Please provide your analysis in this exact JSON format:
         console.log('[GET_COMPETITORS]   2. Scraping job failed');
         console.log('[GET_COMPETITORS]   3. All scraped properties are marked as subject');
         
-        return res.json({
-          competitors: [],
-          message: "No competitor properties available. Please run property scraping first.",
-          dataSource: "none"
-        });
+        // Return empty array for consistency with frontend expectations
+        return res.json([]);
       }
       
       // Return only authentic scraped competitor data
