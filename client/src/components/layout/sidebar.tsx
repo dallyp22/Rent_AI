@@ -5,11 +5,40 @@ import WorkflowProgress from "@/components/workflow-progress";
 export default function Sidebar() {
   const [location] = useLocation();
   
+  // Extract property ID from current URL
+  const extractPropertyId = (path: string): string | null => {
+    const match = path.match(/\/(summarize|analyze|optimize)\/([^\/]+)/);
+    return match ? match[2] : null;
+  };
+  
+  const propertyId = extractPropertyId(location);
+  
+  // Generate navigation with dynamic property IDs
   const navigation = [
-    { name: "Property Input", href: "/", icon: Home },
-    { name: "Summarize", href: "/summarize", icon: BarChart3 },
-    { name: "Analyze", href: "/analyze", icon: TrendingUp },
-    { name: "Optimize", href: "/optimize", icon: DollarSign },
+    { 
+      name: "Property Input", 
+      href: "/", 
+      icon: Home,
+      enabled: true 
+    },
+    { 
+      name: "Summarize", 
+      href: propertyId ? `/summarize/${propertyId}` : null, 
+      icon: BarChart3,
+      enabled: !!propertyId
+    },
+    { 
+      name: "Analyze", 
+      href: propertyId ? `/analyze/${propertyId}` : null, 
+      icon: TrendingUp,
+      enabled: !!propertyId
+    },
+    { 
+      name: "Optimize", 
+      href: propertyId ? `/optimize/${propertyId}` : null, 
+      icon: DollarSign,
+      enabled: !!propertyId
+    },
   ];
 
   return (
@@ -27,8 +56,24 @@ export default function Sidebar() {
         <div className="space-y-2">
           {navigation.map((item) => {
             const Icon = item.icon;
-            const isActive = location === item.href || 
-              (item.href !== "/" && location.startsWith(item.href));
+            const isActive = item.href ? (
+              location === item.href || 
+              (item.href !== "/" && location.startsWith(item.href.split('/')[1] ? `/${item.href.split('/')[1]}` : item.href))
+            ) : false;
+            
+            // If navigation is disabled (no property ID), render as disabled span
+            if (!item.enabled || !item.href) {
+              return (
+                <div
+                  key={item.name}
+                  className="flex items-center px-3 py-2 rounded-md font-medium text-muted-foreground/50 cursor-not-allowed"
+                  data-testid={`nav-link-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
+                >
+                  <Icon className="w-5 h-5 mr-3" />
+                  {item.name}
+                </div>
+              );
+            }
             
             return (
               <Link
