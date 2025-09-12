@@ -66,18 +66,20 @@ export default function CompetitiveAdvantagesGrid({
         >
           <CardContent className="p-4 h-full flex flex-col">
             {/* Header with icon and title */}
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="text-center mb-3 space-y-2">
+              <div className="flex items-center justify-center gap-2">
                 {edge.icon}
-                <span className="font-semibold text-sm truncate">{edge.title}</span>
+                <span className="font-semibold text-sm">{edge.title}</span>
               </div>
-              <Badge 
-                variant="outline" 
-                className="text-xs whitespace-nowrap shrink-0"
-                data-testid={`status-badge-${edge.key}`}
-              >
-                {getStatusBadge(edge.data.status)}
-              </Badge>
+              <div className="flex justify-center">
+                <Badge 
+                  variant="outline" 
+                  className="text-xs whitespace-nowrap"
+                  data-testid={`status-badge-${edge.key}`}
+                >
+                  {getStatusBadge(edge.data.status)}
+                </Badge>
+              </div>
             </div>
 
             {/* Edge value display */}
