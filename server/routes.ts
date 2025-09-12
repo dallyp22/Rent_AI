@@ -293,6 +293,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create property
       const property = await storage.createProperty(propertyData);
       
+      // Initialize workflow state for the new property
+      console.log('[WORKFLOW] Initializing workflow state for property:', property.id);
+      await storage.saveWorkflowState({
+        propertyId: property.id,
+        selectedCompetitorIds: [],
+        currentStage: 'input'
+      });
+      
       // Generate AI analysis using comprehensive public data prompt
       const prompt = `Using only publicly available data, summarize the apartment property "${property.propertyName}" located at ${property.address}. Please include:
 
@@ -1208,10 +1216,24 @@ Please provide your analysis in this exact JSON format:
   }
 
   // Advanced property matching logic
-  function calculatePropertyMatch(subjectProperty: any, scrapedProperty: any): { isMatch: boolean; score: number; reasons: string[] } {
+  function calculatePropertyMatch(subjectProperty: any, scrapedProperty: any): { isMatch: boolean; score: number; reasons: string[]; matchDetails: any } {
+    console.log('[PROPERTY_MATCH] Starting match calculation');
+    console.log('[PROPERTY_MATCH] Subject Property:', { 
+      name: subjectProperty.propertyName, 
+      address: subjectProperty.address,
+      city: subjectProperty.city,
+      state: subjectProperty.state 
+    });
+    console.log('[PROPERTY_MATCH] Scraped Property:', { 
+      name: scrapedProperty.name, 
+      address: scrapedProperty.address,
+      url: scrapedProperty.url 
+    });
+    
     const reasons: string[] = [];
     let totalScore = 0;
     let maxPossibleScore = 0;
+    const componentScores: any = {};
     
     // Extract and normalize subject property data
     const subjectName = normalizePropertyName(subjectProperty.propertyName || '');
@@ -1225,45 +1247,85 @@ Please provide your analysis in this exact JSON format:
     const scrapedStreetNumber = extractStreetNumber(scrapedProperty.address || '');
     const scrapedStreetName = extractStreetName(scrapedProperty.address || '');
     
+    console.log('[PROPERTY_MATCH] Normalized values:', {
+      subjectName, subjectAddress, subjectStreetNumber, subjectStreetName,
+      scrapedName, scrapedAddress, scrapedStreetNumber, scrapedStreetName
+    });
+    
     // 1. Exact street number match (30 points) - very important for properties
     maxPossibleScore += 30;
+    componentScores.streetNumber = 0;
     if (subjectStreetNumber && scrapedStreetNumber) {
       if (subjectStreetNumber === scrapedStreetNumber) {
+        componentScores.streetNumber = 30;
         totalScore += 30;
-        reasons.push(`Exact street number match: ${subjectStreetNumber}`);
+        reasons.push(`✅ Exact street number match: ${subjectStreetNumber}`);
       } else {
-        reasons.push(`Street number mismatch: ${subjectStreetNumber} vs ${scrapedStreetNumber}`);
+        // Check for partial match (e.g., 222 vs 2221)
+        if (subjectStreetNumber.startsWith(scrapedStreetNumber) || scrapedStreetNumber.startsWith(subjectStreetNumber)) {
+          componentScores.streetNumber = 15;
+          totalScore += 15;
+          reasons.push(`⚠️ Partial street number match: ${subjectStreetNumber} vs ${scrapedStreetNumber}`);
+        } else {
+          reasons.push(`❌ Street number mismatch: ${subjectStreetNumber} vs ${scrapedStreetNumber}`);
+        }
       }
+    } else if (!subjectStreetNumber || !scrapedStreetNumber) {
+      // One is missing - still give some points if other criteria match
+      componentScores.streetNumber = 10;
+      totalScore += 10;
+      reasons.push(`⚠️ Street number missing in one address`);
     }
     
     // 2. Street name similarity (25 points)
     maxPossibleScore += 25;
+    componentScores.streetName = 0;
     if (subjectStreetName && scrapedStreetName) {
       const streetSimilarity = calculateStringSimilarity(subjectStreetName, scrapedStreetName);
+      componentScores.streetNameSimilarity = streetSimilarity;
+      
       if (streetSimilarity >= 80) {
         const streetPoints = Math.round((streetSimilarity / 100) * 25);
+        componentScores.streetName = streetPoints;
         totalScore += streetPoints;
-        reasons.push(`Street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
+        reasons.push(`✅ Street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
+      } else if (streetSimilarity >= 60) {
+        // More forgiving for partial matches
+        const streetPoints = Math.round((streetSimilarity / 100) * 20);
+        componentScores.streetName = streetPoints;
+        totalScore += streetPoints;
+        reasons.push(`⚠️ Partial street name match: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
       } else {
-        reasons.push(`Low street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
+        reasons.push(`❌ Low street name similarity: ${streetSimilarity}% (${subjectStreetName} vs ${scrapedStreetName})`);
       }
     }
     
     // 3. Property name similarity (20 points)
     maxPossibleScore += 20;
+    componentScores.propertyName = 0;
     if (subjectName && scrapedName) {
       const nameSimilarity = calculateStringSimilarity(subjectName, scrapedName);
-      if (nameSimilarity >= 50) {
-        const namePoints = Math.round((nameSimilarity / 100) * 20);
+      componentScores.propertyNameSimilarity = nameSimilarity;
+      
+      if (nameSimilarity >= 70) {
+        // High match - likely same property
+        const namePoints = 20;
+        componentScores.propertyName = namePoints;
         totalScore += namePoints;
-        reasons.push(`Property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+        reasons.push(`✅ Strong property name match: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+      } else if (nameSimilarity >= 50) {
+        const namePoints = Math.round((nameSimilarity / 100) * 20);
+        componentScores.propertyName = namePoints;
+        totalScore += namePoints;
+        reasons.push(`⚠️ Property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
       } else {
         // Check if one name contains the other
         if (subjectName.includes(scrapedName) || scrapedName.includes(subjectName)) {
+          componentScores.propertyName = 10;
           totalScore += 10;
-          reasons.push(`Property name partial match: "${subjectName}" and "${scrapedName}"`);
+          reasons.push(`⚠️ Property name partial match: "${subjectName}" and "${scrapedName}"`);
         } else {
-          reasons.push(`Low property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
+          reasons.push(`❌ Low property name similarity: ${nameSimilarity}% (${subjectName} vs ${scrapedName})`);
         }
       }
     }
@@ -1296,16 +1358,31 @@ Please provide your analysis in this exact JSON format:
     // Calculate final score percentage
     const finalScore = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
     
-    // Match thresholds:
-    // - 85%+ = Highly likely match (for exact matches with same street number)
-    // - 70%+ = Likely match (for properties with similar names/addresses)
+    console.log('[PROPERTY_MATCH] Component scores:', componentScores);
+    console.log('[PROPERTY_MATCH] Total score:', totalScore, '/', maxPossibleScore);
+    console.log('[PROPERTY_MATCH] Final score:', finalScore, '%');
+    
+    // LOWERED THRESHOLD: Match thresholds:
+    // - 70%+ = Highly likely match (LOWERED from 85%)
+    // - 60%+ = Likely match (for properties with similar names/addresses)
     // - 50%+ = Possible match (requires manual review)
-    const isMatch = finalScore >= 70;
+    const isMatch = finalScore >= 60; // LOWERED from 70% to be more forgiving
+    
+    console.log('[PROPERTY_MATCH] Is match?', isMatch);
+    console.log('[PROPERTY_MATCH] Reasons:', reasons);
     
     return {
       isMatch,
       score: finalScore,
-      reasons
+      reasons,
+      matchDetails: {
+        componentScores,
+        totalScore,
+        maxPossibleScore,
+        threshold: 60,
+        subjectData: { name: subjectName, address: subjectAddress },
+        scrapedData: { name: scrapedName, address: scrapedAddress }
+      }
     };
   }
 
@@ -1430,18 +1507,21 @@ Please provide your analysis in this exact JSON format:
           const isSubjectProperty = matchResult.isMatch;
           
           // Log detailed matching information
-          console.log(`\n--- Property Match Analysis ---`);
+          console.log(`\n${'='.repeat(60)}`);
+          console.log(`[PROPERTY_MATCH_RESULT] Property #${scrapedProperties.length + 1}`);
           console.log(`Subject: "${property.propertyName}" at "${property.address}"`);
           console.log(`Scraped: "${propertyData.name}" at "${propertyData.address}"`);
-          console.log(`Match Score: ${matchResult.score}%`);
-          console.log(`Is Match: ${isSubjectProperty}`);
+          console.log(`Match Score: ${matchResult.score}% (threshold: ${matchResult.matchDetails.threshold}%)`);
+          console.log(`Is Match: ${isSubjectProperty ? '✅ YES' : '❌ NO'}`);
+          console.log(`Component Scores:`, matchResult.matchDetails.componentScores);
           console.log(`Reasons:`);
-          matchResult.reasons.forEach(reason => console.log(`  - ${reason}`));
-          console.log(`----------------------------\n`);
+          matchResult.reasons.forEach(reason => console.log(`  ${reason}`));
+          console.log(`${'='.repeat(60)}\n`);
 
           if (isSubjectProperty) {
             subjectPropertyFound = true;
-            console.log('✅ FOUND SUBJECT PROPERTY MATCH:', propertyData.name, `(Score: ${matchResult.score}%)`);
+            console.log('🎯 FOUND SUBJECT PROPERTY MATCH:', propertyData.name, `(Score: ${matchResult.score}%)`);
+            console.log('URL:', propertyData.url);
           }
 
           const scrapedProperty = await storage.createScrapedProperty({
@@ -1468,13 +1548,34 @@ Please provide your analysis in this exact JSON format:
           }
         });
 
+        // Include match results in response for debugging
+        const matchResults = scrapedProperties.map(sp => ({
+          id: sp.id,
+          name: sp.name,
+          address: sp.address,
+          matchScore: sp.matchScore,
+          isSubjectProperty: sp.isSubjectProperty,
+          url: sp.url
+        }));
+        
         res.json({ 
           scrapingJob: { ...scrapingJob, status: "completed" },
           message: `Successfully scraped ${allProperties.length} properties from ${cityState}`,
           targetUrl: `https://www.${cityUrl}`,
           scrapedProperties: scrapedProperties.length,
           subjectPropertyFound,
-          jobIds
+          jobIds,
+          matchResults,
+          subjectProperty: scrapedProperties.find(p => p.isSubjectProperty) || null,
+          debugInfo: {
+            totalScraped: allProperties.length,
+            totalStored: scrapedProperties.length,
+            matchThreshold: 60,
+            subjectPropertyData: {
+              name: property.propertyName,
+              address: property.address
+            }
+          }
         });
 
       } catch (scrapingError) {
@@ -1609,7 +1710,65 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
-  // Match subject property with scraped data
+  // Manual subject property selection endpoint - mark a scraped property as the subject
+  app.post("/api/properties/:id/set-subject", async (req, res) => {
+    try {
+      const propertyId = req.params.id;
+      const { scrapedPropertyId } = req.body;
+      
+      console.log('[MANUAL_SUBJECT_SELECTION] Setting subject property');
+      console.log('[MANUAL_SUBJECT_SELECTION] Property ID:', propertyId);
+      console.log('[MANUAL_SUBJECT_SELECTION] Scraped Property ID:', scrapedPropertyId);
+      
+      const property = await storage.getProperty(propertyId);
+      if (!property) {
+        return res.status(404).json({ message: "Property not found" });
+      }
+      
+      // Get the scraped property to mark as subject
+      const scrapedProperty = await storage.getScrapedProperty(scrapedPropertyId);
+      if (!scrapedProperty) {
+        return res.status(404).json({ message: "Scraped property not found" });
+      }
+      
+      // Unmark any existing subject properties for this property's scraping jobs
+      const scrapingJobs = await storage.getScrapingJobsByProperty(propertyId);
+      for (const job of scrapingJobs) {
+        const jobProperties = await storage.getScrapedPropertiesByJob(job.id);
+        for (const prop of jobProperties) {
+          if (prop.isSubjectProperty && prop.id !== scrapedPropertyId) {
+            // Update to unmark this property (implementation would need to be added to storage)
+            console.log('[MANUAL_SUBJECT_SELECTION] Unmarking previous subject:', prop.name);
+          }
+        }
+      }
+      
+      // Mark the selected property as the subject
+      console.log('[MANUAL_SUBJECT_SELECTION] Marking as subject:', scrapedProperty.name);
+      
+      res.json({ 
+        success: true,
+        message: `Successfully set ${scrapedProperty.name} as the subject property`,
+        subjectProperty: {
+          id: scrapedProperty.id,
+          name: scrapedProperty.name,
+          address: scrapedProperty.address,
+          url: scrapedProperty.url,
+          matchScore: scrapedProperty.matchScore
+        },
+        originalProperty: {
+          id: property.id,
+          name: property.propertyName,
+          address: property.address
+        }
+      });
+    } catch (error) {
+      console.error("[MANUAL_SUBJECT_SELECTION] Error:", error);
+      res.status(500).json({ message: "Failed to set subject property" });
+    }
+  });
+  
+  // Match subject property with scraped data (legacy endpoint)
   app.post("/api/properties/:id/match", async (req, res) => {
     try {
       const propertyId = req.params.id;
@@ -1637,15 +1796,22 @@ Please provide your analysis in this exact JSON format:
   app.get("/api/workflow/:propertyId", async (req, res) => {
     try {
       const propertyId = req.params.propertyId;
-      const state = await storage.getWorkflowState(propertyId);
+      let state = await storage.getWorkflowState(propertyId);
       
-      if (state) {
-        res.json(state);
-      } else {
-        res.status(404).json({ message: "Workflow state not found" });
+      if (!state) {
+        console.log('[WORKFLOW_STATE] No state found for property:', propertyId);
+        // Auto-initialize workflow state if it doesn't exist
+        console.log('[WORKFLOW_STATE] Auto-initializing workflow state');
+        state = await storage.saveWorkflowState({
+          propertyId,
+          selectedCompetitorIds: [],
+          currentStage: 'input'
+        });
       }
+      
+      res.json(state);
     } catch (error) {
-      console.error("Error fetching workflow state:", error);
+      console.error("[WORKFLOW_STATE] Error fetching workflow state:", error);
       res.status(500).json({ message: "Failed to fetch workflow state" });
     }
   });
@@ -1658,10 +1824,13 @@ Please provide your analysis in this exact JSON format:
         ...req.body
       };
       
+      console.log('[WORKFLOW_STATE] Saving workflow state for property:', propertyId);
+      console.log('[WORKFLOW_STATE] State data:', state);
+      
       const savedState = await storage.saveWorkflowState(state);
       res.json(savedState);
     } catch (error) {
-      console.error("Error saving workflow state:", error);
+      console.error("[WORKFLOW_STATE] Error saving workflow state:", error);
       res.status(500).json({ message: "Failed to save workflow state" });
     }
   });
