@@ -441,6 +441,59 @@ export class MemStorage implements IStorage {
     }
     // For 60days, keep all units
 
+    // Advanced filters (simplified implementation since scraped data may not have all details)
+    
+    // Filter by amenities - would need property-level amenities data
+    if (criteria.amenities && criteria.amenities.length > 0) {
+      // For demo: simulate by filtering based on price ranges (higher price = more amenities)
+      // In production, you'd match against actual property amenities
+      const avgRent = units.reduce((sum, u) => sum + (u.rent ? parseFloat(u.rent.toString()) : 0), 0) / units.length || 0;
+      if (criteria.amenities.includes("gym") || criteria.amenities.includes("pool")) {
+        // Premium amenities typically in higher-priced units
+        units = units.filter(unit => {
+          const rent = unit.rent ? parseFloat(unit.rent.toString()) : 0;
+          return rent >= avgRent * 0.9; // Keep units in upper price tier
+        });
+      }
+    }
+
+    // Filter by lease terms - would need actual lease data
+    if (criteria.leaseTerms && criteria.leaseTerms.length > 0) {
+      // Simplified: month-to-month typically has higher rent
+      if (criteria.leaseTerms.includes("month_to_month")) {
+        // Keep all units for now - in production would filter by actual lease terms
+      }
+    }
+
+    // Filter by floor level - would need actual floor data
+    if (criteria.floorLevel) {
+      // Simplified: top floors typically have higher rent
+      if (criteria.floorLevel === "top") {
+        const sortedByRent = [...units].sort((a, b) => {
+          const rentA = a.rent ? parseFloat(a.rent.toString()) : 0;
+          const rentB = b.rent ? parseFloat(b.rent.toString()) : 0;
+          return rentB - rentA;
+        });
+        // Keep top 70% by price as proxy for upper floors
+        const cutoff = Math.floor(sortedByRent.length * 0.3);
+        if (cutoff > 0) {
+          units = sortedByRent.slice(0, -cutoff);
+        }
+      }
+    }
+
+    // Filter by renovation status - would need actual renovation data
+    if (criteria.renovationStatus) {
+      // Simplified: newly renovated units typically have higher rent
+      if (criteria.renovationStatus === "newly_renovated") {
+        const avgRent = units.reduce((sum, u) => sum + (u.rent ? parseFloat(u.rent.toString()) : 0), 0) / units.length || 0;
+        units = units.filter(unit => {
+          const rent = unit.rent ? parseFloat(unit.rent.toString()) : 0;
+          return rent >= avgRent * 1.1; // Keep units 10% above average
+        });
+      }
+    }
+
     return units;
   }
 
@@ -476,7 +529,7 @@ export class MemStorage implements IStorage {
         squareFootage: unit.squareFootage,
         rent: unit.rent ? parseFloat(unit.rent.toString()) : 0,
         isSubject,
-        availabilityDate: unit.availabilityDate
+        availabilityDate: unit.availabilityDate || undefined
       };
     };
     

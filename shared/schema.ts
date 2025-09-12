@@ -143,7 +143,12 @@ export const filterCriteriaSchema = z.object({
   squareFootageRange: z.object({
     min: z.number().min(0),
     max: z.number().min(0)
-  })
+  }),
+  // Advanced filters
+  amenities: z.array(z.enum(["in_unit_laundry", "parking", "gym", "pool", "pet_friendly"])).optional(),
+  leaseTerms: z.array(z.enum(["6_month", "12_month", "month_to_month"])).optional(),
+  floorLevel: z.enum(["ground", "mid", "top"]).optional(),
+  renovationStatus: z.enum(["newly_renovated", "updated", "original"]).optional()
 });
 
 // Unit comparison data for visualization

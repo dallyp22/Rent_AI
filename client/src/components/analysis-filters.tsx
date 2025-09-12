@@ -5,6 +5,20 @@ import { Slider } from "@/components/ui/slider";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Badge } from "@/components/ui/badge";
+import { ChevronRight, Sparkles, DollarSign, Clock, RotateCcw } from "lucide-react";
 import type { FilterCriteria } from "@shared/schema";
 
 interface AnalysisFiltersProps {
@@ -19,10 +33,43 @@ const availabilityOptions = [
   { value: "60days", label: "Within 60 Days" }
 ] as const;
 
+const amenityOptions = [
+  { value: "in_unit_laundry", label: "In-Unit Laundry" },
+  { value: "parking", label: "Parking Included" },
+  { value: "gym", label: "Gym/Fitness Center" },
+  { value: "pool", label: "Pool" },
+  { value: "pet_friendly", label: "Pet Friendly" }
+] as const;
+
+const leaseTermOptions = [
+  { value: "6_month", label: "6 Month" },
+  { value: "12_month", label: "12 Month" },
+  { value: "month_to_month", label: "Month-to-Month" }
+] as const;
+
+const floorLevelOptions = [
+  { value: "ground", label: "Ground Floor" },
+  { value: "mid", label: "Mid Level" },
+  { value: "top", label: "Top Floor" }
+] as const;
+
+const renovationStatusOptions = [
+  { value: "newly_renovated", label: "Newly Renovated" },
+  { value: "updated", label: "Updated" },
+  { value: "original", label: "Original" }
+] as const;
+
 export default function AnalysisFilters({ 
   filters, 
   onFiltersChange
 }: AnalysisFiltersProps) {
+  // Calculate active advanced filters count
+  const advancedFiltersCount = 
+    (filters.amenities?.length || 0) +
+    (filters.leaseTerms?.length || 0) +
+    (filters.floorLevel ? 1 : 0) +
+    (filters.renovationStatus ? 1 : 0);
+
   const handleBedroomChange = (bedroom: string, checked: boolean) => {
     const newBedroomTypes = checked 
       ? [...filters.bedroomTypes, bedroom as any]
@@ -55,12 +102,81 @@ export default function AnalysisFilters({
     });
   };
 
+  const handleAmenityChange = (amenity: string, checked: boolean) => {
+    const currentAmenities = filters.amenities || [];
+    const newAmenities = checked
+      ? [...currentAmenities, amenity as any]
+      : currentAmenities.filter(a => a !== amenity);
+    
+    onFiltersChange({
+      ...filters,
+      amenities: newAmenities.length > 0 ? newAmenities : undefined
+    });
+  };
+
+  const handleLeaseTermChange = (term: string, checked: boolean) => {
+    const currentTerms = filters.leaseTerms || [];
+    const newTerms = checked
+      ? [...currentTerms, term as any]
+      : currentTerms.filter(t => t !== term);
+    
+    onFiltersChange({
+      ...filters,
+      leaseTerms: newTerms.length > 0 ? newTerms : undefined
+    });
+  };
+
+  const handleFloorLevelChange = (value: string) => {
+    onFiltersChange({
+      ...filters,
+      floorLevel: value as any
+    });
+  };
+
+  const handleRenovationStatusChange = (value: string) => {
+    onFiltersChange({
+      ...filters,
+      renovationStatus: value as any
+    });
+  };
+
+  // Preset handlers
+  const applyPremiumPreset = () => {
+    onFiltersChange({
+      ...filters,
+      priceRange: { min: 2000, max: 3000 },
+      bedroomTypes: ["2BR", "3BR"],
+      squareFootageRange: { min: 1000, max: 2000 }
+    });
+  };
+
+  const applyEntryLevelPreset = () => {
+    onFiltersChange({
+      ...filters,
+      priceRange: { min: 800, max: 1500 },
+      bedroomTypes: ["Studio", "1BR"],
+      squareFootageRange: { min: 400, max: 800 }
+    });
+  };
+
+  const applyHighTurnoverPreset = () => {
+    onFiltersChange({
+      ...filters,
+      availability: "now",
+      leaseTerms: ["month_to_month", "6_month"]
+    });
+  };
+
   const resetFilters = () => {
     onFiltersChange({
       bedroomTypes: [],
       priceRange: { min: 800, max: 3000 },
       availability: "now",
-      squareFootageRange: { min: 400, max: 2000 }
+      squareFootageRange: { min: 400, max: 2000 },
+      amenities: undefined,
+      leaseTerms: undefined,
+      floorLevel: undefined,
+      renovationStatus: undefined
     });
   };
 
@@ -68,11 +184,98 @@ export default function AnalysisFilters({
     <div className="lg:w-80 space-y-4" data-testid="analysis-filters">
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg" data-testid="filters-title">
-            Filter Analysis
+          <CardTitle className="text-lg flex items-center justify-between" data-testid="filters-title">
+            <span>Filter Analysis</span>
+            {advancedFiltersCount > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {advancedFiltersCount} advanced
+              </Badge>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
+          {/* Filter Presets */}
+          <div className="space-y-3" data-testid="filter-presets">
+            <Label className="text-sm font-semibold">Quick Presets</Label>
+            <TooltipProvider>
+              <div className="grid grid-cols-2 gap-2">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={applyPremiumPreset}
+                      className="justify-start"
+                      data-testid="preset-premium"
+                    >
+                      <Sparkles className="mr-2 h-3 w-3" />
+                      Premium
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={applyEntryLevelPreset}
+                      className="justify-start"
+                      data-testid="preset-entry"
+                    >
+                      <DollarSign className="mr-2 h-3 w-3" />
+                      Entry Level
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Affordable units: $800-$1500, Studio-1BR, 400-800 sq ft</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={applyHighTurnoverPreset}
+                      className="justify-start"
+                      data-testid="preset-turnover"
+                    >
+                      <Clock className="mr-2 h-3 w-3" />
+                      High Turnover
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Quick move-ins: Available now, flexible lease terms</p>
+                  </TooltipContent>
+                </Tooltip>
+
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={resetFilters}
+                      className="justify-start"
+                      data-testid="preset-clear"
+                    >
+                      <RotateCcw className="mr-2 h-3 w-3" />
+                      Clear All
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Reset all filters to defaults</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </TooltipProvider>
+          </div>
+
+          <Separator />
+
           {/* Bedroom Type Filters */}
           <div className="space-y-3" data-testid="bedroom-filters">
             <Label className="text-sm font-semibold">Unit Types</Label>
@@ -178,14 +381,131 @@ export default function AnalysisFilters({
 
           <Separator />
 
-          <Button 
-            variant="outline" 
-            className="w-full"
-            onClick={resetFilters}
-            data-testid="button-reset-filters"
-          >
-            Reset All Filters
-          </Button>
+          {/* Advanced Filters Section */}
+          <Accordion type="single" collapsible className="w-full" data-testid="advanced-filters">
+            <AccordionItem value="advanced" className="border-none">
+              <AccordionTrigger className="hover:no-underline px-0">
+                <div className="flex items-center">
+                  <ChevronRight className="h-4 w-4 mr-2" />
+                  <span className="text-sm font-semibold">Advanced Filters</span>
+                  {advancedFiltersCount > 0 && (
+                    <Badge variant="secondary" className="ml-2">
+                      {advancedFiltersCount}
+                    </Badge>
+                  )}
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="space-y-4 pt-4">
+                {/* Amenities */}
+                <div className="space-y-3" data-testid="amenity-filters">
+                  <Label className="text-sm font-medium">Amenities</Label>
+                  <div className="space-y-2">
+                    {amenityOptions.map((amenity) => (
+                      <div key={amenity.value} className="flex items-center space-x-2" data-testid={`amenity-${amenity.value}`}>
+                        <Checkbox
+                          id={`amenity-${amenity.value}`}
+                          checked={filters.amenities?.includes(amenity.value) || false}
+                          onCheckedChange={(checked) => handleAmenityChange(amenity.value, checked as boolean)}
+                          data-testid={`checkbox-amenity-${amenity.value}`}
+                        />
+                        <Label 
+                          htmlFor={`amenity-${amenity.value}`} 
+                          className="text-sm cursor-pointer"
+                          data-testid={`label-amenity-${amenity.value}`}
+                        >
+                          {amenity.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Lease Terms */}
+                <div className="space-y-3" data-testid="lease-term-filters">
+                  <Label className="text-sm font-medium">Lease Terms</Label>
+                  <div className="space-y-2">
+                    {leaseTermOptions.map((term) => (
+                      <div key={term.value} className="flex items-center space-x-2" data-testid={`lease-term-${term.value}`}>
+                        <Checkbox
+                          id={`lease-${term.value}`}
+                          checked={filters.leaseTerms?.includes(term.value) || false}
+                          onCheckedChange={(checked) => handleLeaseTermChange(term.value, checked as boolean)}
+                          data-testid={`checkbox-lease-${term.value}`}
+                        />
+                        <Label 
+                          htmlFor={`lease-${term.value}`} 
+                          className="text-sm cursor-pointer"
+                          data-testid={`label-lease-${term.value}`}
+                        >
+                          {term.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Floor Level */}
+                <div className="space-y-3" data-testid="floor-level-filter">
+                  <Label className="text-sm font-medium">Floor Level</Label>
+                  <RadioGroup 
+                    value={filters.floorLevel || ""} 
+                    onValueChange={handleFloorLevelChange}
+                    data-testid="radiogroup-floor-level"
+                  >
+                    {floorLevelOptions.map((option) => (
+                      <div key={option.value} className="flex items-center space-x-2" data-testid={`floor-level-${option.value}`}>
+                        <RadioGroupItem 
+                          value={option.value} 
+                          id={`floor-${option.value}`}
+                          data-testid={`radio-floor-${option.value}`}
+                        />
+                        <Label 
+                          htmlFor={`floor-${option.value}`} 
+                          className="text-sm cursor-pointer"
+                          data-testid={`label-floor-${option.value}`}
+                        >
+                          {option.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+
+                <Separator />
+
+                {/* Renovation Status */}
+                <div className="space-y-3" data-testid="renovation-status-filter">
+                  <Label className="text-sm font-medium">Renovation Status</Label>
+                  <RadioGroup 
+                    value={filters.renovationStatus || ""} 
+                    onValueChange={handleRenovationStatusChange}
+                    data-testid="radiogroup-renovation"
+                  >
+                    {renovationStatusOptions.map((option) => (
+                      <div key={option.value} className="flex items-center space-x-2" data-testid={`renovation-${option.value}`}>
+                        <RadioGroupItem 
+                          value={option.value} 
+                          id={`renovation-${option.value}`}
+                          data-testid={`radio-renovation-${option.value}`}
+                        />
+                        <Label 
+                          htmlFor={`renovation-${option.value}`} 
+                          className="text-sm cursor-pointer"
+                          data-testid={`label-renovation-${option.value}`}
+                        >
+                          {option.label}
+                        </Label>
+                      </div>
+                    ))}
+                  </RadioGroup>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         </CardContent>
       </Card>
     </div>
