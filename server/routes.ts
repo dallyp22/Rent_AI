@@ -13,36 +13,58 @@ const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
 
 // Scrapezy API integration functions
 async function callScrapezyScraping(url: string, customPrompt?: string) {
+  console.log(`🚀 [SCRAPEZY] Starting scraping for URL: ${url}`);
+  console.log(`🚀 [SCRAPEZY] API Key configured: ${!!SCRAPEZY_API_KEY}`);
+  console.log(`🚀 [SCRAPEZY] Base URL: ${SCRAPEZY_BASE_URL}`);
+  
   if (!SCRAPEZY_API_KEY) {
+    console.error(`❌ [SCRAPEZY] API key not configured`);
     throw new Error("Scrapezy API key not configured");
   }
 
   const prompt = customPrompt || "Extract apartment listings from this apartments.com page. For each apartment property listing, extract: 1) The complete URL link to the individual apartment page (must start with https://www.apartments.com/), 2) The property/apartment name or title, 3) The address or location information. Return as JSON array with objects containing \"url\", \"name\", and \"address\" fields.";
+  
+  console.log(`🚀 [SCRAPEZY] Using prompt: ${prompt.substring(0, 100)}...`);
 
   // Create job
+  console.log(`🚀 [SCRAPEZY] Creating scraping job...`);
+  const requestBody = {
+    url,
+    prompt
+  };
+  console.log(`🚀 [SCRAPEZY] Request body:`, JSON.stringify(requestBody, null, 2));
+  
   const jobResponse = await fetch(SCRAPEZY_BASE_URL, {
     method: "POST",
     headers: {
       "x-api-key": SCRAPEZY_API_KEY,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      url,
-      prompt
-    }),
+    body: JSON.stringify(requestBody),
     signal: AbortSignal.timeout(30000)
   });
 
+  console.log(`🚀 [SCRAPEZY] Job creation response status: ${jobResponse.status} ${jobResponse.statusText}`);
+  console.log(`🚀 [SCRAPEZY] Job creation response headers:`, Object.fromEntries(jobResponse.headers.entries()));
+
   if (!jobResponse.ok) {
+    const responseText = await jobResponse.text();
+    console.error(`❌ [SCRAPEZY] Job creation failed. Response body: ${responseText}`);
     throw new Error(`Scrapezy API error: ${jobResponse.status} ${jobResponse.statusText}`);
   }
 
   const jobData = await jobResponse.json();
+  console.log(`🚀 [SCRAPEZY] Job creation response data:`, JSON.stringify(jobData, null, 2));
+  
   const jobId = jobData.id || jobData.jobId;
   
   if (!jobId) {
+    console.error(`❌ [SCRAPEZY] No job ID received from response`);
+    console.error(`❌ [SCRAPEZY] Full response data keys:`, Object.keys(jobData));
     throw new Error('No job ID received from Scrapezy');
   }
+
+  console.log(`🚀 [SCRAPEZY] Job created successfully with ID: ${jobId}`);
 
   // Poll for results
   let attempts = 0;
@@ -50,9 +72,13 @@ async function callScrapezyScraping(url: string, customPrompt?: string) {
   const POLL_INTERVAL = 10000; // 10 seconds
   let finalResult = null;
 
+  console.log(`🚀 [SCRAPEZY] Starting polling for job ${jobId} (max ${maxAttempts} attempts, ${POLL_INTERVAL}ms interval)`);
+
   while (attempts < maxAttempts) {
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
     attempts++;
+    
+    console.log(`🚀 [SCRAPEZY] Polling attempt ${attempts}/${maxAttempts} for job ${jobId}`);
     
     const resultResponse = await fetch(`${SCRAPEZY_BASE_URL}/${jobId}`, {
       headers: {
@@ -62,35 +88,54 @@ async function callScrapezyScraping(url: string, customPrompt?: string) {
       signal: AbortSignal.timeout(30000)
     });
 
+    console.log(`🚀 [SCRAPEZY] Polling response status: ${resultResponse.status} ${resultResponse.statusText}`);
+
     if (!resultResponse.ok) {
+      const responseText = await resultResponse.text();
+      console.error(`❌ [SCRAPEZY] Polling failed. Response body: ${responseText}`);
       throw new Error(`Scrapezy polling error: ${resultResponse.status} ${resultResponse.statusText}`);
     }
 
     const resultData = await resultResponse.json();
+    console.log(`🚀 [SCRAPEZY] Polling response data:`, JSON.stringify(resultData, null, 2));
     
     if (resultData.status === 'completed') {
+      console.log(`✅ [SCRAPEZY] Job ${jobId} completed successfully!`);
+      console.log(`✅ [SCRAPEZY] Final result structure:`, typeof resultData.result, Array.isArray(resultData.result) ? `Array[${resultData.result.length}]` : `Object with keys: ${Object.keys(resultData.result || {})}`);
       finalResult = resultData;
       break;
     } else if (resultData.status === 'failed') {
+      console.error(`❌ [SCRAPEZY] Job ${jobId} failed:`, resultData.error || 'Unknown error');
       throw new Error(`Scrapezy job failed: ${resultData.error || 'Unknown error'}`);
+    } else {
+      console.log(`⏳ [SCRAPEZY] Job ${jobId} still processing, status: ${resultData.status}`);
     }
     // Continue polling if status is pending
   }
 
   if (!finalResult && attempts >= maxAttempts) {
+    console.error(`❌ [SCRAPEZY] Job ${jobId} timed out after ${maxAttempts} attempts (${(maxAttempts * POLL_INTERVAL) / 1000} seconds)`);
     throw new Error('Scrapezy job timed out after 2.5 minutes');
   }
 
+  console.log(`🎉 [SCRAPEZY] Returning final result for job ${jobId}`);
   return finalResult;
 }
 
 // Parse Scrapezy results to extract property URLs
 function parseUrls(scrapezyResult: any): Array<{url: string, name: string, address: string}> {
+  console.log(`🔍 [PARSE_URLS] Starting URL parsing...`);
+  console.log(`🔍 [PARSE_URLS] Input data type: ${typeof scrapezyResult}`);
+  console.log(`🔍 [PARSE_URLS] Input data keys:`, Object.keys(scrapezyResult || {}));
+  console.log(`🔍 [PARSE_URLS] Full input structure:`, JSON.stringify(scrapezyResult, null, 2));
+  
   let properties = [];
   
   try {
     // Try to get the result from the response structure
     const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
+    console.log(`🔍 [PARSE_URLS] Extracted result text type: ${typeof resultText}`);
+    console.log(`🔍 [PARSE_URLS] Result text keys:`, typeof resultText === 'object' ? Object.keys(resultText) : 'N/A');
     
     if (typeof resultText === 'string') {
       try {
