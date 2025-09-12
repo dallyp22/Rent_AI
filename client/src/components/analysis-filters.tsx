@@ -1,3 +1,4 @@
+import { memo, useCallback, useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { ChevronRight, Sparkles, DollarSign, Clock, RotateCcw } from "lucide-react";
+import { motion } from "framer-motion";
 import type { FilterCriteria } from "@shared/schema";
 
 interface AnalysisFiltersProps {
@@ -59,18 +61,20 @@ const renovationStatusOptions = [
   { value: "original", label: "Original" }
 ] as const;
 
-export default function AnalysisFilters({ 
+const AnalysisFilters = memo(({ 
   filters, 
   onFiltersChange
-}: AnalysisFiltersProps) {
-  // Calculate active advanced filters count
-  const advancedFiltersCount = 
+}: AnalysisFiltersProps) => {
+  // Memoize advanced filters count
+  const advancedFiltersCount = useMemo(() => 
     (filters.amenities?.length || 0) +
     (filters.leaseTerms?.length || 0) +
     (filters.floorLevel ? 1 : 0) +
-    (filters.renovationStatus ? 1 : 0);
+    (filters.renovationStatus ? 1 : 0),
+    [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus]
+  );
 
-  const handleBedroomChange = (bedroom: string, checked: boolean) => {
+  const handleBedroomChange = useCallback((bedroom: string, checked: boolean) => {
     const newBedroomTypes = checked 
       ? [...filters.bedroomTypes, bedroom as any]
       : filters.bedroomTypes.filter(type => type !== bedroom);
@@ -79,30 +83,30 @@ export default function AnalysisFilters({
       ...filters,
       bedroomTypes: newBedroomTypes
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handlePriceRangeChange = (values: number[]) => {
+  const handlePriceRangeChange = useCallback((values: number[]) => {
     onFiltersChange({
       ...filters,
       priceRange: { min: values[0], max: values[1] }
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleSquareFootageChange = (values: number[]) => {
+  const handleSquareFootageChange = useCallback((values: number[]) => {
     onFiltersChange({
       ...filters,
       squareFootageRange: { min: values[0], max: values[1] }
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleAvailabilityChange = (value: string) => {
+  const handleAvailabilityChange = useCallback((value: string) => {
     onFiltersChange({
       ...filters,
       availability: value as any
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleAmenityChange = (amenity: string, checked: boolean) => {
+  const handleAmenityChange = useCallback((amenity: string, checked: boolean) => {
     const currentAmenities = filters.amenities || [];
     const newAmenities = checked
       ? [...currentAmenities, amenity as any]
@@ -112,9 +116,9 @@ export default function AnalysisFilters({
       ...filters,
       amenities: newAmenities.length > 0 ? newAmenities : undefined
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleLeaseTermChange = (term: string, checked: boolean) => {
+  const handleLeaseTermChange = useCallback((term: string, checked: boolean) => {
     const currentTerms = filters.leaseTerms || [];
     const newTerms = checked
       ? [...currentTerms, term as any]
@@ -124,50 +128,50 @@ export default function AnalysisFilters({
       ...filters,
       leaseTerms: newTerms.length > 0 ? newTerms : undefined
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleFloorLevelChange = (value: string) => {
+  const handleFloorLevelChange = useCallback((value: string) => {
     onFiltersChange({
       ...filters,
       floorLevel: value as any
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const handleRenovationStatusChange = (value: string) => {
+  const handleRenovationStatusChange = useCallback((value: string) => {
     onFiltersChange({
       ...filters,
       renovationStatus: value as any
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  // Preset handlers
-  const applyPremiumPreset = () => {
+  // Memoized preset handlers
+  const applyPremiumPreset = useCallback(() => {
     onFiltersChange({
       ...filters,
       priceRange: { min: 2000, max: 3000 },
       bedroomTypes: ["2BR", "3BR"],
       squareFootageRange: { min: 1000, max: 2000 }
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const applyEntryLevelPreset = () => {
+  const applyEntryLevelPreset = useCallback(() => {
     onFiltersChange({
       ...filters,
       priceRange: { min: 800, max: 1500 },
       bedroomTypes: ["Studio", "1BR"],
       squareFootageRange: { min: 400, max: 800 }
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const applyHighTurnoverPreset = () => {
+  const applyHighTurnoverPreset = useCallback(() => {
     onFiltersChange({
       ...filters,
       availability: "now",
       leaseTerms: ["month_to_month", "6_month"]
     });
-  };
+  }, [filters, onFiltersChange]);
 
-  const resetFilters = () => {
+  const resetFilters = useCallback(() => {
     onFiltersChange({
       bedroomTypes: [],
       priceRange: { min: 800, max: 3000 },
@@ -178,11 +182,17 @@ export default function AnalysisFilters({
       floorLevel: undefined,
       renovationStatus: undefined
     });
-  };
+  }, [onFiltersChange]);
 
   return (
-    <div className="lg:w-80 space-y-4" data-testid="analysis-filters">
-      <Card>
+    <motion.div 
+      className="w-full space-y-4" 
+      data-testid="analysis-filters"
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, delay: 0.1 }}
+    >
+      <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center justify-between" data-testid="filters-title">
             <span>Filter Analysis</span>
@@ -508,6 +518,8 @@ export default function AnalysisFilters({
           </Accordion>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
-}
+});
+
+export default AnalysisFilters;

@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, AlertCircle } from "lucide-react";
+import { ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
+import { motion, AnimatePresence } from "framer-motion";
 import type { FilterCriteria, FilteredAnalysis } from "@shared/schema";
 
 export default function Analyze({ params }: { params: { id: string } }) {
@@ -19,6 +20,8 @@ export default function Analyze({ params }: { params: { id: string } }) {
   });
   const [analysisData, setAnalysisData] = useState<FilteredAnalysis | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [isDebouncing, setIsDebouncing] = useState(false);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
 
   // Mutation for filtered analysis
@@ -47,15 +50,34 @@ export default function Analyze({ params }: { params: { id: string } }) {
     initializeState();
   }, [params.id]);
 
-  // Trigger analysis when filters change (after initialization)
+  // Debounced filter changes (300ms delay)
   useEffect(() => {
     if (isInitialized) {
-      analysisMutation.mutate(filters);
-      // Save workflow state with current filters
-      saveWorkflowState({
-        stage: 'analyze',
-        filterCriteria: filters
-      });
+      // Clear any existing timer
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      
+      // Show debouncing indicator
+      setIsDebouncing(true);
+      
+      // Set new timer for 300ms
+      debounceTimerRef.current = setTimeout(() => {
+        analysisMutation.mutate(filters);
+        setIsDebouncing(false);
+        // Save workflow state with current filters
+        saveWorkflowState({
+          stage: 'analyze',
+          filterCriteria: filters
+        });
+      }, 300);
+      
+      // Cleanup on unmount
+      return () => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+        }
+      };
     }
   }, [filters, isInitialized]);
 
@@ -73,54 +95,103 @@ export default function Analyze({ params }: { params: { id: string } }) {
   };
 
   return (
-    <div className="space-y-6" data-testid="analyze-page">
-      <div className="bg-card rounded-lg border border-border p-6">
-        <div className="flex flex-col lg:flex-row gap-6">
-          {/* Filter Panel */}
-          <AnalysisFilters
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-          />
-
-          {/* Analysis Results Area */}
-          {analysisMutation.error ? (
-            <div className="flex-1 flex items-center justify-center py-12" data-testid="error-state">
-              <div className="text-center space-y-4">
-                <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
-                <div className="text-lg font-medium">Analysis Failed</div>
-                <div className="text-muted-foreground mb-4">
-                  Unable to load analysis data. Please try again.
-                </div>
-                <Button 
-                  onClick={() => analysisMutation.mutate(filters)} 
-                  data-testid="button-retry"
+    <motion.div 
+      className="h-full" 
+      data-testid="analyze-page"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      <div className="bg-card rounded-lg border border-border h-full overflow-hidden">
+        {/* 75/25 Layout Container */}
+        <div className="flex flex-col lg:flex-row h-full">
+          {/* Main Analysis Area - 75% width */}
+          <div className="flex-1 lg:w-3/4 p-6 overflow-y-auto relative">
+            {/* Debouncing Indicator */}
+            <AnimatePresence>
+              {isDebouncing && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="absolute top-4 right-4 z-10 bg-primary/10 text-primary px-3 py-1 rounded-full flex items-center gap-2 text-sm"
+                  data-testid="debouncing-indicator"
                 >
-                  Retry Analysis
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Updating analysis...
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Analysis Results Area */}
+            {analysisMutation.error ? (
+              <motion.div 
+                className="flex items-center justify-center min-h-[500px]" 
+                data-testid="error-state"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <div className="text-center space-y-4">
+                  <AlertCircle className="h-12 w-12 text-red-500 mx-auto" />
+                  <div className="text-lg font-medium">Analysis Failed</div>
+                  <div className="text-muted-foreground mb-4">
+                    Unable to load analysis data. Please try again.
+                  </div>
+                  <Button 
+                    onClick={() => analysisMutation.mutate(filters)} 
+                    data-testid="button-retry"
+                  >
+                    Retry Analysis
+                  </Button>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key={JSON.stringify(filters)}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <FilteredAnalysisResults 
+                  analysis={analysisData!}
+                  isLoading={analysisMutation.isPending || isDebouncing}
+                />
+              </motion.div>
+            )}
+            
+            {/* Continue to Optimization Button */}
+            {analysisData && !analysisMutation.isPending && !isDebouncing && (
+              <motion.div 
+                className="flex justify-end pt-6 border-t mt-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.3 }}
+              >
+                <Button 
+                  onClick={handleContinueToOptimize} 
+                  data-testid="button-proceed-optimization"
+                  size="lg"
+                  className="shadow-lg hover:shadow-xl transition-all"
+                >
+                  Proceed to Optimization
+                  <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
-              </div>
-            </div>
-          ) : (
-            <FilteredAnalysisResults 
-              analysis={analysisData!}
-              isLoading={analysisMutation.isPending}
-            />
-          )}
-        </div>
-        
-        {/* Continue to Optimization Button */}
-        {analysisData && !analysisMutation.isPending && (
-          <div className="flex justify-end pt-6 border-t mt-6">
-            <Button 
-              onClick={handleContinueToOptimize} 
-              data-testid="button-proceed-optimization"
-              size="lg"
-            >
-              Proceed to Optimization
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+              </motion.div>
+            )}
           </div>
-        )}
+
+          {/* Filter Sidebar - 25% width */}
+          <div className="lg:w-1/4 lg:border-l border-border p-6 bg-muted/5 overflow-y-auto">
+            <div className="sticky top-0">
+              <AnalysisFilters
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+              />
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </motion.div>
   );
 }
