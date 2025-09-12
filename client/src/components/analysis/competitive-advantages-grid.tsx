@@ -1,6 +1,6 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, Square, Calendar, Award } from "lucide-react";
+import { DollarSign, Square, Calendar } from "lucide-react";
 import type { CompetitiveEdges } from "@shared/schema";
 
 interface CompetitiveAdvantagesGridProps {
@@ -44,18 +44,12 @@ export default function CompetitiveAdvantagesGrid({
       title: "Availability",
       icon: <Calendar className="h-5 w-5" />,
       data: competitiveEdges.availability
-    },
-    {
-      key: "amenities",
-      title: "Amenities",
-      icon: <Award className="h-5 w-5" />,
-      data: competitiveEdges.amenities
     }
   ];
 
   return (
     <div 
-      className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" 
+      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" 
       data-testid="competitive-advantages-grid"
     >
       {edges.map((edge) => (
@@ -105,11 +99,6 @@ export default function CompetitiveAdvantagesGrid({
                     <span className="text-sm font-normal">
                       {edge.data.edge !== 0 ? "units" : "equal"}
                     </span>
-                  </div>
-                )}
-                {edge.key === "amenities" && (
-                  <div className="flex flex-col items-center">
-                    <span>{edge.data.edge}/100</span>
                   </div>
                 )}
               </div>
