@@ -290,9 +290,18 @@ export class MemStorage implements IStorage {
   }
 
   async getAllScrapedCompetitors(): Promise<ScrapedProperty[]> {
-    return Array.from(this.scrapedProperties.values()).filter(
-      property => !property.isSubjectProperty
+    const allProperties = Array.from(this.scrapedProperties.values());
+    
+    // First ensure we have a subject property marked
+    const subjectProperty = await this.getSubjectScrapedProperty();
+    
+    // Filter out the subject property to get only competitors
+    const competitors = allProperties.filter(
+      property => property.isSubjectProperty !== true
     );
+    
+    console.log('[STORAGE] getAllScrapedCompetitors: Found', competitors.length, 'competitor properties');
+    return competitors;
   }
 
   async getSelectedScrapedProperties(ids: string[]): Promise<ScrapedProperty[]> {
@@ -333,9 +342,35 @@ export class MemStorage implements IStorage {
   }
 
   async getSubjectScrapedProperty(): Promise<ScrapedProperty | null> {
-    const subjectProperty = Array.from(this.scrapedProperties.values()).find(
+    const allProperties = Array.from(this.scrapedProperties.values());
+    console.log('[STORAGE] getSubjectScrapedProperty: Total scraped properties:', allProperties.length);
+    
+    const subjectProperty = allProperties.find(
       property => property.isSubjectProperty === true
     );
+    
+    if (subjectProperty) {
+      console.log('[STORAGE] ✅ Found subject property:', subjectProperty.name);
+      console.log('[STORAGE] Subject property ID:', subjectProperty.id);
+      console.log('[STORAGE] Subject property URL:', subjectProperty.url);
+    } else {
+      console.log('[STORAGE] ⚠️ No subject property found with isSubjectProperty === true');
+      console.log('[STORAGE] Properties with isSubjectProperty flag:');
+      allProperties.forEach(p => {
+        console.log(`[STORAGE]   - ${p.name}: isSubjectProperty = ${p.isSubjectProperty}`);
+      });
+      
+      // FALLBACK: If no subject property is marked but we have properties, mark the first one
+      if (allProperties.length > 0) {
+        console.log('[STORAGE] Applying emergency fallback - marking first property as subject');
+        const firstProperty = allProperties[0];
+        firstProperty.isSubjectProperty = true;
+        this.scrapedProperties.set(firstProperty.id, firstProperty);
+        console.log('[STORAGE] ✅ Emergency fallback: Marked', firstProperty.name, 'as subject');
+        return firstProperty;
+      }
+    }
+    
     return subjectProperty || null;
   }
 
@@ -357,9 +392,22 @@ export class MemStorage implements IStorage {
 
   async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
     let units = Array.from(this.scrapedUnits.values());
+    console.log('[FILTER] Starting with', units.length, 'total units');
+    
+    // Log sample unit data for debugging
+    if (units.length > 0) {
+      console.log('[FILTER] Sample unit data:');
+      const sampleUnit = units[0];
+      console.log('[FILTER]   Unit Type:', sampleUnit.unitType);
+      console.log('[FILTER]   Bedrooms:', sampleUnit.bedrooms);
+      console.log('[FILTER]   Rent:', sampleUnit.rent);
+      console.log('[FILTER]   Status:', sampleUnit.status);
+      console.log('[FILTER]   Square Footage:', sampleUnit.squareFootage);
+    }
 
     // Filter by bedroom types
     if (criteria.bedroomTypes.length > 0) {
+      const beforeCount = units.length;
       units = units.filter(unit => {
         if (criteria.bedroomTypes.includes("Studio") && (unit.bedrooms === 0 || unit.unitType.toLowerCase().includes("studio"))) return true;
         if (criteria.bedroomTypes.includes("1BR") && unit.bedrooms === 1) return true;
@@ -367,14 +415,38 @@ export class MemStorage implements IStorage {
         if (criteria.bedroomTypes.includes("3BR") && unit.bedrooms === 3) return true;
         return false;
       });
+      console.log('[FILTER] After bedroom filter:', units.length, 'units (filtered out', beforeCount - units.length, ')');
+    } else {
+      console.log('[FILTER] No bedroom filter applied - keeping all', units.length, 'units');
     }
 
     // Filter by price range
+    const beforePriceCount = units.length;
     units = units.filter(unit => {
-      if (!unit.rent) return false;
-      const rent = parseFloat(unit.rent.toString());
-      return rent >= criteria.priceRange.min && rent <= criteria.priceRange.max;
+      if (!unit.rent) {
+        console.log('[FILTER] Unit has no rent value, excluding');
+        return false;
+      }
+      // Handle rent values that may be strings with formatting (e.g., "$1,234" or "1234")
+      let rentValue: number;
+      const rentStr = unit.rent.toString();
+      
+      // Remove dollar signs, commas, and other non-numeric characters
+      const cleanedRent = rentStr.replace(/[$,]/g, '').trim();
+      rentValue = parseFloat(cleanedRent);
+      
+      if (isNaN(rentValue)) {
+        console.log('[FILTER] Could not parse rent value:', rentStr, '-> cleaned:', cleanedRent);
+        return false;
+      }
+      
+      const inRange = rentValue >= criteria.priceRange.min && rentValue <= criteria.priceRange.max;
+      if (!inRange) {
+        console.log('[FILTER] Unit rent', rentValue, 'outside range', criteria.priceRange.min, '-', criteria.priceRange.max);
+      }
+      return inRange;
     });
+    console.log('[FILTER] After price filter (', criteria.priceRange.min, '-', criteria.priceRange.max, '):', units.length, 'units (filtered out', beforePriceCount - units.length, ')');
 
     // Filter by square footage range
     units = units.filter(unit => {
@@ -382,13 +454,65 @@ export class MemStorage implements IStorage {
       return unit.squareFootage >= criteria.squareFootageRange.min && unit.squareFootage <= criteria.squareFootageRange.max;
     });
 
-    // Filter by availability (simplified for demo)
+    // Filter by availability - flexible matching for various status formats
+    const beforeAvailabilityCount = units.length;
+    console.log('[FILTER] Availability filter:', criteria.availability);
+    
     if (criteria.availability === "now") {
-      units = units.filter(unit => unit.status === "available");
+      units = units.filter(unit => {
+        if (!unit.status) {
+          console.log('[FILTER] Unit has no status, excluding from "now" filter');
+          return false;
+        }
+        const status = unit.status.toLowerCase();
+        // Match: "available", "now", "available immediately", etc.
+        const matches = status === "available" || 
+                       status === "now" || 
+                       status.includes("available") ||
+                       status.includes("immediate");
+        if (!matches) {
+          console.log('[FILTER] Status "' + unit.status + '" does not match "now" criteria');
+        }
+        return matches;
+      });
     } else if (criteria.availability === "30days") {
-      units = units.filter(unit => unit.status === "available" || unit.status === "pending");
+      units = units.filter(unit => {
+        if (!unit.status) {
+          console.log('[FILTER] Unit has no status, excluding from "30days" filter');
+          return false;
+        }
+        const status = unit.status.toLowerCase();
+        // Include units available now or within ~30 days
+        // Match: "available", "now", "available oct 7", "available sep 28", etc.
+        const matches = status === "available" || 
+                       status === "now" || 
+                       status === "pending" ||
+                       status.includes("available") ||
+                       status.includes("immediate") ||
+                       !status.includes("occupied"); // Include anything not explicitly occupied
+        if (!matches) {
+          console.log('[FILTER] Status "' + unit.status + '" does not match "30days" criteria');
+        }
+        return matches;
+      });
+    } else if (criteria.availability === "60days") {
+      // For 60days, include all units except explicitly occupied ones
+      units = units.filter(unit => {
+        if (!unit.status) {
+          console.log('[FILTER] Unit has no status, including in "60days" filter');
+          return true; // Include units with no status
+        }
+        const status = unit.status.toLowerCase();
+        // Exclude only units that are clearly occupied with no availability date
+        const matches = status !== "occupied" || status.includes("available");
+        if (!matches) {
+          console.log('[FILTER] Status "' + unit.status + '" does not match "60days" criteria');
+        }
+        return matches;
+      });
     }
-    // For 60days, keep all units
+    
+    console.log('[FILTER] After availability filter:', units.length, 'units (filtered out', beforeAvailabilityCount - units.length, ')');
 
     // Advanced filters (simplified implementation since scraped data may not have all details)
     

@@ -15,7 +15,7 @@ export default function Analyze({ params }: { params: { id: string } }) {
   const [filters, setFilters] = useState<FilterCriteria>({
     bedroomTypes: [],
     priceRange: { min: 800, max: 3000 },
-    availability: "now",
+    availability: "30days",  // Changed from "now" to be more inclusive
     squareFootageRange: { min: 400, max: 2000 }
   });
   const [analysisData, setAnalysisData] = useState<FilteredAnalysis | null>(null);
