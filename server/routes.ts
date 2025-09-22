@@ -1983,7 +1983,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
                 unitNumber: unitData.unitNumber,
                 unitType: unitData.unitType,
                 bedrooms: unitData.bedrooms,
-                bathrooms: unitData.bathrooms,
+                bathrooms: unitData.bathrooms?.toString(),
                 squareFootage: unitData.squareFootage,
                 rent: unitData.rent?.toString(),
                 availabilityDate: unitData.availabilityDate,
