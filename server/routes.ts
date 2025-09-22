@@ -1733,125 +1733,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     return `${city}, ${state}`;
   }
 
-  // Generate mock competitor data when scraping fails
-  function generateMockCompetitorData(property: any, cityState: string) {
-    console.log('📊 Generating mock competitor data for demonstration purposes');
-    
-    // Extract city from cityState
-    const city = cityState.split(',')[0].trim().toLowerCase().replace(/\s+/g, '-');
-    
-    // Create realistic competitor properties based on the subject property
-    const mockProperties = [
-      {
-        name: property.propertyName || "Subject Property",
-        address: property.address,
-        url: `https://www.apartments.com/${property.propertyName?.toLowerCase().replace(/\s+/g, '-')}-${city}/mock-subject/`
-      },
-      {
-        name: "The Gardens at Westside",
-        address: `1234 Garden Way, ${cityState} 68102`,
-        url: `https://www.apartments.com/the-gardens-at-westside-${city}/mock-1/`
-      },
-      {
-        name: "Parkview Heights Apartments",
-        address: `5678 Park Avenue, ${cityState} 68103`,
-        url: `https://www.apartments.com/parkview-heights-apartments-${city}/mock-2/`
-      },
-      {
-        name: "Riverside Commons",
-        address: `9012 River Road, ${cityState} 68104`,
-        url: `https://www.apartments.com/riverside-commons-${city}/mock-3/`
-      },
-      {
-        name: "Summit Ridge Residences",
-        address: `3456 Summit Drive, ${cityState} 68105`,
-        url: `https://www.apartments.com/summit-ridge-residences-${city}/mock-4/`
-      },
-      {
-        name: "Urban Lofts Downtown",
-        address: `7890 Main Street, ${cityState} 68106`,
-        url: `https://www.apartments.com/urban-lofts-downtown-${city}/mock-5/`
-      },
-      {
-        name: "Meadowbrook Village",
-        address: `2345 Meadow Lane, ${cityState} 68107`,
-        url: `https://www.apartments.com/meadowbrook-village-${city}/mock-6/`
-      },
-      {
-        name: "The Crossings at Oak Park",
-        address: `6789 Oak Street, ${cityState} 68108`,
-        url: `https://www.apartments.com/the-crossings-at-oak-park-${city}/mock-7/`
-      },
-      {
-        name: "Willow Creek Apartments",
-        address: `1011 Creek Boulevard, ${cityState} 68109`,
-        url: `https://www.apartments.com/willow-creek-apartments-${city}/mock-8/`
-      },
-      {
-        name: "Horizon View Terrace",
-        address: `1213 Horizon Way, ${cityState} 68110`,
-        url: `https://www.apartments.com/horizon-view-terrace-${city}/mock-9/`
-      },
-      {
-        name: "Maple Grove Residences",
-        address: `1415 Maple Street, ${cityState} 68111`,
-        url: `https://www.apartments.com/maple-grove-residences-${city}/mock-10/`
-      }
-    ];
-
-    console.log(`✅ Generated ${mockProperties.length} mock properties for testing`);
-    return mockProperties;
-  }
-
-  // Generate mock unit data for properties
-  function generateMockUnitsForProperty(propertyName: string, isSubject: boolean = false) {
-    console.log(`🏢 Generating mock units for ${propertyName}`);
-    
-    // Define typical unit mixes for different property types
-    const unitConfigs = [
-      // Studio units
-      { unitType: "Studio", bedrooms: 0, bathrooms: 1, sqftMin: 400, sqftMax: 600, rentMin: 800, rentMax: 1200 },
-      // 1BR units  
-      { unitType: "1BR", bedrooms: 1, bathrooms: 1, sqftMin: 650, sqftMax: 850, rentMin: 1200, rentMax: 1600 },
-      // 2BR units
-      { unitType: "2BR", bedrooms: 2, bathrooms: 2, sqftMin: 900, sqftMax: 1200, rentMin: 1600, rentMax: 2200 },
-      // 3BR units
-      { unitType: "3BR", bedrooms: 3, bathrooms: 2, sqftMin: 1300, sqftMax: 1600, rentMin: 2200, rentMax: 3000 }
-    ];
-    
-    const mockUnits = [];
-    let unitCounter = 1;
-    
-    // Generate a realistic mix of units
-    for (const config of unitConfigs) {
-      // Generate 2-4 units of each type
-      const unitsOfType = Math.floor(Math.random() * 3) + 2;
-      
-      for (let i = 0; i < unitsOfType; i++) {
-        const sqft = Math.floor(Math.random() * (config.sqftMax - config.sqftMin) + config.sqftMin);
-        const baseRent = Math.floor(Math.random() * (config.rentMax - config.rentMin) + config.rentMin);
-        
-        // Add some variance for subject property
-        const rent = isSubject ? baseRent : baseRent + Math.floor(Math.random() * 100 - 50);
-        
-        mockUnits.push({
-          unitNumber: `${100 + unitCounter}`,
-          unitType: config.unitType,
-          bedrooms: config.bedrooms,
-          bathrooms: config.bathrooms,
-          squareFootage: sqft,
-          rent: rent,
-          availabilityDate: Math.random() > 0.7 ? "Available Now" : `Available ${Math.floor(Math.random() * 60) + 1} days`,
-          status: Math.random() > 0.8 ? "available" : "occupied"
-        });
-        
-        unitCounter++;
-      }
-    }
-    
-    console.log(`✅ Generated ${mockUnits.length} mock units for ${propertyName}`);
-    return mockUnits;
-  }
 
   // Start scraping job for a property
   app.post("/api/properties/:id/scrape", async (req, res) => {
@@ -1917,10 +1798,10 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           }
         }
 
-        // FALLBACK: If scraping completely failed due to Cloudflare, generate mock data
+        // If scraping completely failed, throw an error
         if (!scrapingSucceeded || allProperties.length === 0) {
-          console.log('⚠️ Scraping failed or returned no results, generating mock competitor data for demonstration');
-          allProperties = generateMockCompetitorData(property, cityState);
+          console.error('❌ Scraping failed or returned no results');
+          throw new Error('Unable to retrieve competitor data from apartments.com. The service may be temporarily unavailable due to anti-scraping protection. Please try again later.');
         }
 
         console.log(`Total properties found: ${allProperties.length}`);
@@ -1974,24 +1855,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
           scrapedProperties.push(scrapedProperty);
           
-          // If we're using mock data, also generate mock units for each property
-          if (!scrapingSucceeded || propertyData.url.includes('/mock-')) {
-            const mockUnits = generateMockUnitsForProperty(propertyData.name, isSubjectProperty);
-            for (const unitData of mockUnits) {
-              await storage.createScrapedUnit({
-                propertyId: scrapedProperty.id,
-                unitNumber: unitData.unitNumber,
-                unitType: unitData.unitType,
-                bedrooms: unitData.bedrooms,
-                bathrooms: unitData.bathrooms?.toString(),
-                squareFootage: unitData.squareFootage,
-                rent: unitData.rent?.toString(),
-                availabilityDate: unitData.availabilityDate,
-                status: unitData.status
-              });
-            }
-            console.log(`📦 Added ${mockUnits.length} mock units for ${propertyData.name}`);
-          }
         }
         
         // FALLBACK 1: If no subject property found but we have a decent match (>=40%), use it
