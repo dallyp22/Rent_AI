@@ -1792,7 +1792,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             // Check if it's an SSL handshake error
             const errorMessage = pageError instanceof Error ? pageError.message : String(pageError);
             if (errorMessage.includes('525') || errorMessage.includes('SSL handshake')) {
-              console.log('🚨 Cloudflare SSL error detected, switching to mock data fallback');
+              console.log('🚨 Cloudflare SSL error detected - scraping may fail');
             }
             // Continue with next page even if one fails
           }
