@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { 
   AlertDialog,
   AlertDialogAction,
@@ -15,27 +16,31 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { FileSpreadsheet, Save } from "lucide-react";
+import { FileSpreadsheet, Save, Building2, Home, BarChart3 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
-import type { Property, PropertyUnit, OptimizationReport } from "@shared/schema";
+import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis } from "@shared/schema";
 
 interface OptimizationData {
   report: OptimizationReport;
   units: PropertyUnit[];
+  portfolio?: Record<string, { units: PropertyUnit[]; report: OptimizationReport }>;
 }
 
 interface PropertyWithAnalysis {
   property: Property;
-  analysis: any;
+  analysis: PropertyAnalysis | null;
 }
 
-export default function Optimize({ params }: { params: { id: string } }) {
+export default function Optimize({ params }: { params: { id: string, sessionId?: string } }) {
   const { toast } = useToast();
-  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
+  // Determine session mode and ID based on URL pattern
+  const isSessionMode = !!params.sessionId;
+  const sessionId = params.sessionId || params.id;
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
   
   const [goal, setGoal] = useState("maximize-revenue");
   const [targetOccupancy, setTargetOccupancy] = useState([95]);
@@ -43,18 +48,38 @@ export default function Optimize({ params }: { params: { id: string } }) {
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
   const [hasInitialized, setHasInitialized] = useState(false);
+  
+  // Query for session data when in session mode
+  const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
+    queryKey: ['/api/sessions', sessionId],
+    enabled: isSessionMode,
+    staleTime: 30000
+  });
+
+  // Session mode is determined by URL pattern - no additional detection needed
+  useEffect(() => {
+    console.log('[OPTIMIZE] Mode:', isSessionMode ? 'Session-based portfolio analysis' : 'Single property analysis');
+    console.log('[OPTIMIZE] Session/Property ID:', sessionId);
+  }, [isSessionMode, sessionId]);
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
+    enabled: !isSessionMode
   });
 
   const optimizationQuery = useQuery<OptimizationData>({
-    queryKey: ['/api/properties', params.id, 'optimization'],
-    enabled: hasInitialized // Enabled once initialized
+    queryKey: isSessionMode 
+      ? ['/api/sessions', sessionId, 'optimization']
+      : ['/api/properties', params.id, 'optimization'],
+    enabled: hasInitialized
   });
 
   const syncUnitsMutation = useMutation({
     mutationFn: async (): Promise<PropertyUnit[]> => {
+      // Only sync units for single property mode - session mode handles units differently
+      if (isSessionMode) {
+        throw new Error('Unit syncing not applicable in session mode');
+      }
       const res = await apiRequest("POST", `/api/properties/${params.id}/sync-units`, {});
       return res.json();
     },
@@ -91,11 +116,13 @@ export default function Optimize({ params }: { params: { id: string } }) {
         }
       });
       
-      // Sync units first to ensure we have all 14 units
-      try {
-        await syncUnitsMutation.mutateAsync();
-      } catch (error) {
-        console.error('Failed to sync units:', error);
+      // Sync units first for single property mode only
+      if (!isSessionMode) {
+        try {
+          await syncUnitsMutation.mutateAsync();
+        } catch (error) {
+          console.error('Failed to sync units:', error);
+        }
       }
       
       setHasInitialized(true);
@@ -120,14 +147,26 @@ export default function Optimize({ params }: { params: { id: string } }) {
 
   const optimizeMutation = useMutation({
     mutationFn: async (data: { goal: string; targetOccupancy: number; riskTolerance: number }): Promise<OptimizationData> => {
-      const res = await apiRequest("POST", `/api/properties/${params.id}/optimize`, data);
+      const endpoint = isSessionMode 
+        ? `/api/sessions/${sessionId}/optimize`
+        : `/api/properties/${params.id}/optimize`;
+      const res = await apiRequest("POST", endpoint, data);
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(['/api/properties', params.id, 'optimization'], data);
+      const queryKey = isSessionMode 
+        ? ['/api/sessions', sessionId, 'optimization']
+        : ['/api/properties', params.id, 'optimization'];
+      queryClient.setQueryData(queryKey, data);
+      
+      const unitCount = Array.isArray(data.units) ? data.units.length : 
+        (data.portfolio ? Object.values(data.portfolio).reduce((sum, p) => sum + p.units.length, 0) : 0);
+      
       toast({
         title: "Optimization Complete",
-        description: `Generated recommendations for ${data.units.length} units.`,
+        description: isSessionMode 
+          ? `Generated portfolio recommendations for ${unitCount} total units across multiple properties.`
+          : `Generated recommendations for ${unitCount} units.`,
       });
     },
     onError: () => {
@@ -141,7 +180,10 @@ export default function Optimize({ params }: { params: { id: string } }) {
 
   const applyPricingMutation = useMutation({
     mutationFn: async (unitPrices: Record<string, number>) => {
-      const res = await apiRequest("POST", `/api/properties/${params.id}/apply-pricing`, { unitPrices });
+      const endpoint = isSessionMode 
+        ? `/api/sessions/${sessionId}/apply-pricing`
+        : `/api/properties/${params.id}/apply-pricing`;
+      const res = await apiRequest("POST", endpoint, { unitPrices });
       return res.json();
     },
     onSuccess: (data) => {
@@ -162,23 +204,32 @@ export default function Optimize({ params }: { params: { id: string } }) {
   });
 
   const generateRecommendations = () => {
-    // First create units if they don't exist, then optimize
-    if (!optimizationQuery.data) {
-      createUnitsMutation.mutate(undefined, {
-        onSuccess: () => {
-          optimizeMutation.mutate({ 
-            goal, 
-            targetOccupancy: targetOccupancy[0], 
-            riskTolerance: riskTolerance[0] 
-          });
-        }
-      });
-    } else {
+    // For session mode, skip unit creation and directly trigger optimization
+    if (isSessionMode) {
       optimizeMutation.mutate({ 
         goal, 
         targetOccupancy: targetOccupancy[0], 
         riskTolerance: riskTolerance[0] 
       });
+    } else {
+      // For single property mode, first create units if they don't exist, then optimize
+      if (!optimizationQuery.data) {
+        createUnitsMutation.mutate(undefined, {
+          onSuccess: () => {
+            optimizeMutation.mutate({ 
+              goal, 
+              targetOccupancy: targetOccupancy[0], 
+              riskTolerance: riskTolerance[0] 
+            });
+          }
+        });
+      } else {
+        optimizeMutation.mutate({ 
+          goal, 
+          targetOccupancy: targetOccupancy[0], 
+          riskTolerance: riskTolerance[0] 
+        });
+      }
     }
   };
 
@@ -273,12 +324,83 @@ export default function Optimize({ params }: { params: { id: string } }) {
     );
   }
 
+  const sessionData = sessionQuery.data;
+  const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
+
   return (
     <div className="space-y-6" data-testid="optimize-page">
+      {/* Header with mode indicator */}
+      <div className="bg-card rounded-lg border border-border p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {isSessionMode ? (
+              <>
+                <Building2 className="h-6 w-6 text-primary" />
+                <div>
+                  <h1 className="text-xl font-semibold">{sessionData?.name || 'Portfolio Optimization'}</h1>
+                  <p className="text-sm text-muted-foreground">
+                    Multi-property portfolio optimization • {subjectProperties.length} subject properties
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Home className="h-6 w-6 text-primary" />
+                <div>
+                  <h1 className="text-xl font-semibold">Property Optimization</h1>
+                  <p className="text-sm text-muted-foreground">Single property unit optimization</p>
+                </div>
+              </>
+            )}
+          </div>
+          <Badge variant={isSessionMode ? "default" : "secondary"}>
+            {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+          </Badge>
+        </div>
+
+        {/* Portfolio Properties Summary for Session Mode */}
+        {isSessionMode && sessionData && (
+          <Card className="mt-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center space-x-2">
+                <BarChart3 className="h-4 w-4" />
+                <span>Portfolio Optimization Overview</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                <div className="text-center">
+                  <div className="font-semibold text-blue-600 dark:text-blue-400">{subjectProperties.length}</div>
+                  <div className="text-muted-foreground">Properties</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-green-600 dark:text-green-400">
+                    {subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0)}
+                  </div>
+                  <div className="text-muted-foreground">Total Units</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-orange-600 dark:text-orange-400">
+                    {optimizationQuery.data ? Object.keys(optimizationQuery.data.portfolio || {}).length : 0}
+                  </div>
+                  <div className="text-muted-foreground">Optimized Properties</div>
+                </div>
+                <div className="text-center">
+                  <div className="font-semibold text-purple-600 dark:text-purple-400">
+                    ${optimizationQuery.data?.report?.totalIncrease || '0'}
+                  </div>
+                  <div className="text-muted-foreground">Portfolio Impact</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
       <div className="bg-card rounded-lg border border-border p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-xl font-semibold" data-testid="optimization-title">
-            Pricing Optimization
+            {isSessionMode ? 'Portfolio Optimization' : 'Pricing Optimization'}
           </h3>
           <Button 
             onClick={handleExportToExcel}

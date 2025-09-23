@@ -26,6 +26,7 @@ import type { FilterCriteria } from "@shared/schema";
 interface AnalysisFiltersProps {
   filters: FilterCriteria;
   onFiltersChange: (filters: FilterCriteria) => void;
+  isPortfolioMode?: boolean;
 }
 
 const bedroomTypes = ["Studio", "1BR", "2BR", "3BR"] as const;
@@ -63,7 +64,8 @@ const renovationStatusOptions = [
 
 const AnalysisFilters = memo(({ 
   filters, 
-  onFiltersChange
+  onFiltersChange,
+  isPortfolioMode = false
 }: AnalysisFiltersProps) => {
   // Memoize advanced filters count
   const advancedFiltersCount = useMemo(() => 
@@ -195,18 +197,25 @@ const AnalysisFilters = memo(({
       <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center justify-between" data-testid="filters-title">
-            <span>Filter Analysis</span>
+            <span>{isPortfolioMode ? 'Portfolio Filters' : 'Filter Analysis'}</span>
             {advancedFiltersCount > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {advancedFiltersCount} advanced
               </Badge>
             )}
           </CardTitle>
+          {isPortfolioMode && (
+            <p className="text-xs text-muted-foreground mt-2">
+              Filters apply across all subject properties in the portfolio analysis
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-6">
           {/* Filter Presets */}
           <div className="space-y-3" data-testid="filter-presets">
-            <Label className="text-sm font-semibold">Quick Presets</Label>
+            <Label className="text-sm font-semibold">
+              {isPortfolioMode ? 'Portfolio Presets' : 'Quick Presets'}
+            </Label>
             <TooltipProvider>
               <div className="space-y-2">
                 <div className="grid grid-cols-2 gap-2">
@@ -224,7 +233,10 @@ const AnalysisFilters = memo(({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft</p>
+                      <p>{isPortfolioMode 
+                        ? 'High-end portfolio units: $2000-$5000, 2-3BR, 1000-3000 sq ft'
+                        : 'High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft'
+                      }</p>
                     </TooltipContent>
                   </Tooltip>
 
@@ -242,7 +254,10 @@ const AnalysisFilters = memo(({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Affordable units: $500-$1500, Studio-1BR, 200-800 sq ft</p>
+                      <p>{isPortfolioMode 
+                        ? 'Affordable portfolio units: $500-$1500, Studio-1BR, 200-800 sq ft'
+                        : 'Affordable units: $500-$1500, Studio-1BR, 200-800 sq ft'
+                      }</p>
                     </TooltipContent>
                   </Tooltip>
                 </div>
@@ -262,7 +277,10 @@ const AnalysisFilters = memo(({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p>Quick move-ins: Available now, flexible lease terms</p>
+                      <p>{isPortfolioMode 
+                        ? 'High turnover across portfolio: Available now, flexible lease terms'
+                        : 'Quick move-ins: Available now, flexible lease terms'
+                      }</p>
                     </TooltipContent>
                   </Tooltip>
 

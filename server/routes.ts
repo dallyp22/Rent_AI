@@ -1286,6 +1286,36 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
+  // Session-based filtered analysis (consistent API pattern)
+  app.post("/api/sessions/:sessionId/filtered-analysis", async (req, res) => {
+    try {
+      console.log('[SESSION_FILTERED_ANALYSIS] ===========================================');
+      console.log('[SESSION_FILTERED_ANALYSIS] Starting session-based filtered analysis');
+      
+      const sessionId = req.params.sessionId;
+      const { filterCriteria } = req.body;
+      
+      console.log('[SESSION_FILTERED_ANALYSIS] Session ID:', sessionId);
+      console.log('[SESSION_FILTERED_ANALYSIS] Filter criteria:', JSON.stringify(filterCriteria, null, 2));
+
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Generate multi-property analysis with filter criteria
+      const analysis = await storage.generateMultiPropertyAnalysis(sessionId, filterCriteria);
+
+      console.log('[SESSION_FILTERED_ANALYSIS] Analysis generated successfully for session:', session.name);
+      res.json(analysis);
+
+    } catch (error) {
+      console.error("[SESSION_FILTERED_ANALYSIS] Error generating session filtered analysis:", error);
+      res.status(500).json({ message: "Failed to generate session filtered analysis" });
+    }
+  });
+
   // Generate optimization report
   app.post("/api/properties/:id/optimize", async (req, res) => {
     try {
@@ -1523,6 +1553,68 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     } catch (error) {
       console.error("Error applying pricing changes:", error);
       res.status(500).json({ message: "Failed to apply pricing changes" });
+    }
+  });
+
+  // Session-based apply pricing changes (portfolio-aware)
+  app.post("/api/sessions/:sessionId/apply-pricing", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const { unitPrices } = req.body; // { unitId: newPrice }
+      
+      if (!unitPrices || typeof unitPrices !== 'object') {
+        return res.status(400).json({ message: "unitPrices must be an object mapping unit IDs to prices" });
+      }
+
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      console.log('[SESSION_APPLY_PRICING] Applying pricing changes for session:', session.name);
+      console.log('[SESSION_APPLY_PRICING] Number of unit price changes:', Object.keys(unitPrices).length);
+
+      const updatedUnits = [];
+      let totalIncrease = 0;
+      let affectedUnits = 0;
+
+      // Apply pricing changes to property profile units
+      for (const [unitId, newPrice] of Object.entries(unitPrices)) {
+        try {
+          const unit = await storage.updatePropertyUnit(unitId, {
+            recommendedRent: String(newPrice)
+          });
+          
+          if (unit) {
+            updatedUnits.push(unit);
+            const currentRent = parseFloat(unit.currentRent);
+            const appliedRent = parseFloat(String(newPrice));
+            
+            if (appliedRent !== currentRent) {
+              affectedUnits++;
+              totalIncrease += (appliedRent - currentRent) * 12; // Annual impact
+            }
+          }
+        } catch (unitError) {
+          console.error(`Failed to update unit ${unitId}:`, unitError);
+        }
+      }
+
+      console.log('[SESSION_APPLY_PRICING] Successfully updated:', updatedUnits.length, 'units');
+      console.log('[SESSION_APPLY_PRICING] Total annual impact:', totalIncrease);
+
+      res.json({
+        message: "Session pricing changes applied successfully",
+        sessionId,
+        sessionName: session.name,
+        updatedUnits: updatedUnits.length,
+        affectedUnits,
+        totalAnnualImpact: totalIncrease
+      });
+    } catch (error) {
+      console.error("Error applying session pricing changes:", error);
+      res.status(500).json({ message: "Failed to apply session pricing changes" });
     }
   });
 
@@ -2747,6 +2839,49 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
+  // Session-based Workflow State Management
+  app.get("/api/sessions/:sessionId/workflow", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      let state = await storage.getWorkflowStateBySession(sessionId);
+      
+      if (!state) {
+        console.log('[SESSION_WORKFLOW_STATE] No state found for session:', sessionId);
+        // Auto-initialize workflow state if it doesn't exist
+        console.log('[SESSION_WORKFLOW_STATE] Auto-initializing workflow state');
+        state = await storage.saveWorkflowState({
+          analysisSessionId: sessionId,
+          selectedCompetitorIds: [],
+          currentStage: 'summarize'
+        });
+      }
+      
+      res.json(state);
+    } catch (error) {
+      console.error("[SESSION_WORKFLOW_STATE] Error fetching workflow state:", error);
+      res.status(500).json({ message: "Failed to fetch session workflow state" });
+    }
+  });
+
+  app.put("/api/sessions/:sessionId/workflow", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const state = {
+        analysisSessionId: sessionId,
+        ...req.body
+      };
+      
+      console.log('[SESSION_WORKFLOW_STATE] Saving workflow state for session:', sessionId);
+      console.log('[SESSION_WORKFLOW_STATE] State data:', state);
+      
+      const savedState = await storage.saveWorkflowState(state);
+      res.json(savedState);
+    } catch (error) {
+      console.error("[SESSION_WORKFLOW_STATE] Error saving workflow state:", error);
+      res.status(500).json({ message: "Failed to save session workflow state" });
+    }
+  });
+
   // Force sync units from scraped data with fuzzy matching fallback
   app.post("/api/properties/:id/sync-units", async (req, res) => {
     try {
@@ -3094,15 +3229,15 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get specific analysis session
-  app.get("/api/analysis-sessions/:id", async (req, res) => {
+  app.get("/api/sessions/:sessionId", async (req, res) => {
     try {
-      const session = await storage.getAnalysisSession(req.params.id);
+      const session = await storage.getAnalysisSession(req.params.sessionId);
       if (!session) {
         return res.status(404).json({ message: "Analysis session not found" });
       }
       
       // Also get the property profiles in this session
-      const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.id);
+      const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.sessionId);
       res.json({ ...session, propertyProfiles });
     } catch (error) {
       console.error("Error fetching analysis session:", error);
@@ -3160,7 +3295,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Session Property Profiles endpoints
   
   // Add property profile to session
-  app.post("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+  app.post("/api/sessions/:sessionId/properties", async (req, res) => {
     try {
       const validatedData = insertSessionPropertyProfileSchema.omit({ sessionId: true }).parse(req.body);
       const sessionPropertyProfile = await storage.addPropertyProfileToSession({
@@ -3179,7 +3314,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Remove property profile from session
-  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", async (req, res) => {
+  app.delete("/api/sessions/:sessionId/properties/:propertyProfileId", async (req, res) => {
     try {
       const removed = await storage.removePropertyProfileFromSession(
         req.params.sessionId, 
@@ -3196,7 +3331,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get property profiles in session
-  app.get("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+  app.get("/api/sessions/:sessionId/properties", async (req, res) => {
     try {
       const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.sessionId);
       res.json(propertyProfiles);
@@ -3440,7 +3575,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
   
   // Scrape all properties in an analysis session (NON-BLOCKING)
-  app.post("/api/analysis-sessions/:sessionId/scrape", async (req, res) => {
+  app.post("/api/sessions/:sessionId/scrape", async (req, res) => {
     try {
       // Validate request body
       const validationResult = scrapeAnalysisSessionSchema.safeParse(req.body);
@@ -3489,7 +3624,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           name: profile.name,
           url: profile.url
         })),
-        statusCheckUrl: `/api/analysis-sessions/${sessionId}/scraping-status`
+        statusCheckUrl: `/api/sessions/${sessionId}/scraping-status`
       });
       
     } catch (error) {
@@ -3499,7 +3634,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
   
   // Get scraping status for an analysis session
-  app.get("/api/analysis-sessions/:sessionId/scraping-status", async (req, res) => {
+  app.get("/api/sessions/:sessionId/scraping-status", async (req, res) => {
     try {
       const sessionId = req.params.sessionId;
       const session = await storage.getAnalysisSession(sessionId);
@@ -3535,6 +3670,386 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     } catch (error) {
       console.error("[SESSION_SCRAPING_STATUS] Error:", error);
       res.status(500).json({ message: "Failed to get session scraping status" });
+    }
+  });
+
+  // SESSION-BASED MULTI-PROPERTY ENDPOINTS
+
+  // Get session-based vacancy summary for multi-property analysis
+  app.get("/api/sessions/:sessionId/vacancy-summary", async (req, res) => {
+    try {
+      console.log('[SESSION_VACANCY_SUMMARY] ===========================================');
+      console.log('[SESSION_VACANCY_SUMMARY] Starting session-based vacancy summary generation');
+      
+      const sessionId = req.params.sessionId;
+      console.log('[SESSION_VACANCY_SUMMARY] Session ID:', sessionId);
+      
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Get property profiles in the session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+      const competitorProfiles = propertyProfiles.filter(p => p.profileType === 'competitor');
+
+      console.log('[SESSION_VACANCY_SUMMARY] Subject properties:', subjectProfiles.length);
+      console.log('[SESSION_VACANCY_SUMMARY] Competitor properties:', competitorProfiles.length);
+
+      if (subjectProfiles.length === 0) {
+        return res.status(400).json({ 
+          message: "No subject properties found in this session",
+          suggestion: "Please add subject properties to the analysis session"
+        });
+      }
+
+      if (competitorProfiles.length === 0) {
+        return res.status(400).json({ 
+          message: "No competitor properties found in this session",
+          suggestion: "Please add competitor properties to the analysis session"
+        });
+      }
+
+      // Helper function to calculate vacancy data for a property profile
+      const calculateVacancyForProfile = async (profile: any) => {
+        const units = await storage.getPropertyUnitsByProfile(profile.id);
+        const availableUnits = units.filter(unit => unit.status === 'vacant' || unit.status === 'available');
+        const totalUnits = Math.max(units.length, profile.totalUnits || 0);
+        
+        return {
+          id: profile.id,
+          name: profile.name,
+          address: profile.address,
+          totalUnits,
+          availableUnits: availableUnits.length,
+          vacancyRate: totalUnits > 0 ? (availableUnits.length / totalUnits) * 100 : 0,
+          units: units.map(unit => ({
+            unitNumber: unit.unitNumber,
+            unitType: unit.unitType,
+            rent: parseFloat(unit.currentRent),
+            status: unit.status
+          }))
+        };
+      };
+
+      // Calculate vacancy data for all subject properties
+      const subjectVacancyData = await Promise.all(
+        subjectProfiles.map(profile => calculateVacancyForProfile(profile))
+      );
+
+      // Calculate vacancy data for all competitor properties
+      const competitorVacancyData = await Promise.all(
+        competitorProfiles.map(profile => calculateVacancyForProfile(profile))
+      );
+
+      // Calculate portfolio-level metrics
+      const totalSubjectUnits = subjectVacancyData.reduce((sum, prop) => sum + prop.totalUnits, 0);
+      const totalSubjectVacant = subjectVacancyData.reduce((sum, prop) => sum + prop.availableUnits, 0);
+      const portfolioVacancyRate = totalSubjectUnits > 0 ? (totalSubjectVacant / totalSubjectUnits) * 100 : 0;
+
+      const avgCompetitorVacancy = competitorVacancyData.length > 0 
+        ? competitorVacancyData.reduce((sum, comp) => sum + comp.vacancyRate, 0) / competitorVacancyData.length 
+        : 0;
+
+      // Generate market insights for portfolio
+      const marketInsights = {
+        portfolioVsMarket: portfolioVacancyRate < avgCompetitorVacancy ? "Below market average" : 
+                          portfolioVacancyRate > avgCompetitorVacancy ? "Above market average" : "At market average",
+        totalPortfolioUnits: totalSubjectUnits,
+        totalVacantUnits: totalSubjectVacant,
+        portfolioVacancyRate: Math.round(portfolioVacancyRate * 10) / 10,
+        competitorAvgVacancy: Math.round(avgCompetitorVacancy * 10) / 10,
+        performingProperties: subjectVacancyData.filter(p => p.vacancyRate < avgCompetitorVacancy).length,
+        underperformingProperties: subjectVacancyData.filter(p => p.vacancyRate > avgCompetitorVacancy).length
+      };
+
+      const response = {
+        sessionId,
+        sessionName: session.name,
+        subjectProperties: subjectVacancyData,
+        competitors: competitorVacancyData,
+        portfolioMetrics: marketInsights
+      };
+
+      console.log('[SESSION_VACANCY_SUMMARY] Portfolio vacancy analysis completed');
+      console.log('[SESSION_VACANCY_SUMMARY] ===========================================');
+      
+      res.json(response);
+    } catch (error) {
+      console.error("[SESSION_VACANCY_SUMMARY] Error generating session vacancy summary:", error);
+      res.status(500).json({ message: "Failed to generate session vacancy summary" });
+    }
+  });
+
+  // Session-based optimization for multi-property portfolio
+  app.post("/api/sessions/:sessionId/optimize", async (req, res) => {
+    try {
+      console.log('[SESSION_OPTIMIZE] ===========================================');
+      console.log('[SESSION_OPTIMIZE] Starting session-based optimization');
+      
+      const sessionId = req.params.sessionId;
+      const { goal, targetOccupancy, riskTolerance } = req.body;
+      
+      console.log('[SESSION_OPTIMIZE] Session ID:', sessionId);
+      console.log('[SESSION_OPTIMIZE] Optimization goal:', goal);
+      console.log('[SESSION_OPTIMIZE] Target occupancy:', targetOccupancy);
+      console.log('[SESSION_OPTIMIZE] Risk tolerance:', riskTolerance);
+
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Get subject property profiles in the session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+
+      if (subjectProfiles.length === 0) {
+        return res.status(400).json({ 
+          message: "No subject properties found in this session",
+          suggestion: "Please add subject properties to the analysis session"
+        });
+      }
+
+      console.log('[SESSION_OPTIMIZE] Optimizing', subjectProfiles.length, 'subject properties');
+
+      // Collect all units from all subject properties
+      const allUnits = [];
+      const propertyUnitMap = new Map();
+
+      for (const profile of subjectProfiles) {
+        const units = await storage.getPropertyUnitsByProfile(profile.id);
+        console.log(`[SESSION_OPTIMIZE] Property ${profile.name}: ${units.length} units`);
+        
+        for (const unit of units) {
+          allUnits.push({
+            ...unit,
+            propertyProfileId: profile.id,
+            propertyName: profile.name,
+            propertyAddress: profile.address
+          });
+        }
+        
+        propertyUnitMap.set(profile.id, {
+          profile,
+          units: units
+        });
+      }
+
+      console.log('[SESSION_OPTIMIZE] Total units across portfolio:', allUnits.length);
+
+      if (allUnits.length === 0) {
+        return res.status(400).json({ 
+          message: "No units found for optimization in this session",
+          suggestion: "Ensure properties have units data available"
+        });
+      }
+
+      // Generate AI-powered portfolio optimization recommendations
+      const goalDisplayMap: Record<string, string> = {
+        'maximize-revenue': 'Maximize Revenue',
+        'maximize-occupancy': 'Maximize Occupancy', 
+        'balanced': 'Balanced Approach',
+        'custom': 'Custom Strategy'
+      };
+      
+      const riskDisplayMap: Record<number, string> = {
+        1: 'Low (Conservative)',
+        2: 'Medium (Moderate)', 
+        3: 'High (Aggressive)'
+      };
+
+      const prompt = `As a real estate portfolio optimization expert, analyze the following multi-property portfolio and provide pricing recommendations:
+
+Portfolio Analysis Session: ${session.name}
+${session.description ? `Description: ${session.description}` : ''}
+
+Subject Properties (${subjectProfiles.length}):
+${subjectProfiles.map(p => `- ${p.name} (${p.address}) - ${p.totalUnits || 'unknown'} units`).join('\n')}
+
+Optimization Parameters:
+- Goal: ${goalDisplayMap[goal] || goal}
+- Target Occupancy: ${targetOccupancy}%
+- Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
+
+Portfolio Unit Portfolio (${allUnits.length} total units):
+${allUnits.slice(0, 50).map(unit => `${unit.propertyName} - ${unit.unitNumber}: ${unit.unitType} - Current Rent: $${unit.currentRent} - Status: ${unit.status}`).join('\n')}
+${allUnits.length > 50 ? `... and ${allUnits.length - 50} more units across the portfolio` : ''}
+
+Portfolio Context:
+- Consider portfolio-level economies of scale and synergies
+- Factor in cross-property market positioning and competition
+- Account for portfolio diversification and risk management
+- Balance individual property performance with overall portfolio goals
+- Consider tenant migration between properties in the portfolio
+
+Please provide optimization recommendations for ALL ${allUnits.length} units across the ${subjectProfiles.length} properties in this exact JSON format:
+{
+  "portfolioRecommendations": [
+    {
+      "propertyName": "string",
+      "propertyProfileId": "string", 
+      "unitNumber": "string",
+      "currentRent": number,
+      "recommendedRent": number,
+      "marketAverage": number,
+      "change": number,
+      "annualImpact": number,
+      "confidenceLevel": "High|Medium|Low",
+      "reasoning": "Brief explanation for the recommendation"
+    }
+  ],
+  "portfolioSummary": {
+    "totalIncrease": number,
+    "affectedUnits": number,
+    "avgIncrease": number,
+    "riskLevel": "Low|Medium|High",
+    "portfolioInsights": {
+      "crossPropertySynergies": "Portfolio-level advantages identified",
+      "riskDiversification": "How risk is spread across properties",
+      "marketPositioning": "Overall portfolio positioning strategy"
+    }
+  }
+}
+
+Important: Generate recommendations for ALL ${allUnits.length} units across the ${subjectProfiles.length} properties in the portfolio, considering both individual property performance and portfolio-level optimization.`;
+
+      console.log('[SESSION_OPTIMIZE] Generating AI recommendations...');
+      
+      const aiResponse = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
+      });
+
+      const optimizationData = JSON.parse(aiResponse.choices[0].message.content || "{}");
+      
+      console.log('[SESSION_OPTIMIZE] AI recommendations generated');
+      console.log('[SESSION_OPTIMIZE] Recommendations count:', optimizationData.portfolioRecommendations?.length || 0);
+
+      // Update units with recommendations across all properties
+      const updatedUnits = [];
+      for (const recommendation of optimizationData.portfolioRecommendations || []) {
+        const unit = allUnits.find(u => 
+          u.propertyProfileId === recommendation.propertyProfileId && 
+          u.unitNumber === recommendation.unitNumber
+        );
+        
+        if (unit) {
+          const updatedUnit = await storage.updatePropertyUnit(unit.id, {
+            recommendedRent: recommendation.recommendedRent.toString()
+          });
+          
+          if (updatedUnit) {
+            updatedUnits.push({
+              ...updatedUnit,
+              propertyName: recommendation.propertyName,
+              propertyProfileId: recommendation.propertyProfileId,
+              marketAverage: recommendation.marketAverage,
+              change: recommendation.change,
+              annualImpact: recommendation.annualImpact,
+              confidenceLevel: recommendation.confidenceLevel,
+              reasoning: recommendation.reasoning
+            });
+          }
+        }
+      }
+
+      // Create optimization report for the session
+      const portfolioSummary = optimizationData.portfolioSummary || {
+        totalIncrease: 0,
+        affectedUnits: 0,
+        avgIncrease: 0,
+        riskLevel: 'Medium'
+      };
+
+      const optimizationReport = await storage.createOptimizationReport({
+        sessionId,
+        goal,
+        riskTolerance: riskDisplayMap[riskTolerance] || 'Medium',
+        timeline: "30-60 days",
+        totalIncrease: portfolioSummary.totalIncrease.toString(),
+        affectedUnits: portfolioSummary.affectedUnits,
+        avgIncrease: portfolioSummary.avgIncrease.toString(),
+        riskLevel: portfolioSummary.riskLevel
+      });
+
+      const response = {
+        sessionId,
+        sessionName: session.name,
+        report: optimizationReport,
+        units: updatedUnits,
+        portfolioSummary: portfolioSummary,
+        propertiesOptimized: subjectProfiles.length
+      };
+
+      console.log('[SESSION_OPTIMIZE] Portfolio optimization completed');
+      console.log('[SESSION_OPTIMIZE] ===========================================');
+      
+      res.json(response);
+    } catch (error) {
+      console.error("[SESSION_OPTIMIZE] Error generating session optimization:", error);
+      res.status(500).json({ message: "Failed to generate session optimization" });
+    }
+  });
+
+  // Get session-based optimization report
+  app.get("/api/sessions/:sessionId/optimization", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Find optimization report for this session
+      const allReports = await storage.getAllOptimizationReports?.() || [];
+      const sessionReport = allReports.find(report => report.sessionId === sessionId);
+      
+      if (!sessionReport) {
+        return res.status(404).json({ 
+          message: "No optimization report found for this session",
+          suggestion: "Run the optimization process first"
+        });
+      }
+
+      // Get property profiles in the session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+
+      // Collect all optimized units from all subject properties
+      const allUnits = [];
+      for (const profile of subjectProfiles) {
+        const units = await storage.getPropertyUnitsByProfile(profile.id);
+        const optimizedUnits = units.filter(unit => unit.recommendedRent && unit.recommendedRent !== unit.currentRent);
+        
+        for (const unit of optimizedUnits) {
+          allUnits.push({
+            ...unit,
+            propertyProfileId: profile.id,
+            propertyName: profile.name,
+            propertyAddress: profile.address
+          });
+        }
+      }
+
+      const response = {
+        sessionId,
+        sessionName: session.name,
+        report: sessionReport,
+        units: allUnits,
+        propertiesOptimized: subjectProfiles.length
+      };
+
+      res.json(response);
+    } catch (error) {
+      console.error("Error fetching session optimization report:", error);
+      res.status(500).json({ message: "Failed to fetch session optimization report" });
     }
   });
 

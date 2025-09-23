@@ -132,6 +132,7 @@ export interface IStorage {
   getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]>;
   getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]>;
   getScrapingJobsBySession(sessionId: string): Promise<ScrapingJob[]>;
+  getAllOptimizationReports(): Promise<OptimizationReport[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -1097,6 +1098,10 @@ export class MemStorage implements IStorage {
     return Array.from(this.scrapingJobs.values()).filter(
       job => job.sessionId === sessionId
     );
+  }
+
+  async getAllOptimizationReports(): Promise<OptimizationReport[]> {
+    return Array.from(this.optimizationReports.values());
   }
 }
 

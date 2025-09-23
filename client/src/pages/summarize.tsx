@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3 } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
-import type { Property, PropertyAnalysis, ScrapedProperty } from "@shared/schema";
+import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile } from "@shared/schema";
 
 interface PropertyWithAnalysis {
   property: Property;
@@ -64,6 +64,39 @@ interface VacancyData {
   };
 }
 
+// New interface for session-based vacancy data
+interface SessionVacancyData {
+  sessionId: string;
+  sessionName: string;
+  subjectProperties: {
+    id: string;
+    name: string;
+    address: string;
+    totalUnits: number;
+    availableUnits: number;
+    vacancyRate: number;
+    units: Unit[];
+  }[];
+  competitors: {
+    id: string;
+    name: string;
+    address: string;
+    totalUnits: number;
+    availableUnits: number;
+    vacancyRate: number;
+    units: Unit[];
+  }[];
+  portfolioMetrics: {
+    portfolioVsMarket: string;
+    totalPortfolioUnits: number;
+    totalVacantUnits: number;
+    portfolioVacancyRate: number;
+    competitorAvgVacancy: number;
+    performingProperties: number;
+    underperformingProperties: number;
+  };
+}
+
 interface UnitTypeData {
   type: string;
   totalUnits: number;
@@ -74,22 +107,43 @@ interface UnitTypeData {
   rentRange: { min: number; max: number };
 }
 
-export default function Summarize({ params }: { params: { id: string } }) {
+export default function Summarize({ params }: { params: { id?: string; sessionId?: string } }) {
   const [, setLocation] = useLocation();
   const [selectedCompetitors, setSelectedCompetitors] = useState<ScrapedProperty[]>([]);
   const [showChart, setShowChart] = useState(false);
   const [scrapingStage, setScrapingStage] = useState<'none' | 'scraping' | 'completed' | 'error'>('none');
   const [scrapingResults, setScrapingResults] = useState<ScrapingResult[]>([]);
   const [showVacancyChart, setShowVacancyChart] = useState(false);
+  const [isSessionMode, setIsSessionMode] = useState(false);
   const { toast } = useToast();
-  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
+  
+  // Determine the current mode and ID
+  const currentId = params.sessionId || params.id || '';
+  const isSessionModeDetected = !!params.sessionId;
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(currentId, isSessionModeDetected);
+  
+  // Detect session mode based on URL pattern
+  useEffect(() => {
+    const isSession = window.location.pathname.includes('/session/summarize/');
+    setIsSessionMode(isSession);
+    console.log('[SUMMARIZE] Mode detected:', isSession ? 'Session-based multi-property' : 'Legacy single-property');
+  }, []);
 
+  // Legacy single-property query
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
+    enabled: !isSessionMode && !!params.id,
+  });
+
+  // Session-based query for multi-property analysis
+  const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
+    queryKey: ['/api/sessions', params.sessionId],
+    enabled: isSessionMode && !!params.sessionId,
   });
 
   const competitorsQuery = useQuery<ScrapedProperty[]>({
     queryKey: ['/api/competitors'],
+    enabled: !isSessionMode, // Only for legacy mode
   });
 
   // Load workflow state on mount and restore selections
@@ -117,13 +171,13 @@ export default function Summarize({ params }: { params: { id: string } }) {
     }
   }, [competitorsQuery.data, params.id]);
 
-  // Vacancy data query - triggered after scraping completes
+  // Legacy vacancy data query - triggered after scraping completes
   const vacancyQuery = useQuery<VacancyData>({
     queryKey: ['/api/vacancy/summary', params.id, selectedCompetitors.map(c => c.id)],
     queryFn: async () => {
       const competitorIds = selectedCompetitors.map(c => c.id);
       const searchParams = new URLSearchParams({
-        propertyId: params.id,
+        propertyId: params.id!,
         ...competitorIds.reduce((acc, id, index) => {
           acc[`competitorIds[${index}]`] = id;
           return acc;
@@ -135,7 +189,22 @@ export default function Summarize({ params }: { params: { id: string } }) {
       }
       return await response.json();
     },
-    enabled: scrapingStage === 'completed' && selectedCompetitors.length > 0,
+    enabled: !isSessionMode && scrapingStage === 'completed' && selectedCompetitors.length > 0,
+    retry: 3,
+    retryDelay: 2000,
+  });
+
+  // Session-based vacancy data query for multi-property portfolio analysis
+  const sessionVacancyQuery = useQuery<SessionVacancyData>({
+    queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/sessions/${params.sessionId}/vacancy-summary`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch session vacancy data');
+      }
+      return await response.json();
+    },
+    enabled: isSessionMode && !!params.sessionId,
     retry: 3,
     retryDelay: 2000,
   });
@@ -195,11 +264,19 @@ export default function Summarize({ params }: { params: { id: string } }) {
 
   const handleContinueToAnalyze = async () => {
     // Save workflow state before navigating
-    await saveWorkflowState({
-      stage: 'analyze',
-      selectedCompetitorIds: selectedCompetitors.map(c => c.id)
-    });
-    setLocation(`/analyze/${params.id}`);
+    if (isSessionMode) {
+      await saveWorkflowState({
+        stage: 'analyze',
+        analysisSessionId: params.sessionId
+      });
+      setLocation(`/session/analyze/${params.sessionId}`);
+    } else {
+      await saveWorkflowState({
+        stage: 'analyze',
+        selectedCompetitorIds: selectedCompetitors.map(c => c.id)
+      });
+      setLocation(`/analyze/${params.id}`);
+    }
   };
 
   const handleBackToCompetitors = async () => {
@@ -281,18 +358,31 @@ export default function Summarize({ params }: { params: { id: string } }) {
     }
   }, [scrapingStage, vacancyQuery.data, vacancyQuery.isLoading]);
 
-  if (propertyQuery.isLoading || competitorsQuery.isLoading) {
+  // Loading state for both modes
+  const isLoading = isSessionMode 
+    ? sessionQuery.isLoading 
+    : (propertyQuery.isLoading || competitorsQuery.isLoading);
+    
+  const hasError = isSessionMode 
+    ? sessionQuery.error 
+    : (propertyQuery.error || competitorsQuery.error);
+
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64" data-testid="loading-state">
-        <div className="text-muted-foreground">Loading property data...</div>
+        <div className="text-muted-foreground">
+          {isSessionMode ? 'Loading session data...' : 'Loading property data...'}
+        </div>
       </div>
     );
   }
 
-  if (propertyQuery.error || competitorsQuery.error) {
+  if (hasError) {
     return (
       <div className="text-center py-8" data-testid="error-state">
-        <div className="text-red-600 mb-4">Failed to load property data</div>
+        <div className="text-red-600 mb-4">
+          {isSessionMode ? 'Failed to load session data' : 'Failed to load property data'}
+        </div>
         <Button onClick={() => window.location.reload()} data-testid="button-retry">
           Retry
         </Button>
@@ -301,17 +391,230 @@ export default function Summarize({ params }: { params: { id: string } }) {
   }
 
   const competitors = competitorsQuery.data || [];
+  
+  // Get data based on current mode
+  const sessionData = sessionQuery.data;
+  const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
+  const competitorProfiles = sessionData?.propertyProfiles?.filter(p => p.profileType === 'competitor') || [];
 
   return (
     <div className="space-y-6" data-testid="summarize-page">
-      {!showChart ? (
-        <CompetitorSelection 
-          competitors={competitors}
-          onContinue={handleCompetitorSelection}
-        />
+      {/* Header with mode indicator */}
+      <div className="bg-card rounded-lg border border-border p-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            {isSessionMode ? (
+              <>
+                <Building2 className="h-6 w-6 text-primary" />
+                <div>
+                  <h1 className="text-2xl font-bold">{sessionData?.name || 'Portfolio Analysis'}</h1>
+                  <p className="text-muted-foreground">
+                    Multi-property portfolio analysis • {subjectProperties.length} subject properties
+                  </p>
+                  {sessionData?.description && (
+                    <p className="text-sm text-muted-foreground mt-1">{sessionData.description}</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <Home className="h-6 w-6 text-primary" />
+                <div>
+                  <h1 className="text-2xl font-bold">Property Analysis Summary</h1>
+                  <p className="text-muted-foreground">Single property competitive analysis</p>
+                </div>
+              </>
+            )}
+          </div>
+          <Badge variant={isSessionMode ? "default" : "secondary"}>
+            {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Session-based portfolio view */}
+      {isSessionMode ? (
+        <div className="space-y-6">
+          {/* Portfolio Properties Overview */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Building2 className="h-5 w-5 text-primary" />
+                <span>Portfolio Properties</span>
+              </CardTitle>
+              <CardDescription>
+                {subjectProperties.length} subject properties and {competitorProfiles.length} competitors selected for analysis
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Subject Properties */}
+                <div>
+                  <h4 className="font-medium mb-3 text-primary">Subject Properties ({subjectProperties.length})</h4>
+                  <div className="space-y-2">
+                    {subjectProperties.map((property) => (
+                      <div key={property.id} className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                        <div className="font-medium text-blue-900 dark:text-blue-100">{property.name}</div>
+                        <div className="text-sm text-blue-600 dark:text-blue-400">{property.address}</div>
+                        {property.totalUnits && (
+                          <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                            {property.totalUnits} units
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Competitor Properties */}
+                <div>
+                  <h4 className="font-medium mb-3 text-muted-foreground">Competitor Properties ({competitorProfiles.length})</h4>
+                  <div className="space-y-2">
+                    {competitorProfiles.map((property) => (
+                      <div key={property.id} className="p-3 bg-muted rounded-lg">
+                        <div className="font-medium">{property.name}</div>
+                        <div className="text-sm text-muted-foreground">{property.address}</div>
+                        {property.totalUnits && (
+                          <div className="text-xs text-muted-foreground mt-1">
+                            {property.totalUnits} units
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Portfolio Vacancy Analysis */}
+          {sessionVacancyQuery.data && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <h3 className="text-xl font-semibold">Portfolio Vacancy Analysis</h3>
+                </div>
+                <Badge variant="secondary" className="text-xs">
+                  {sessionVacancyQuery.data.subjectProperties.length} Properties • {sessionVacancyQuery.data.portfolioMetrics.totalPortfolioUnits} Total Units
+                </Badge>
+              </div>
+
+              {/* Portfolio Metrics Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Portfolio Vacancy Rate */}
+                <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Building2 className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Portfolio Vacancy</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                    {sessionVacancyQuery.data.portfolioMetrics.portfolioVacancyRate}%
+                  </div>
+                  <div className="text-xs text-blue-600 dark:text-blue-400">
+                    {sessionVacancyQuery.data.portfolioMetrics.portfolioVsMarket}
+                  </div>
+                </div>
+
+                {/* Total Portfolio Units */}
+                <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <Home className="h-4 w-4 text-green-600" />
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">Total Units</span>
+                  </div>
+                  <div className="text-lg font-bold text-green-900 dark:text-green-100">
+                    {sessionVacancyQuery.data.portfolioMetrics.totalPortfolioUnits}
+                  </div>
+                  <div className="text-xs text-green-600 dark:text-green-400">
+                    {sessionVacancyQuery.data.portfolioMetrics.totalVacantUnits} vacant
+                  </div>
+                </div>
+
+                {/* Market Comparison */}
+                <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <TrendingUp className="h-4 w-4 text-amber-600" />
+                    <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Market Avg</span>
+                  </div>
+                  <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
+                    {sessionVacancyQuery.data.portfolioMetrics.competitorAvgVacancy}%
+                  </div>
+                  <div className="text-xs text-amber-600 dark:text-amber-400">
+                    Competitor average
+                  </div>
+                </div>
+
+                {/* Portfolio Performance */}
+                <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                  <div className="flex items-center space-x-2 mb-2">
+                    <CheckCircle className="h-4 w-4 text-purple-600" />
+                    <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Performance</span>
+                  </div>
+                  <div className="text-lg font-bold text-purple-900 dark:text-purple-100">
+                    {sessionVacancyQuery.data.portfolioMetrics.performingProperties}/{sessionVacancyQuery.data.subjectProperties.length}
+                  </div>
+                  <div className="text-xs text-purple-600 dark:text-purple-400">
+                    Above market avg
+                  </div>
+                </div>
+              </div>
+
+              {/* Individual Property Performance */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Individual Property Performance</CardTitle>
+                  <CardDescription>
+                    Vacancy rates and performance metrics for each property in the portfolio
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {sessionVacancyQuery.data.subjectProperties.map((property) => (
+                      <div key={property.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex-1">
+                          <div className="font-medium">{property.name}</div>
+                          <div className="text-sm text-muted-foreground">{property.address}</div>
+                        </div>
+                        <div className="flex items-center space-x-4 text-right">
+                          <div>
+                            <div className="text-sm font-medium">{property.totalUnits} units</div>
+                            <div className="text-xs text-muted-foreground">{property.availableUnits} vacant</div>
+                          </div>
+                          <div className={`px-2 py-1 rounded text-xs font-medium ${
+                            property.vacancyRate < sessionVacancyQuery.data.portfolioMetrics.competitorAvgVacancy
+                              ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                          }`}>
+                            {property.vacancyRate.toFixed(1)}% vacancy
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Portfolio Navigation */}
+          <div className="flex justify-end pt-6">
+            <Button onClick={handleContinueToAnalyze} data-testid="button-continue-to-analyze">
+              Proceed to Portfolio Analysis
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
       ) : (
-        <>
-          <div className="bg-card rounded-lg border border-border p-6" data-testid="competitor-summary">
+        /* Legacy single-property view */
+        <div className="space-y-6">
+          {!showChart ? (
+            <CompetitorSelection 
+              competitors={competitors}
+              onContinue={handleCompetitorSelection}
+            />
+          ) : (
+            <>
+              <div className="bg-card rounded-lg border border-border p-6" data-testid="competitor-summary">
             <h3 className="text-xl font-semibold mb-6">Selected Competitors</h3>
             <div className="space-y-4">
               {selectedCompetitors.map((competitor) => (
@@ -639,6 +942,8 @@ export default function Summarize({ params }: { params: { id: string } }) {
             </div>
           </div>
         </>
+      )}
+        </div>
       )}
     </div>
   );

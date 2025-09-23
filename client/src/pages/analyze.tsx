@@ -1,16 +1,18 @@
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import { motion, AnimatePresence } from "framer-motion";
-import type { FilterCriteria, FilteredAnalysis } from "@shared/schema";
+import type { FilterCriteria, FilteredAnalysis, AnalysisSession } from "@shared/schema";
 
-export default function Analyze({ params }: { params: { id: string } }) {
+export default function Analyze({ params }: { params: { id: string, sessionId?: string } }) {
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState<FilterCriteria>({
     bedroomTypes: [],
@@ -22,16 +24,23 @@ export default function Analyze({ params }: { params: { id: string } }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isDebouncing, setIsDebouncing] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [isSessionAnalysis, setIsSessionAnalysis] = useState(false);
-  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
+  // Determine session mode and ID based on URL pattern
+  const isSessionMode = !!params.sessionId;
+  const sessionId = params.sessionId || params.id;
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
+  
+  // Query for session data when in session mode
+  const sessionQuery = useQuery({
+    queryKey: ['/api/sessions', sessionId],
+    enabled: isSessionMode,
+    staleTime: 30000
+  });
 
   // Mutation for filtered analysis
   const analysisMutation = useMutation({
     mutationFn: async (filterCriteria: FilterCriteria): Promise<FilteredAnalysis> => {
-      // Determine if this is a session-based analysis or legacy property analysis
-      if (isSessionAnalysis) {
-        const response = await apiRequest('POST', '/api/session-analysis', {
-          sessionId: params.id,
+      if (isSessionMode) {
+        const response = await apiRequest('POST', `/api/sessions/${sessionId}/filtered-analysis`, {
           filterCriteria
         });
         return response.json();
@@ -48,28 +57,11 @@ export default function Analyze({ params }: { params: { id: string } }) {
     }
   });
 
-  // Detect if this is a session analysis or legacy property analysis
+  // Session mode is determined by URL pattern - no additional detection needed
   useEffect(() => {
-    const detectAnalysisType = async () => {
-      try {
-        // Try to fetch as an analysis session first
-        const sessionResponse = await apiRequest('GET', `/api/analysis-sessions/${params.id}`);
-        if (sessionResponse.ok) {
-          setIsSessionAnalysis(true);
-          console.log('[ANALYZE] Detected session-based analysis');
-        } else {
-          setIsSessionAnalysis(false);
-          console.log('[ANALYZE] Using legacy property-based analysis');
-        }
-      } catch (error) {
-        // If session fetch fails, assume it's a legacy property ID
-        setIsSessionAnalysis(false);
-        console.log('[ANALYZE] Defaulting to legacy property-based analysis');
-      }
-    };
-    
-    detectAnalysisType();
-  }, [params.id]);
+    console.log('[ANALYZE] Mode:', isSessionMode ? 'Session-based portfolio analysis' : 'Single property analysis');
+    console.log('[ANALYZE] Session/Property ID:', sessionId);
+  }, [isSessionMode, sessionId]);
 
   // Load workflow state on mount and restore filters
   useEffect(() => {
@@ -81,11 +73,11 @@ export default function Analyze({ params }: { params: { id: string } }) {
       setIsInitialized(true);
     };
     initializeState();
-  }, [params.id]);
+  }, [sessionId, isSessionMode]);
 
   // Debounced filter changes (300ms delay)
   useEffect(() => {
-    if (isInitialized && isSessionAnalysis !== null) {
+    if (isInitialized) {
       // Clear any existing timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -112,7 +104,7 @@ export default function Analyze({ params }: { params: { id: string } }) {
         }
       };
     }
-  }, [filters, isInitialized, isSessionAnalysis]);
+  }, [filters, isInitialized, isSessionMode]);
 
   const handleFiltersChange = (newFilters: FilterCriteria) => {
     setFilters(newFilters);
@@ -124,8 +116,17 @@ export default function Analyze({ params }: { params: { id: string } }) {
       stage: 'optimize',
       filterCriteria: filters
     });
-    setLocation(`/optimize/${params.id}`);
+    
+    // Navigate based on session mode vs legacy mode
+    if (isSessionMode && params.sessionId) {
+      setLocation(`/session/optimize/${params.sessionId}`);
+    } else {
+      setLocation(`/optimize/${params.id}`);
+    }
   };
+
+  const sessionData = sessionQuery.data;
+  const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
 
   return (
     <motion.div 
@@ -136,6 +137,68 @@ export default function Analyze({ params }: { params: { id: string } }) {
       transition={{ duration: 0.3 }}
     >
       <div className="bg-card rounded-lg border border-border h-full overflow-hidden">
+        {/* Header with mode indicator */}
+        <div className="bg-card border-b border-border p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              {isSessionMode ? (
+                <>
+                  <Building2 className="h-6 w-6 text-primary" />
+                  <div>
+                    <h1 className="text-xl font-semibold">{sessionData?.name || 'Portfolio Analysis'}</h1>
+                    <p className="text-sm text-muted-foreground">
+                      Multi-property portfolio analysis • {subjectProperties.length} subject properties
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Home className="h-6 w-6 text-primary" />
+                  <div>
+                    <h1 className="text-xl font-semibold">Property Analysis</h1>
+                    <p className="text-sm text-muted-foreground">Single property competitive analysis</p>
+                  </div>
+                </>
+              )}
+            </div>
+            <Badge variant={isSessionMode ? "default" : "secondary"}>
+              {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+            </Badge>
+          </div>
+
+          {/* Portfolio Properties Summary for Session Mode */}
+          {isSessionMode && sessionData && (
+            <Card className="mt-4">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-sm flex items-center space-x-2">
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Portfolio Overview</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div className="text-center">
+                    <div className="font-semibold text-blue-600 dark:text-blue-400">{subjectProperties.length}</div>
+                    <div className="text-muted-foreground">Subject Properties</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-semibold text-green-600 dark:text-green-400">
+                      {sessionData.propertyProfiles?.filter(p => p.profileType === 'competitor').length || 0}
+                    </div>
+                    <div className="text-muted-foreground">Competitors</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="font-semibold text-orange-600 dark:text-orange-400">
+                      {subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0)}
+                    </div>
+                    <div className="text-muted-foreground">Total Units</div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
         {/* 75/25 Layout Container */}
         <div className="flex flex-col lg:flex-row h-full">
           {/* Main Analysis Area - 75% width */}
@@ -217,9 +280,20 @@ export default function Analyze({ params }: { params: { id: string } }) {
           {/* Filter Sidebar - 25% width */}
           <div className="lg:w-1/4 lg:border-l border-border p-6 bg-muted/5 overflow-y-auto">
             <div className="sticky top-0">
+              <div className="mb-4">
+                <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground mb-2">
+                  Analysis Filters
+                </h3>
+                {isSessionMode && (
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Filters apply across all {subjectProperties.length} subject properties in the portfolio
+                  </p>
+                )}
+              </div>
               <AnalysisFilters
                 filters={filters}
                 onFiltersChange={handleFiltersChange}
+                isPortfolioMode={isSessionMode}
               />
             </div>
           </div>

@@ -19,9 +19,17 @@ function Router() {
       <Route path="/" component={PropertyInput} />
       <Route path="/property-profiles" component={PropertyProfiles} />
       <Route path="/property-selection-matrix" component={PropertySelectionMatrix} />
+      
+      {/* Session-based multi-property workflow routes */}
+      <Route path="/session/summarize/:sessionId" component={Summarize} />
+      <Route path="/session/analyze/:sessionId" component={Analyze} />
+      <Route path="/session/optimize/:sessionId" component={Optimize} />
+      
+      {/* Legacy single-property workflow routes (backward compatibility) */}
       <Route path="/summarize/:id" component={Summarize} />
       <Route path="/analyze/:id" component={Analyze} />
       <Route path="/optimize/:id" component={Optimize} />
+      
       <Route component={NotFound} />
     </Switch>
   );

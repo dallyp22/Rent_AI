@@ -9,14 +9,20 @@ export interface WorkflowState {
   timestamp?: string;
 }
 
-export function useWorkflowState(propertyId: string) {
+export function useWorkflowState(workflowId: string, isSessionMode?: boolean) {
   const [isLoading, setIsLoading] = useState(false);
   const [state, setState] = useState<WorkflowState | null>(null);
+
+  // Determine the appropriate endpoint based on session mode
+  const getEndpointPrefix = () => {
+    return isSessionMode ? `/api/sessions/${workflowId}/workflow` : `/api/workflow/${workflowId}`;
+  };
 
   const loadState = async (): Promise<WorkflowState | null> => {
     try {
       setIsLoading(true);
-      const response = await apiRequest('GET', `/api/workflow/${propertyId}`);
+      const endpoint = getEndpointPrefix();
+      const response = await apiRequest('GET', endpoint);
       if (response.ok) {
         const data = await response.json();
         setState(data);
@@ -39,7 +45,8 @@ export function useWorkflowState(propertyId: string) {
         timestamp: new Date().toISOString()
       };
       
-      await apiRequest('PUT', `/api/workflow/${propertyId}`, updatedState);
+      const endpoint = getEndpointPrefix();
+      await apiRequest('PUT', endpoint, updatedState);
       setState(updatedState);
     } catch (error) {
       console.error("Error saving workflow state:", error);
@@ -48,10 +55,10 @@ export function useWorkflowState(propertyId: string) {
 
   // Load state on mount
   useEffect(() => {
-    if (propertyId) {
+    if (workflowId) {
       loadState();
     }
-  }, [propertyId]);
+  }, [workflowId, isSessionMode]);
 
   return { 
     state, 
