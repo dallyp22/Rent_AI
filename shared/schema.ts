@@ -96,6 +96,7 @@ export const scrapedUnits = pgTable("scraped_units", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   propertyId: varchar("property_id").references(() => scrapedProperties.id).notNull(),
   unitNumber: text("unit_number"),
+  floorPlanName: text("floor_plan_name"),
   unitType: text("unit_type").notNull(),
   bedrooms: integer("bedrooms"),
   bathrooms: decimal("bathrooms", { precision: 3, scale: 1 }),

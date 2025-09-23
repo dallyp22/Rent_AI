@@ -219,6 +219,7 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
 // Parse Scrapezy results to extract unit details
 function parseUnitData(scrapezyResult: any): Array<{
   unitNumber?: string;
+  floorPlanName?: string;
   unitType: string;
   bedrooms?: number;
   bathrooms?: number;
@@ -290,6 +291,7 @@ function parseUnitData(scrapezyResult: any): Array<{
   const validUnits = units
     .map(unit => ({
       unitNumber: unit.unitNumber || unit.unit_number || null,
+      floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.planName || unit.plan_name || null,
       unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
       bedrooms: parseNumber(unit.bedrooms || unit.bedroom_count),
       bathrooms: parseNumber(unit.bathrooms || unit.bathroom_count),
@@ -779,7 +781,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         for (const scrapedUnit of scrapedUnits) {
           const unit = await storage.createPropertyUnit({
             propertyId,
-            unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+            unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
             unitType: scrapedUnit.unitType,
             currentRent: scrapedUnit.rent || "0",
             status: scrapedUnit.status || "occupied"
@@ -1042,7 +1044,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
 
           // Call Scrapezy API for unit-level data
-          const unitPrompt = `Extract detailed unit information from this apartments.com property page. For each available apartment unit, extract: 1) Unit number or identifier (if available), 2) Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA"), 3) Number of bedrooms (as integer), 4) Number of bathrooms (as decimal like 1.0, 1.5, 2.0), 5) Square footage (as integer, if available), 6) Monthly rent price (as number, extract only the numerical value), 7) Availability date or status. Return as JSON array with objects containing "unitNumber", "unitType", "bedrooms", "bathrooms", "squareFootage", "rent", "availabilityDate" fields.`;
+          const unitPrompt = `Extract detailed unit information from this apartments.com property page. For each available apartment unit, extract: 1) Unit number (actual unit identifier like "1-332", "A101", etc - if available), 2) Floor plan name (marketing name like "New York", "Portland", "Green Lodge - One Bedroom", etc - if available), 3) Unit type (e.g., "Studio", "1BR/1BA", "2BR/2BA"), 4) Number of bedrooms (as integer), 5) Number of bathrooms (as decimal like 1.0, 1.5, 2.0), 6) Square footage (as integer, if available), 7) Monthly rent price (as number, extract only the numerical value), 8) Availability date or status. IMPORTANT: Some properties show unit numbers while others show floor plan names instead. Capture whichever identifier is present. Return as JSON array with objects containing "unitNumber", "floorPlanName", "unitType", "bedrooms", "bathrooms", "squareFootage", "rent", "availabilityDate" fields.`;
 
           const scrapezyResult = await callScrapezyScraping(property.url, unitPrompt);
           
@@ -1058,6 +1060,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               const savedUnit = await storage.createScrapedUnit({
                 propertyId: property.id,
                 unitNumber: unit.unitNumber,
+                floorPlanName: unit.floorPlanName,
                 unitType: unit.unitType,
                 bedrooms: unit.bedrooms,
                 bathrooms: unit.bathrooms?.toString() || null,
@@ -2290,7 +2293,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       for (const scrapedUnit of scrapedUnits) {
         const unit = await storage.createPropertyUnit({
           propertyId,
-          unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+          unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
           unitType: scrapedUnit.unitType,
           currentRent: scrapedUnit.rent || "0",
           status: scrapedUnit.status || "occupied"
@@ -2386,7 +2389,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       for (const scrapedUnit of scrapedUnits) {
         const unit = await storage.createPropertyUnit({
           propertyId,
-          unitNumber: scrapedUnit.unitNumber || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+          unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
           unitType: scrapedUnit.unitType,
           currentRent: scrapedUnit.rent || "0",
           status: scrapedUnit.status || "occupied"

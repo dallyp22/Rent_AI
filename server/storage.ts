@@ -326,6 +326,7 @@ export class MemStorage implements IStorage {
       squareFootage: insertUnit.squareFootage ?? null,
       status: insertUnit.status ?? null,
       unitNumber: insertUnit.unitNumber ?? null,
+      floorPlanName: insertUnit.floorPlanName ?? null,
       bedrooms: insertUnit.bedrooms ?? null,
       bathrooms: insertUnit.bathrooms ?? null,
       rent: insertUnit.rent ?? null,
