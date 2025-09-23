@@ -621,6 +621,108 @@ Please provide your analysis in this exact JSON format:
     }
   });
 
+  // Generate session-based analysis for Property Selection Matrix
+  app.post("/api/session-analysis", async (req, res) => {
+    try {
+      console.log('[SESSION_ANALYSIS] Starting session-based analysis generation');
+      
+      const { sessionId, filterCriteria } = req.body;
+      
+      if (!sessionId) {
+        return res.status(400).json({ message: "Session ID is required" });
+      }
+
+      console.log('[SESSION_ANALYSIS] Session ID:', sessionId);
+      console.log('[SESSION_ANALYSIS] Filter criteria:', JSON.stringify(filterCriteria, null, 2));
+
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Get property profiles in the session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+      const competitorProfiles = propertyProfiles.filter(p => p.profileType === 'competitor');
+
+      console.log('[SESSION_ANALYSIS] Subject properties:', subjectProfiles.length);
+      console.log('[SESSION_ANALYSIS] Competitor properties:', competitorProfiles.length);
+
+      if (subjectProfiles.length === 0) {
+        return res.status(400).json({ 
+          message: "No subject properties selected in this session",
+          suggestion: "Please select at least one subject property in the Property Selection Matrix"
+        });
+      }
+
+      if (competitorProfiles.length === 0) {
+        return res.status(400).json({ 
+          message: "No competitor properties selected in this session",
+          suggestion: "Please select at least one competitor property in the Property Selection Matrix"
+        });
+      }
+
+      // Generate multi-property analysis
+      const analysis = await storage.generateMultiPropertyAnalysis(sessionId, filterCriteria);
+
+      // Enhance with AI insights if OpenAI is configured
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const subjectNames = subjectProfiles.map(p => p.name).join(", ");
+          const competitorNames = competitorProfiles.map(p => p.name).join(", ");
+
+          const prompt = `Analyze the competitive position for multiple properties in a portfolio analysis:
+
+Session: ${session.name}
+${session.description ? `Description: ${session.description}` : ''}
+
+Subject Properties (${subjectProfiles.length}):
+${subjectProfiles.map(p => `- ${p.name} (${p.address}) - ${p.totalUnits || 'unknown'} units`).join('\n')}
+
+Competitor Properties (${competitorProfiles.length}):
+${competitorProfiles.map(p => `- ${p.name} (${p.address}) - ${p.totalUnits || 'unknown'} units`).join('\n')}
+
+Market Analysis:
+- Market Position: ${analysis.marketPosition}
+- Pricing Power Score: ${analysis.pricingPowerScore}/100
+- Total Subject Units: ${analysis.unitCount}
+- Average Rent: $${analysis.avgRent}
+- Percentile Rank: ${analysis.percentileRank}th
+
+Please provide 3-5 key strategic insights for this multi-property portfolio analysis, focusing on:
+1. Competitive positioning across the portfolio
+2. Pricing opportunities and risks
+3. Market trends and recommendations
+4. Portfolio-level advantages
+
+Return insights as a JSON array of strings.`;
+
+          const aiResponse = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" }
+          });
+
+          const aiData = JSON.parse(aiResponse.choices[0].message.content || "{}");
+          if (aiData.insights && Array.isArray(aiData.insights)) {
+            analysis.aiInsights = aiData.insights;
+          }
+        } catch (aiError) {
+          console.error('[SESSION_ANALYSIS] AI analysis failed:', aiError);
+          // Continue without AI insights
+        }
+      }
+
+      console.log('[SESSION_ANALYSIS] Analysis generated successfully for session:', session.name);
+      res.json(analysis);
+
+    } catch (error) {
+      console.error("[SESSION_ANALYSIS] Error generating session analysis:", error);
+      res.status(500).json({ message: "Failed to generate session analysis" });
+    }
+  });
+
   // Generate filtered analysis based on filter criteria
   app.post("/api/filtered-analysis", async (req, res) => {
     try {
@@ -2533,6 +2635,132 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     } catch (error) {
       console.error("[DEBUG_MATCHING] Error:", error);
       res.status(500).json({ message: "Failed to debug matching" });
+    }
+  });
+
+  // Analysis Sessions endpoints
+  
+  // Get all analysis sessions
+  app.get("/api/analysis-sessions", async (req, res) => {
+    try {
+      const sessions = await storage.getAllAnalysisSessions();
+      res.json(sessions);
+    } catch (error) {
+      console.error("Error fetching analysis sessions:", error);
+      res.status(500).json({ message: "Failed to fetch analysis sessions" });
+    }
+  });
+
+  // Get specific analysis session
+  app.get("/api/analysis-sessions/:id", async (req, res) => {
+    try {
+      const session = await storage.getAnalysisSession(req.params.id);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+      
+      // Also get the property profiles in this session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.id);
+      res.json({ ...session, propertyProfiles });
+    } catch (error) {
+      console.error("Error fetching analysis session:", error);
+      res.status(500).json({ message: "Failed to fetch analysis session" });
+    }
+  });
+
+  // Create analysis session
+  app.post("/api/analysis-sessions", async (req, res) => {
+    try {
+      const sessionData = insertAnalysisSessionSchema.parse(req.body);
+      const session = await storage.createAnalysisSession(sessionData);
+      res.json(session);
+    } catch (error) {
+      console.error("Error creating analysis session:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid session data", details: error.message });
+      }
+      res.status(500).json({ message: "Failed to create analysis session" });
+    }
+  });
+
+  // Update analysis session
+  app.put("/api/analysis-sessions/:id", async (req, res) => {
+    try {
+      const updateData = insertAnalysisSessionSchema.partial().parse(req.body);
+      const session = await storage.updateAnalysisSession(req.params.id, updateData);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+      res.json(session);
+    } catch (error) {
+      console.error("Error updating analysis session:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid session data", details: error.message });
+      }
+      res.status(500).json({ message: "Failed to update analysis session" });
+    }
+  });
+
+  // Delete analysis session
+  app.delete("/api/analysis-sessions/:id", async (req, res) => {
+    try {
+      const deleted = await storage.deleteAnalysisSession(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting analysis session:", error);
+      res.status(500).json({ message: "Failed to delete analysis session" });
+    }
+  });
+
+  // Session Property Profiles endpoints
+  
+  // Add property profile to session
+  app.post("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+    try {
+      const validatedData = insertSessionPropertyProfileSchema.omit({ sessionId: true }).parse(req.body);
+      const sessionPropertyProfile = await storage.addPropertyProfileToSession({
+        sessionId: req.params.sessionId,
+        propertyProfileId: validatedData.propertyProfileId,
+        role: validatedData.role
+      });
+      res.json(sessionPropertyProfile);
+    } catch (error) {
+      console.error("Error adding property profile to session:", error);
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ message: "Invalid property assignment data", details: error.message });
+      }
+      res.status(500).json({ message: "Failed to add property profile to session" });
+    }
+  });
+
+  // Remove property profile from session
+  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", async (req, res) => {
+    try {
+      const removed = await storage.removePropertyProfileFromSession(
+        req.params.sessionId, 
+        req.params.propertyProfileId
+      );
+      if (!removed) {
+        return res.status(404).json({ message: "Property profile not found in session" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error removing property profile from session:", error);
+      res.status(500).json({ message: "Failed to remove property profile from session" });
+    }
+  });
+
+  // Get property profiles in session
+  app.get("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+    try {
+      const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.sessionId);
+      res.json(propertyProfiles);
+    } catch (error) {
+      console.error("Error fetching property profiles in session:", error);
+      res.status(500).json({ message: "Failed to fetch property profiles for session" });
     }
   });
 

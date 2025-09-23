@@ -7,6 +7,7 @@ import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import PropertyInput from "@/pages/property-input";
 import PropertyProfiles from "@/pages/property-profiles";
+import PropertySelectionMatrix from "@/pages/property-selection-matrix";
 import Summarize from "@/pages/summarize";
 import Analyze from "@/pages/analyze";
 import Optimize from "@/pages/optimize";
@@ -17,6 +18,7 @@ function Router() {
     <Switch>
       <Route path="/" component={PropertyInput} />
       <Route path="/property-profiles" component={PropertyProfiles} />
+      <Route path="/property-selection-matrix" component={PropertySelectionMatrix} />
       <Route path="/summarize/:id" component={Summarize} />
       <Route path="/analyze/:id" component={Analyze} />
       <Route path="/optimize/:id" component={Optimize} />

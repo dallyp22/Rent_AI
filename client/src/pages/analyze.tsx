@@ -22,13 +22,23 @@ export default function Analyze({ params }: { params: { id: string } }) {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isDebouncing, setIsDebouncing] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSessionAnalysis, setIsSessionAnalysis] = useState(false);
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(params.id);
 
   // Mutation for filtered analysis
   const analysisMutation = useMutation({
     mutationFn: async (filterCriteria: FilterCriteria): Promise<FilteredAnalysis> => {
-      const response = await apiRequest('POST', '/api/filtered-analysis', filterCriteria);
-      return response.json();
+      // Determine if this is a session-based analysis or legacy property analysis
+      if (isSessionAnalysis) {
+        const response = await apiRequest('POST', '/api/session-analysis', {
+          sessionId: params.id,
+          filterCriteria
+        });
+        return response.json();
+      } else {
+        const response = await apiRequest('POST', '/api/filtered-analysis', filterCriteria);
+        return response.json();
+      }
     },
     onSuccess: (data: FilteredAnalysis) => {
       setAnalysisData(data);
@@ -37,6 +47,29 @@ export default function Analyze({ params }: { params: { id: string } }) {
       console.error('Analysis error:', error);
     }
   });
+
+  // Detect if this is a session analysis or legacy property analysis
+  useEffect(() => {
+    const detectAnalysisType = async () => {
+      try {
+        // Try to fetch as an analysis session first
+        const sessionResponse = await apiRequest('GET', `/api/analysis-sessions/${params.id}`);
+        if (sessionResponse.ok) {
+          setIsSessionAnalysis(true);
+          console.log('[ANALYZE] Detected session-based analysis');
+        } else {
+          setIsSessionAnalysis(false);
+          console.log('[ANALYZE] Using legacy property-based analysis');
+        }
+      } catch (error) {
+        // If session fetch fails, assume it's a legacy property ID
+        setIsSessionAnalysis(false);
+        console.log('[ANALYZE] Defaulting to legacy property-based analysis');
+      }
+    };
+    
+    detectAnalysisType();
+  }, [params.id]);
 
   // Load workflow state on mount and restore filters
   useEffect(() => {
@@ -52,7 +85,7 @@ export default function Analyze({ params }: { params: { id: string } }) {
 
   // Debounced filter changes (300ms delay)
   useEffect(() => {
-    if (isInitialized) {
+    if (isInitialized && isSessionAnalysis !== null) {
       // Clear any existing timer
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
@@ -79,7 +112,7 @@ export default function Analyze({ params }: { params: { id: string } }) {
         }
       };
     }
-  }, [filters, isInitialized]);
+  }, [filters, isInitialized, isSessionAnalysis]);
 
   const handleFiltersChange = (newFilters: FilterCriteria) => {
     setFilters(newFilters);
