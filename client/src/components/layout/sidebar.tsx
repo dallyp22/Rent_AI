@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3 } from "lucide-react";
+import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart } from "lucide-react";
 import WorkflowProgress from "@/components/workflow-progress";
 
 export default function Sidebar() {
@@ -25,6 +25,12 @@ export default function Sidebar() {
       name: "Property Profiles", 
       href: "/property-profiles", 
       icon: Building2,
+      enabled: true 
+    },
+    { 
+      name: "Portfolio Dashboard", 
+      href: "/portfolio-dashboard", 
+      icon: PieChart,
       enabled: true 
     },
     { 

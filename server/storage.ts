@@ -1103,6 +1103,57 @@ export class MemStorage implements IStorage {
   async getAllOptimizationReports(): Promise<OptimizationReport[]> {
     return Array.from(this.optimizationReports.values());
   }
+
+  // PORTFOLIO ANALYTICS METHODS
+  async getPortfolioMetrics(): Promise<any> {
+    const subjectProperties = await this.getPropertyProfilesByType('subject');
+    const allOptimizationReports = await this.getAllOptimizationReports();
+    
+    return {
+      totalProperties: subjectProperties.length,
+      totalUnits: subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0),
+      totalOptimizationPotential: allOptimizationReports.reduce((sum, r) => 
+        sum + (parseFloat(r.totalIncrease) || 0), 0
+      ),
+      avgOccupancyRate: 85, // Placeholder
+      avgPerformanceScore: 78 // Placeholder
+    };
+  }
+
+  async getPortfolioFinancialSummary(): Promise<any> {
+    const subjectProperties = await this.getPropertyProfilesByType('subject');
+    const allOptimizationReports = await this.getAllOptimizationReports();
+    
+    const propertyPerformance = await Promise.all(
+      subjectProperties.map(async (property) => {
+        const units = await this.getPropertyUnitsByProfile(property.id);
+        const optimizationReport = allOptimizationReports.find(r => r.propertyProfileId === property.id);
+        
+        const currentMonthlyRevenue = units.reduce((sum, unit) => 
+          sum + parseFloat(unit.currentRent), 0
+        );
+        
+        const optimizedMonthlyRevenue = units.reduce((sum, unit) => 
+          sum + parseFloat(unit.recommendedRent || unit.currentRent), 0
+        );
+        
+        return {
+          propertyId: property.id,
+          propertyName: property.name,
+          currentMonthlyRevenue,
+          optimizedMonthlyRevenue,
+          optimizationPotential: optimizedMonthlyRevenue - currentMonthlyRevenue
+        };
+      })
+    );
+
+    return {
+      totalCurrentRevenue: propertyPerformance.reduce((sum, p) => sum + p.currentMonthlyRevenue, 0),
+      totalOptimizedRevenue: propertyPerformance.reduce((sum, p) => sum + p.optimizedMonthlyRevenue, 0),
+      totalOptimizationPotential: propertyPerformance.reduce((sum, p) => sum + p.optimizationPotential, 0),
+      propertyPerformance
+    };
+  }
 }
 
 export const storage = new MemStorage();

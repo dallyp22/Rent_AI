@@ -7,6 +7,7 @@ import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
 import PropertyInput from "@/pages/property-input";
 import PropertyProfiles from "@/pages/property-profiles";
+import PortfolioDashboard from "@/pages/portfolio-dashboard";
 import PropertySelectionMatrix from "@/pages/property-selection-matrix";
 import Summarize from "@/pages/summarize";
 import Analyze from "@/pages/analyze";
@@ -18,6 +19,7 @@ function Router() {
     <Switch>
       <Route path="/" component={PropertyInput} />
       <Route path="/property-profiles" component={PropertyProfiles} />
+      <Route path="/portfolio-dashboard" component={PortfolioDashboard} />
       <Route path="/property-selection-matrix" component={PropertySelectionMatrix} />
       
       {/* Session-based multi-property workflow routes */}
