@@ -131,6 +131,7 @@ export interface IStorage {
   // NEW: Property Profile specific retrieval methods
   getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]>;
   getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]>;
+  getScrapingJobsBySession(sessionId: string): Promise<ScrapingJob[]>;
 }
 
 export class MemStorage implements IStorage {
@@ -1089,6 +1090,12 @@ export class MemStorage implements IStorage {
   async getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]> {
     return Array.from(this.scrapingJobs.values()).filter(
       job => job.propertyProfileId === propertyProfileId
+    );
+  }
+
+  async getScrapingJobsBySession(sessionId: string): Promise<ScrapingJob[]> {
+    return Array.from(this.scrapingJobs.values()).filter(
+      job => job.sessionId === sessionId
     );
   }
 }

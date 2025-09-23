@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import OpenAI from "openai";
+import { z } from "zod";
 
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY_ENV_VAR || "default_key" 
@@ -12,7 +13,299 @@ const openai = new OpenAI({
 const SCRAPEZY_API_KEY = process.env.SCRAPEZY_API_KEY;
 const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
 
-// Scrapezy API integration functions
+// Validation schemas for scraping endpoints
+const scrapePropertyProfileSchema = z.object({
+  // Can add additional options here if needed
+});
+
+const scrapeAnalysisSessionSchema = z.object({
+  // Can add additional options here if needed
+});
+
+// Background job processor for non-blocking scraping
+class ScrapingJobProcessor {
+  private processingJobs = new Set<string>();
+
+  async processScrapingJob(jobId: string): Promise<void> {
+    if (this.processingJobs.has(jobId)) {
+      console.log(`[JOB_PROCESSOR] Job ${jobId} already being processed`);
+      return;
+    }
+
+    this.processingJobs.add(jobId);
+    
+    try {
+      const job = await storage.getScrapingJob(jobId);
+      if (!job) {
+        console.error(`[JOB_PROCESSOR] Job ${jobId} not found`);
+        return;
+      }
+
+      if (job.status !== 'pending') {
+        console.log(`[JOB_PROCESSOR] Job ${jobId} already processed, status: ${job.status}`);
+        return;
+      }
+
+      console.log(`[JOB_PROCESSOR] Processing job ${jobId} for property profile ${job.propertyProfileId}`);
+
+      // Update job status to processing
+      await storage.updateScrapingJob(jobId, { status: 'processing' });
+
+      // Get property profile
+      const propertyProfile = await storage.getPropertyProfile(job.propertyProfileId!);
+      if (!propertyProfile || !propertyProfile.url) {
+        await storage.updateScrapingJob(jobId, {
+          status: 'failed',
+          errorMessage: 'Property profile not found or has no URL'
+        });
+        return;
+      }
+
+      try {
+        // Call Scrapezy API for direct property scraping
+        const scrapingResult = await callScrapezyScrapeDirectProperty(propertyProfile.url);
+        
+        // Parse the results
+        const parsedData = parseDirectPropertyData(scrapingResult);
+        
+        // Update property profile with scraped data
+        await storage.updatePropertyProfile(job.propertyProfileId!, {
+          amenities: parsedData.property.amenities.length > 0 ? parsedData.property.amenities : propertyProfile.amenities,
+          builtYear: parsedData.property.builtYear || propertyProfile.builtYear,
+          totalUnits: parsedData.property.totalUnits || propertyProfile.totalUnits
+        });
+        
+        // Clear existing units for this property profile and create new ones
+        await storage.clearPropertyUnits(job.propertyProfileId!);
+        
+        for (const unitData of parsedData.units) {
+          if (unitData.unitType) {
+            await storage.createPropertyUnit({
+              propertyProfileId: job.propertyProfileId!,
+              unitNumber: unitData.unitNumber || `${unitData.unitType}-${Math.random().toString(36).substr(2, 9)}`,
+              unitType: unitData.unitType,
+              currentRent: unitData.rent ? unitData.rent.toString() : "0",
+              status: "available"
+            });
+          }
+        }
+        
+        // Create scraped property record
+        const scrapedProperty = await storage.createScrapedProperty({
+          scrapingJobId: jobId,
+          name: parsedData.property.name,
+          url: propertyProfile.url,
+          address: parsedData.property.address,
+          isSubjectProperty: propertyProfile.profileType === 'subject'
+        });
+        
+        // Create scraped units
+        for (const unitData of parsedData.units) {
+          if (unitData.unitType) {
+            await storage.createScrapedUnit({
+              propertyId: scrapedProperty.id,
+              unitNumber: unitData.unitNumber,
+              floorPlanName: unitData.floorPlanName,
+              unitType: unitData.unitType,
+              bedrooms: unitData.bedrooms,
+              bathrooms: unitData.bathrooms?.toString(),
+              squareFootage: unitData.squareFootage,
+              rent: unitData.rent?.toString(),
+              availabilityDate: unitData.availabilityDate
+            });
+          }
+        }
+
+        // Update job status to completed
+        await storage.updateScrapingJob(jobId, {
+          status: 'completed',
+          completedAt: new Date(),
+          results: {
+            propertyData: parsedData.property,
+            unitsCount: parsedData.units.length,
+            scrapedPropertyId: scrapedProperty.id
+          }
+        });
+
+        console.log(`[JOB_PROCESSOR] Job ${jobId} completed successfully`);
+
+      } catch (scrapingError) {
+        console.error(`[JOB_PROCESSOR] Scraping failed for job ${jobId}:`, scrapingError);
+        
+        await storage.updateScrapingJob(jobId, {
+          status: 'failed',
+          errorMessage: scrapingError instanceof Error ? scrapingError.message : String(scrapingError)
+        });
+      }
+
+    } catch (error) {
+      console.error(`[JOB_PROCESSOR] Error processing job ${jobId}:`, error);
+      
+      try {
+        await storage.updateScrapingJob(jobId, {
+          status: 'failed',
+          errorMessage: error instanceof Error ? error.message : String(error)
+        });
+      } catch (updateError) {
+        console.error(`[JOB_PROCESSOR] Failed to update job ${jobId} status:`, updateError);
+      }
+    } finally {
+      this.processingJobs.delete(jobId);
+    }
+  }
+
+  async processSessionScrapingJobs(sessionId: string): Promise<void> {
+    try {
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        console.error(`[JOB_PROCESSOR] Session ${sessionId} not found`);
+        return;
+      }
+
+      // Get all property profiles in this session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const profilesToScrape = propertyProfiles.filter(profile => profile.url);
+
+      console.log(`[JOB_PROCESSOR] Processing ${profilesToScrape.length} properties for session ${sessionId}`);
+
+      // Create scraping jobs for each property profile
+      const jobs = [];
+      for (const profile of profilesToScrape) {
+        const scrapingJob = await storage.createScrapingJob({
+          propertyProfileId: profile.id,
+          sessionId,
+          stage: "session_direct_scraping",
+          cityUrl: profile.url,
+          status: "pending"
+        });
+        jobs.push(scrapingJob);
+      }
+
+      // Process all jobs in parallel (but don't wait for completion)
+      jobs.forEach(job => {
+        // Fire and forget - don't await
+        this.processScrapingJob(job.id).catch(error => {
+          console.error(`[JOB_PROCESSOR] Error processing job ${job.id}:`, error);
+        });
+      });
+
+      console.log(`[JOB_PROCESSOR] Started processing ${jobs.length} jobs for session ${sessionId}`);
+
+    } catch (error) {
+      console.error(`[JOB_PROCESSOR] Error processing session ${sessionId}:`, error);
+    }
+  }
+}
+
+const scrapingJobProcessor = new ScrapingJobProcessor();
+
+// NEW: Direct property URL scraping function for property profiles
+async function callScrapezyScrapeDirectProperty(url: string): Promise<any> {
+  console.log(`🚀 [SCRAPEZY_DIRECT] Starting direct property scraping for URL: ${url}`);
+  console.log(`🚀 [SCRAPEZY_DIRECT] API Key configured: ${!!SCRAPEZY_API_KEY}`);
+  
+  if (!SCRAPEZY_API_KEY) {
+    console.error(`❌ [SCRAPEZY_DIRECT] API key not configured`);
+    throw new Error("Scrapezy API key not configured");
+  }
+
+  const prompt = `Extract detailed apartment property information from this apartments.com property page. Extract: 1) Property name/title, 2) Full address, 3) All available unit types/floor plans with details including: unit number (if available), floor plan name, unit type (Studio, 1BR, 2BR, etc.), bedrooms count, bathrooms count, square footage, monthly rent price, availability date. 4) Property amenities list, 5) Property details like year built, total units, pet policy. Return as JSON with structure: {"property": {"name": "", "address": "", "amenities": [], "builtYear": null, "totalUnits": null, "petPolicy": ""}, "units": [{"unitNumber": "", "floorPlanName": "", "unitType": "", "bedrooms": 0, "bathrooms": 0, "squareFootage": 0, "rent": 0, "availabilityDate": ""}]}`;
+  
+  console.log(`🚀 [SCRAPEZY_DIRECT] Using direct property scraping prompt`);
+
+  // Create job
+  console.log(`🚀 [SCRAPEZY_DIRECT] Creating scraping job...`);
+  const requestBody = {
+    url,
+    prompt
+  };
+  console.log(`🚀 [SCRAPEZY_DIRECT] Request body:`, JSON.stringify(requestBody, null, 2));
+  
+  const jobResponse = await fetch(SCRAPEZY_BASE_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": SCRAPEZY_API_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(requestBody),
+    signal: AbortSignal.timeout(30000)
+  });
+
+  console.log(`🚀 [SCRAPEZY_DIRECT] Job creation response status: ${jobResponse.status} ${jobResponse.statusText}`);
+
+  if (!jobResponse.ok) {
+    const responseText = await jobResponse.text();
+    console.error(`❌ [SCRAPEZY_DIRECT] Job creation failed. Response body: ${responseText}`);
+    throw new Error(`Scrapezy API error: ${jobResponse.status} ${jobResponse.statusText}`);
+  }
+
+  const jobData = await jobResponse.json();
+  console.log(`🚀 [SCRAPEZY_DIRECT] Job creation response data:`, JSON.stringify(jobData, null, 2));
+  
+  const jobId = jobData.id || jobData.jobId;
+  
+  if (!jobId) {
+    console.error(`❌ [SCRAPEZY_DIRECT] No job ID received from response`);
+    throw new Error('No job ID received from Scrapezy');
+  }
+
+  console.log(`🚀 [SCRAPEZY_DIRECT] Job created successfully with ID: ${jobId}`);
+
+  // Poll for results
+  let attempts = 0;
+  const maxAttempts = 15; // 2.5 minutes maximum
+  const POLL_INTERVAL = 10000; // 10 seconds
+  let finalResult = null;
+
+  console.log(`🚀 [SCRAPEZY_DIRECT] Starting polling for job ${jobId}`);
+
+  while (attempts < maxAttempts) {
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL));
+    attempts++;
+    
+    console.log(`🚀 [SCRAPEZY_DIRECT] Polling attempt ${attempts}/${maxAttempts} for job ${jobId}`);
+    
+    const resultResponse = await fetch(`${SCRAPEZY_BASE_URL}/${jobId}`, {
+      headers: {
+        "x-api-key": SCRAPEZY_API_KEY,
+        "Content-Type": "application/json"
+      },
+      signal: AbortSignal.timeout(30000)
+    });
+
+    console.log(`🚀 [SCRAPEZY_DIRECT] Polling response status: ${resultResponse.status} ${resultResponse.statusText}`);
+
+    if (!resultResponse.ok) {
+      const responseText = await resultResponse.text();
+      console.error(`❌ [SCRAPEZY_DIRECT] Polling failed. Response body: ${responseText}`);
+      throw new Error(`Scrapezy polling error: ${resultResponse.status} ${resultResponse.statusText}`);
+    }
+
+    const resultData = await resultResponse.json();
+    console.log(`🚀 [SCRAPEZY_DIRECT] Polling response data:`, JSON.stringify(resultData, null, 2));
+    
+    if (resultData.status === 'completed') {
+      console.log(`✅ [SCRAPEZY_DIRECT] Job ${jobId} completed successfully!`);
+      finalResult = resultData;
+      break;
+    } else if (resultData.status === 'failed') {
+      console.error(`❌ [SCRAPEZY_DIRECT] Job ${jobId} failed:`, resultData.error || 'Unknown error');
+      throw new Error(`Scrapezy job failed: ${resultData.error || 'Unknown error'}`);
+    } else {
+      console.log(`⏳ [SCRAPEZY_DIRECT] Job ${jobId} still processing, status: ${resultData.status}`);
+    }
+  }
+
+  if (!finalResult && attempts >= maxAttempts) {
+    console.error(`❌ [SCRAPEZY_DIRECT] Job ${jobId} timed out after ${maxAttempts} attempts`);
+    throw new Error('Scrapezy job timed out after 2.5 minutes');
+  }
+
+  console.log(`🎉 [SCRAPEZY_DIRECT] Returning final result for job ${jobId}`);
+  return finalResult;
+}
+
+// LEGACY: Scrapezy API integration functions (kept for backward compatibility)
 async function callScrapezyScraping(url: string, customPrompt?: string) {
   console.log(`🚀 [SCRAPEZY] Starting scraping for URL: ${url}`);
   console.log(`🚀 [SCRAPEZY] API Key configured: ${!!SCRAPEZY_API_KEY}`);
@@ -217,7 +510,156 @@ function parseUrls(scrapezyResult: any): Array<{url: string, name: string, addre
   return validProperties;
 }
 
-// Parse Scrapezy results to extract unit details
+// NEW: Parse direct property scraping results from Scrapezy
+function parseDirectPropertyData(scrapezyResult: any): {
+  property: {
+    name: string;
+    address: string;
+    amenities: string[];
+    builtYear?: number;
+    totalUnits?: number;
+    petPolicy?: string;
+  };
+  units: Array<{
+    unitNumber?: string;
+    floorPlanName?: string;
+    unitType: string;
+    bedrooms?: number;
+    bathrooms?: number;
+    squareFootage?: number;
+    rent?: number;
+    availabilityDate?: string;
+  }>;
+} {
+  console.log(`🔍 [PARSE_DIRECT_PROPERTY] Starting direct property data parsing...`);
+  console.log(`🔍 [PARSE_DIRECT_PROPERTY] Input data type: ${typeof scrapezyResult}`);
+  
+  let propertyData = {
+    property: {
+      name: 'Property Name Not Available',
+      address: 'Address Not Available',
+      amenities: [] as string[],
+      builtYear: undefined as number | undefined,
+      totalUnits: undefined as number | undefined,
+      petPolicy: undefined as string | undefined
+    },
+    units: [] as Array<{
+      unitNumber?: string;
+      floorPlanName?: string;
+      unitType: string;
+      bedrooms?: number;
+      bathrooms?: number;
+      squareFootage?: number;
+      rent?: number;
+      availabilityDate?: string;
+    }>
+  };
+  
+  try {
+    // Try to get the result from the response structure
+    const resultText = scrapezyResult.result || scrapezyResult.data || scrapezyResult;
+    console.log(`🔍 [PARSE_DIRECT_PROPERTY] Extracted result text type: ${typeof resultText}`);
+    
+    if (typeof resultText === 'string') {
+      try {
+        const parsed = JSON.parse(resultText);
+        
+        // Extract property information
+        if (parsed.property && typeof parsed.property === 'object') {
+          const prop = parsed.property;
+          propertyData.property = {
+            name: prop.name || prop.title || 'Property Name Not Available',
+            address: prop.address || 'Address Not Available',
+            amenities: Array.isArray(prop.amenities) ? prop.amenities : [],
+            builtYear: parseNumber(prop.builtYear || prop.built_year || prop.yearBuilt),
+            totalUnits: parseNumber(prop.totalUnits || prop.total_units || prop.unitCount),
+            petPolicy: prop.petPolicy || prop.pet_policy || undefined
+          };
+        }
+        
+        // Extract units information
+        if (Array.isArray(parsed.units)) {
+          propertyData.units = parsed.units
+            .filter(unit => unit && typeof unit === 'object' && (unit.unitType || unit.unit_type || unit.type))
+            .map(unit => ({
+              unitNumber: unit.unitNumber || unit.unit_number || undefined,
+              floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.floorPlan || undefined,
+              unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
+              bedrooms: parseNumber(unit.bedrooms || unit.beds),
+              bathrooms: parseNumber(unit.bathrooms || unit.baths),
+              squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
+              rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
+              availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || undefined
+            }));
+        }
+        
+        // Fallback: if no structured units but we have root-level unit data
+        if (propertyData.units.length === 0 && parsed.unitType) {
+          propertyData.units.push({
+            unitType: parsed.unitType || parsed.unit_type || 'Unknown',
+            bedrooms: parseNumber(parsed.bedrooms || parsed.beds),
+            bathrooms: parseNumber(parsed.bathrooms || parsed.baths),
+            squareFootage: parseNumber(parsed.squareFootage || parsed.square_footage || parsed.sqft),
+            rent: parseNumber(parsed.rent || parsed.price || parsed.monthlyRent),
+            availabilityDate: parsed.availabilityDate || parsed.availability_date || undefined
+          });
+        }
+        
+      } catch (parseError) {
+        console.warn('[PARSE_DIRECT_PROPERTY] Failed to parse JSON result, trying fallback parsing');
+        // Fallback: try to extract basic info from text
+        const lines = resultText.split('\n');
+        for (const line of lines) {
+          if (line.includes('BR') || line.includes('Studio') || line.includes('bedroom')) {
+            propertyData.units.push({
+              unitType: line.trim(),
+              bedrooms: extractBedroomCount(line),
+              bathrooms: extractBathroomCount(line),
+              rent: extractRentPrice(line)
+            });
+          }
+        }
+      }
+    } else if (typeof resultText === 'object' && resultText !== null) {
+      // Handle object response (already parsed)
+      if (resultText.property && typeof resultText.property === 'object') {
+        const prop = resultText.property;
+        propertyData.property = {
+          name: prop.name || prop.title || 'Property Name Not Available',
+          address: prop.address || 'Address Not Available',
+          amenities: Array.isArray(prop.amenities) ? prop.amenities : [],
+          builtYear: parseNumber(prop.builtYear || prop.built_year || prop.yearBuilt),
+          totalUnits: parseNumber(prop.totalUnits || prop.total_units || prop.unitCount),
+          petPolicy: prop.petPolicy || prop.pet_policy || undefined
+        };
+      }
+      
+      if (Array.isArray(resultText.units)) {
+        propertyData.units = resultText.units
+          .filter(unit => unit && typeof unit === 'object' && (unit.unitType || unit.unit_type || unit.type))
+          .map(unit => ({
+            unitNumber: unit.unitNumber || unit.unit_number || undefined,
+            floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.floorPlan || undefined,
+            unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
+            bedrooms: parseNumber(unit.bedrooms || unit.beds),
+            bathrooms: parseNumber(unit.bathrooms || unit.baths),
+            squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
+            rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
+            availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || undefined
+          }));
+      }
+    }
+  } catch (error) {
+    console.error('[PARSE_DIRECT_PROPERTY] Error parsing Scrapezy result:', error);
+  }
+
+  console.log(`🔍 [PARSE_DIRECT_PROPERTY] Parsed property: ${propertyData.property.name}`);
+  console.log(`🔍 [PARSE_DIRECT_PROPERTY] Parsed ${propertyData.units.length} units`);
+  
+  return propertyData;
+}
+
+// LEGACY: Parse Scrapezy results to extract unit details (kept for backward compatibility)
 function parseUnitData(scrapezyResult: any): Array<{
   unitNumber?: string;
   floorPlanName?: string;
@@ -2890,6 +3332,209 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     } catch (error) {
       console.error("Error deleting property profile:", error);
       res.status(500).json({ message: "Failed to delete property profile" });
+    }
+  });
+
+  // NEW: Property Profile Direct URL Scraping Endpoints
+  
+  // Scrape a single property profile by direct URL (NON-BLOCKING)
+  app.post("/api/property-profiles/:id/scrape", async (req, res) => {
+    try {
+      // Validate request body
+      const validationResult = scrapePropertyProfileSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.issues
+        });
+      }
+
+      const propertyProfileId = req.params.id;
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      
+      if (!propertyProfile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+
+      if (!propertyProfile.url) {
+        return res.status(400).json({ message: "Property profile has no URL configured" });
+      }
+
+      console.log(`[PROPERTY_PROFILE_SCRAPE] Starting non-blocking scraping for property profile: ${propertyProfile.name}`);
+      console.log(`[PROPERTY_PROFILE_SCRAPE] URL: ${propertyProfile.url}`);
+
+      // Create scraping job for property profile with pending status
+      const scrapingJob = await storage.createScrapingJob({
+        propertyProfileId,
+        stage: "direct_property_scraping",
+        cityUrl: propertyProfile.url, // Using cityUrl field to store the direct URL
+        status: "pending" // Start as pending, will be processed in background
+      });
+
+      // Start background processing (fire-and-forget)
+      scrapingJobProcessor.processScrapingJob(scrapingJob.id).catch(error => {
+        console.error(`[PROPERTY_PROFILE_SCRAPE] Background processing failed for job ${scrapingJob.id}:`, error);
+      });
+
+      // Return immediately with job information
+      res.status(202).json({
+        message: "Scraping job started successfully",
+        scrapingJob: {
+          id: scrapingJob.id,
+          propertyProfileId: propertyProfile.id,
+          propertyName: propertyProfile.name,
+          status: scrapingJob.status,
+          stage: scrapingJob.stage,
+          createdAt: scrapingJob.createdAt
+        },
+        statusCheckUrl: `/api/property-profiles/${propertyProfileId}/scraping-status`
+      });
+      
+    } catch (error) {
+      console.error("[PROPERTY_PROFILE_SCRAPE] Error:", error);
+      res.status(500).json({ message: "Failed to start property profile scraping" });
+    }
+  });
+
+  // Get scraping status for a single property profile
+  app.get("/api/property-profiles/:id/scraping-status", async (req, res) => {
+    try {
+      const propertyProfileId = req.params.id;
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      
+      if (!propertyProfile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      // Get all scraping jobs for this property profile
+      const scrapingJobs = await storage.getScrapingJobsByProfile(propertyProfileId);
+      
+      const status = {
+        propertyProfileId,
+        propertyName: propertyProfile.name,
+        propertyUrl: propertyProfile.url,
+        totalJobs: scrapingJobs.length,
+        completedJobs: scrapingJobs.filter(job => job.status === 'completed').length,
+        failedJobs: scrapingJobs.filter(job => job.status === 'failed').length,
+        processingJobs: scrapingJobs.filter(job => job.status === 'processing').length,
+        pendingJobs: scrapingJobs.filter(job => job.status === 'pending').length,
+        latestJob: scrapingJobs.length > 0 ? scrapingJobs.sort((a, b) => 
+          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        )[0] : null,
+        jobs: scrapingJobs.map(job => ({
+          id: job.id,
+          status: job.status,
+          stage: job.stage,
+          createdAt: job.createdAt,
+          completedAt: job.completedAt,
+          errorMessage: job.errorMessage
+        })).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      };
+      
+      res.json(status);
+      
+    } catch (error) {
+      console.error("[PROPERTY_PROFILE_SCRAPING_STATUS] Error:", error);
+      res.status(500).json({ message: "Failed to get property profile scraping status" });
+    }
+  });
+  
+  // Scrape all properties in an analysis session (NON-BLOCKING)
+  app.post("/api/analysis-sessions/:sessionId/scrape", async (req, res) => {
+    try {
+      // Validate request body
+      const validationResult = scrapeAnalysisSessionSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: validationResult.error.issues
+        });
+      }
+
+      const sessionId = req.params.sessionId;
+      const session = await storage.getAnalysisSession(sessionId);
+      
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+      
+      // Get all property profiles in this session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      
+      if (propertyProfiles.length === 0) {
+        return res.status(400).json({ message: "No property profiles found in this analysis session" });
+      }
+      
+      const profilesToScrape = propertyProfiles.filter(profile => profile.url);
+      
+      if (profilesToScrape.length === 0) {
+        return res.status(400).json({ message: "No property profiles with URLs found in this analysis session" });
+      }
+      
+      console.log(`[SESSION_SCRAPE] Starting non-blocking scraping for ${profilesToScrape.length} properties in session: ${session.name}`);
+      
+      // Start background processing for the entire session (fire-and-forget)
+      scrapingJobProcessor.processSessionScrapingJobs(sessionId).catch(error => {
+        console.error(`[SESSION_SCRAPE] Background processing failed for session ${sessionId}:`, error);
+      });
+
+      // Return immediately with session information
+      res.status(202).json({
+        message: "Session scraping started successfully",
+        sessionId,
+        sessionName: session.name,
+        totalPropertiesToScrape: profilesToScrape.length,
+        propertiesToScrape: profilesToScrape.map(profile => ({
+          id: profile.id,
+          name: profile.name,
+          url: profile.url
+        })),
+        statusCheckUrl: `/api/analysis-sessions/${sessionId}/scraping-status`
+      });
+      
+    } catch (error) {
+      console.error("[SESSION_SCRAPE] Error:", error);
+      res.status(500).json({ message: "Failed to start session scraping" });
+    }
+  });
+  
+  // Get scraping status for an analysis session
+  app.get("/api/analysis-sessions/:sessionId/scraping-status", async (req, res) => {
+    try {
+      const sessionId = req.params.sessionId;
+      const session = await storage.getAnalysisSession(sessionId);
+      
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+      
+      // Get all scraping jobs for this session
+      const scrapingJobs = await storage.getScrapingJobsBySession?.(sessionId) || [];
+      
+      const status = {
+        sessionId,
+        sessionName: session.name,
+        totalJobs: scrapingJobs.length,
+        completedJobs: scrapingJobs.filter(job => job.status === 'completed').length,
+        failedJobs: scrapingJobs.filter(job => job.status === 'failed').length,
+        processingJobs: scrapingJobs.filter(job => job.status === 'processing').length,
+        pendingJobs: scrapingJobs.filter(job => job.status === 'pending').length,
+        jobs: scrapingJobs.map(job => ({
+          id: job.id,
+          propertyProfileId: job.propertyProfileId,
+          status: job.status,
+          stage: job.stage,
+          createdAt: job.createdAt,
+          completedAt: job.completedAt,
+          errorMessage: job.errorMessage
+        }))
+      };
+      
+      res.json(status);
+      
+    } catch (error) {
+      console.error("[SESSION_SCRAPING_STATUS] Error:", error);
+      res.status(500).json({ message: "Failed to get session scraping status" });
     }
   });
 
