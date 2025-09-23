@@ -1,4 +1,12 @@
 import { 
+  // New property profiles system types
+  type PropertyProfile,
+  type InsertPropertyProfile,
+  type AnalysisSession,
+  type InsertAnalysisSession,
+  type SessionPropertyProfile,
+  type InsertSessionPropertyProfile,
+  // Legacy types (for backward compatibility)
   type Property, 
   type InsertProperty,
   type PropertyAnalysis,
@@ -22,24 +30,55 @@ import {
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
-// Workflow State interface
+// Workflow State interface (updated for property profiles)
 export interface WorkflowState {
-  propertyId: string;
-  selectedCompetitorIds: string[];
+  // Legacy support
+  propertyId?: string;
+  selectedCompetitorIds?: string[];
+  // New property profiles support
+  analysisSessionId?: string;
+  selectedPropertyProfileIds?: string[];
   scrapingJobId?: string;
   filterCriteria?: any;
   currentStage: 'input' | 'summarize' | 'analyze' | 'optimize';
 }
 
 export interface IStorage {
-  // Properties
+  // NEW: Property Profiles System
+  createPropertyProfile(profile: InsertPropertyProfile): Promise<PropertyProfile>;
+  getPropertyProfile(id: string): Promise<PropertyProfile | undefined>;
+  getAllPropertyProfiles(): Promise<PropertyProfile[]>;
+  getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
+  updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined>;
+  deletePropertyProfile(id: string): Promise<boolean>;
+  
+  // Analysis Sessions
+  createAnalysisSession(session: InsertAnalysisSession): Promise<AnalysisSession>;
+  getAnalysisSession(id: string): Promise<AnalysisSession | undefined>;
+  getAllAnalysisSessions(): Promise<AnalysisSession[]>;
+  updateAnalysisSession(id: string, updates: Partial<AnalysisSession>): Promise<AnalysisSession | undefined>;
+  deleteAnalysisSession(id: string): Promise<boolean>;
+  
+  // Session Property Profiles (many-to-many relationships)
+  addPropertyProfileToSession(sessionPropertyProfile: InsertSessionPropertyProfile): Promise<SessionPropertyProfile>;
+  removePropertyProfileFromSession(sessionId: string, propertyProfileId: string): Promise<boolean>;
+  getPropertyProfilesInSession(sessionId: string): Promise<PropertyProfile[]>;
+  getSessionsForPropertyProfile(propertyProfileId: string): Promise<AnalysisSession[]>;
+  
+  // Multi-property analysis support
+  generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
+  getSubjectPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
+  getCompetitorPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
+  
+  // LEGACY: Properties (maintained for backward compatibility)
   createProperty(property: InsertProperty): Promise<Property>;
   getProperty(id: string): Promise<Property | undefined>;
   getAllProperties(): Promise<Property[]>;
   
-  // Property Analysis
+  // Property Analysis (updated to support both legacy and new systems)
   createPropertyAnalysis(analysis: InsertPropertyAnalysis): Promise<PropertyAnalysis>;
   getPropertyAnalysis(propertyId: string): Promise<PropertyAnalysis | undefined>;
+  getPropertyAnalysisBySession(sessionId: string): Promise<PropertyAnalysis | undefined>;
   
   // Competitor Properties (Legacy - will be replaced by scraped data)
   createCompetitorProperty(property: InsertCompetitorProperty): Promise<CompetitorProperty>;
@@ -86,10 +125,21 @@ export interface IStorage {
   
   // Workflow State Management
   getWorkflowState(propertyId: string): Promise<WorkflowState | null>;
+  getWorkflowStateBySession(sessionId: string): Promise<WorkflowState | null>;
   saveWorkflowState(state: WorkflowState): Promise<WorkflowState>;
+  
+  // NEW: Property Profile specific retrieval methods
+  getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]>;
+  getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]>;
 }
 
 export class MemStorage implements IStorage {
+  // New property profiles system
+  private propertyProfiles: Map<string, PropertyProfile>;
+  private analysisSessions: Map<string, AnalysisSession>;
+  private sessionPropertyProfiles: Map<string, SessionPropertyProfile>;
+  
+  // Legacy maps (maintained for backward compatibility)
   private properties: Map<string, Property>;
   private propertyAnalyses: Map<string, PropertyAnalysis>;
   private competitorProperties: Map<string, CompetitorProperty>;
@@ -101,6 +151,12 @@ export class MemStorage implements IStorage {
   private workflowStates: Map<string, WorkflowState>;
 
   constructor() {
+    // Initialize new property profiles system
+    this.propertyProfiles = new Map();
+    this.analysisSessions = new Map();
+    this.sessionPropertyProfiles = new Map();
+    
+    // Initialize legacy maps
     this.properties = new Map();
     this.propertyAnalyses = new Map();
     this.competitorProperties = new Map();
@@ -113,9 +169,219 @@ export class MemStorage implements IStorage {
     // Removed seedData() - only use real data from Scrapezy
   }
 
-  // Removed seedData() method - only use real data from Scrapezy
-  // This ensures only valid apartments.com URLs are used in the scraping workflow
-  // All competitor properties will be populated from actual scraping jobs
+  // NEW: Property Profiles System Methods
+  
+  async createPropertyProfile(insertProfile: InsertPropertyProfile): Promise<PropertyProfile> {
+    const id = randomUUID();
+    const profile: PropertyProfile = {
+      ...insertProfile,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      city: insertProfile.city ?? null,
+      state: insertProfile.state ?? null,
+      propertyType: insertProfile.propertyType ?? null,
+      totalUnits: insertProfile.totalUnits ?? null,
+      builtYear: insertProfile.builtYear ?? null,
+      squareFootage: insertProfile.squareFootage ?? null,
+      parkingSpaces: insertProfile.parkingSpaces ?? null,
+      amenities: insertProfile.amenities ? [...insertProfile.amenities] : [],
+      distance: insertProfile.distance ?? null,
+      matchScore: insertProfile.matchScore ?? null,
+      vacancyRate: insertProfile.vacancyRate ?? null,
+      priceRange: insertProfile.priceRange ?? null
+    };
+    this.propertyProfiles.set(id, profile);
+    return profile;
+  }
+
+  async getPropertyProfile(id: string): Promise<PropertyProfile | undefined> {
+    return this.propertyProfiles.get(id);
+  }
+
+  async getAllPropertyProfiles(): Promise<PropertyProfile[]> {
+    return Array.from(this.propertyProfiles.values());
+  }
+
+  async getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
+    return Array.from(this.propertyProfiles.values()).filter(
+      profile => profile.profileType === profileType
+    );
+  }
+
+  async updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined> {
+    const profile = this.propertyProfiles.get(id);
+    if (!profile) return undefined;
+    
+    const updatedProfile = { 
+      ...profile, 
+      ...updates, 
+      updatedAt: new Date() 
+    };
+    this.propertyProfiles.set(id, updatedProfile);
+    return updatedProfile;
+  }
+
+  async deletePropertyProfile(id: string): Promise<boolean> {
+    return this.propertyProfiles.delete(id);
+  }
+
+  // Analysis Sessions Methods
+  
+  async createAnalysisSession(insertSession: InsertAnalysisSession): Promise<AnalysisSession> {
+    const id = randomUUID();
+    const session: AnalysisSession = {
+      ...insertSession,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      description: insertSession.description ?? null
+    };
+    this.analysisSessions.set(id, session);
+    return session;
+  }
+
+  async getAnalysisSession(id: string): Promise<AnalysisSession | undefined> {
+    return this.analysisSessions.get(id);
+  }
+
+  async getAllAnalysisSessions(): Promise<AnalysisSession[]> {
+    return Array.from(this.analysisSessions.values());
+  }
+
+  async updateAnalysisSession(id: string, updates: Partial<AnalysisSession>): Promise<AnalysisSession | undefined> {
+    const session = this.analysisSessions.get(id);
+    if (!session) return undefined;
+    
+    const updatedSession = { 
+      ...session, 
+      ...updates, 
+      updatedAt: new Date() 
+    };
+    this.analysisSessions.set(id, updatedSession);
+    return updatedSession;
+  }
+
+  async deleteAnalysisSession(id: string): Promise<boolean> {
+    // Remove all session property profile relationships first
+    const sessionProfiles = Array.from(this.sessionPropertyProfiles.values()).filter(
+      sp => sp.sessionId === id
+    );
+    sessionProfiles.forEach(sp => this.sessionPropertyProfiles.delete(sp.id));
+    
+    return this.analysisSessions.delete(id);
+  }
+
+  // Session Property Profiles Methods
+  
+  async addPropertyProfileToSession(insertSessionPropertyProfile: InsertSessionPropertyProfile): Promise<SessionPropertyProfile> {
+    // Validate that role aligns with profileType
+    const propertyProfile = this.propertyProfiles.get(insertSessionPropertyProfile.propertyProfileId);
+    if (propertyProfile && propertyProfile.profileType !== insertSessionPropertyProfile.role) {
+      console.warn(`[STORAGE] Role/Type mismatch: Property profile type '${propertyProfile.profileType}' does not match session role '${insertSessionPropertyProfile.role}'. This may be intentional for flexible analysis scenarios.`);
+    }
+
+    const id = randomUUID();
+    const sessionPropertyProfile: SessionPropertyProfile = {
+      ...insertSessionPropertyProfile,
+      id,
+      createdAt: new Date()
+    };
+    this.sessionPropertyProfiles.set(id, sessionPropertyProfile);
+    return sessionPropertyProfile;
+  }
+
+  async removePropertyProfileFromSession(sessionId: string, propertyProfileId: string): Promise<boolean> {
+    const sessionProfileToRemove = Array.from(this.sessionPropertyProfiles.values()).find(
+      sp => sp.sessionId === sessionId && sp.propertyProfileId === propertyProfileId
+    );
+    
+    if (!sessionProfileToRemove) return false;
+    
+    return this.sessionPropertyProfiles.delete(sessionProfileToRemove.id);
+  }
+
+  async getPropertyProfilesInSession(sessionId: string): Promise<PropertyProfile[]> {
+    const sessionProfiles = Array.from(this.sessionPropertyProfiles.values()).filter(
+      sp => sp.sessionId === sessionId
+    );
+    
+    const profileIds = sessionProfiles.map(sp => sp.propertyProfileId);
+    return profileIds.map(id => this.propertyProfiles.get(id)).filter(Boolean) as PropertyProfile[];
+  }
+
+  async getSessionsForPropertyProfile(propertyProfileId: string): Promise<AnalysisSession[]> {
+    const sessionProfiles = Array.from(this.sessionPropertyProfiles.values()).filter(
+      sp => sp.propertyProfileId === propertyProfileId
+    );
+    
+    const sessionIds = sessionProfiles.map(sp => sp.sessionId);
+    return sessionIds.map(id => this.analysisSessions.get(id)).filter(Boolean) as AnalysisSession[];
+  }
+
+  // Multi-property analysis support
+  
+  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
+    // This is a placeholder implementation - in a real system this would perform complex analysis
+    const profilesInSession = await this.getPropertyProfilesInSession(sessionId);
+    const subjectProfiles = profilesInSession.filter(p => p.profileType === 'subject');
+    const competitorProfiles = profilesInSession.filter(p => p.profileType === 'competitor');
+    
+    // Create basic analysis result
+    return {
+      marketPosition: "Mid-market",
+      pricingPowerScore: 75,
+      competitiveAdvantages: ["Multiple properties", "Diverse portfolio"],
+      recommendations: ["Optimize pricing across portfolio", "Leverage economies of scale"],
+      unitCount: subjectProfiles.reduce((sum, p) => sum + (p.totalUnits || 0), 0),
+      avgRent: 1500,
+      percentileRank: 75,
+      locationScore: 80,
+      amenityScore: 85,
+      pricePerSqFt: 2.5,
+      subjectUnits: [],
+      competitorUnits: [],
+      competitiveEdges: {
+        pricing: { edge: 0, label: "Market rate", status: "neutral" },
+        size: { edge: 0, label: "Average size", status: "neutral" },
+        availability: { edge: 0, label: "Standard availability", status: "neutral" },
+        amenities: { edge: 10, label: "Premium amenities", status: "advantage" }
+      },
+      aiInsights: [`Analysis of ${subjectProfiles.length} subject properties vs ${competitorProfiles.length} competitors`],
+      subjectAvgRent: 1500,
+      competitorAvgRent: 1450,
+      subjectAvgSqFt: 800,
+      competitorAvgSqFt: 780
+    };
+  }
+
+  async getSubjectPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]> {
+    if (sessionId) {
+      const profilesInSession = await this.getPropertyProfilesInSession(sessionId);
+      return profilesInSession.filter(p => p.profileType === 'subject');
+    }
+    
+    return await this.getPropertyProfilesByType('subject');
+  }
+
+  async getCompetitorPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]> {
+    if (sessionId) {
+      const profilesInSession = await this.getPropertyProfilesInSession(sessionId);
+      return profilesInSession.filter(p => p.profileType === 'competitor');
+    }
+    
+    return await this.getPropertyProfilesByType('competitor');
+  }
+
+  // Updated Property Analysis methods
+  
+  async getPropertyAnalysisBySession(sessionId: string): Promise<PropertyAnalysis | undefined> {
+    return Array.from(this.propertyAnalyses.values()).find(
+      analysis => analysis.sessionId === sessionId
+    );
+  }
+
+  // LEGACY METHODS (maintained for backward compatibility)
 
   async createProperty(insertProperty: InsertProperty): Promise<Property> {
     const id = randomUUID();
@@ -150,10 +416,14 @@ export class MemStorage implements IStorage {
       ...insertAnalysis, 
       id, 
       createdAt: new Date(),
+      sessionId: insertAnalysis.sessionId ?? null,
+      propertyProfileId: insertAnalysis.propertyProfileId ?? null,
+      propertyId: insertAnalysis.propertyId ?? null,
       competitiveAdvantages: Array.isArray(insertAnalysis.competitiveAdvantages) ? [...insertAnalysis.competitiveAdvantages] : [],
       recommendations: Array.isArray(insertAnalysis.recommendations) ? [...insertAnalysis.recommendations] : []
     };
-    this.propertyAnalyses.set(insertAnalysis.propertyId, analysis);
+    const propertyKey = insertAnalysis.propertyId ?? id;
+    this.propertyAnalyses.set(propertyKey, analysis);
     return analysis;
   }
 
@@ -189,6 +459,8 @@ export class MemStorage implements IStorage {
       ...insertUnit, 
       id, 
       createdAt: new Date(),
+      propertyId: insertUnit.propertyId ?? null,
+      propertyProfileId: insertUnit.propertyProfileId ?? null,
       status: insertUnit.status || "occupied",
       recommendedRent: insertUnit.recommendedRent ?? null
     };
@@ -222,8 +494,16 @@ export class MemStorage implements IStorage {
 
   async createOptimizationReport(insertReport: InsertOptimizationReport): Promise<OptimizationReport> {
     const id = randomUUID();
-    const report: OptimizationReport = { ...insertReport, id, createdAt: new Date() };
-    this.optimizationReports.set(insertReport.propertyId, report);
+    const report: OptimizationReport = { 
+      ...insertReport, 
+      id, 
+      createdAt: new Date(),
+      sessionId: insertReport.sessionId ?? null,
+      propertyProfileId: insertReport.propertyProfileId ?? null,
+      propertyId: insertReport.propertyId ?? null
+    };
+    const reportKey = insertReport.propertyId ?? id;
+    this.optimizationReports.set(reportKey, report);
     return report;
   }
 
@@ -241,6 +521,9 @@ export class MemStorage implements IStorage {
       id, 
       createdAt: new Date(),
       completedAt: null,
+      sessionId: insertJob.sessionId ?? null,
+      propertyProfileId: insertJob.propertyProfileId ?? null,
+      propertyId: insertJob.propertyId ?? null,
       scrapezyJobId: insertJob.scrapezyJobId ?? null,
       status: insertJob.status || "pending",
       results: insertJob.results ?? null,
@@ -768,9 +1051,32 @@ export class MemStorage implements IStorage {
     return this.workflowStates.get(propertyId) || null;
   }
 
+  async getWorkflowStateBySession(sessionId: string): Promise<WorkflowState | null> {
+    // Search through all workflow states to find one with matching analysisSessionId
+    const stateEntries = Array.from(this.workflowStates.entries());
+    const foundEntry = stateEntries.find(([key, state]) => 
+      state.analysisSessionId === sessionId
+    );
+    return foundEntry ? foundEntry[1] : null;
+  }
+
   async saveWorkflowState(state: WorkflowState): Promise<WorkflowState> {
-    this.workflowStates.set(state.propertyId, state);
+    const stateKey = state.propertyId ?? state.analysisSessionId ?? randomUUID();
+    this.workflowStates.set(stateKey, state);
     return state;
+  }
+  
+  // NEW: Property Profile specific retrieval methods
+  async getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]> {
+    return Array.from(this.propertyUnits.values()).filter(
+      unit => unit.propertyProfileId === propertyProfileId
+    );
+  }
+
+  async getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]> {
+    return Array.from(this.scrapingJobs.values()).filter(
+      job => job.propertyProfileId === propertyProfileId
+    );
   }
 }
 

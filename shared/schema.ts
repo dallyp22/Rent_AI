@@ -1,8 +1,74 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, boolean, json, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, boolean, json, timestamp, index, unique, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// New unified property profiles table
+export const propertyProfiles = pgTable("property_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  url: text("url").notNull(), // Direct URL - key requirement
+  profileType: text("profile_type").notNull(), // "subject" | "competitor"
+  city: text("city"),
+  state: text("state"),
+  propertyType: text("property_type"),
+  totalUnits: integer("total_units"),
+  builtYear: integer("built_year"),
+  squareFootage: integer("square_footage"),
+  parkingSpaces: integer("parking_spaces"),
+  amenities: json("amenities").$type<string[]>().default([]),
+  // Additional fields for competitors (optional, mainly from scraping)
+  distance: decimal("distance", { precision: 5, scale: 2 }), // distance from subject property
+  matchScore: decimal("match_score", { precision: 5, scale: 2 }), // similarity score
+  vacancyRate: decimal("vacancy_rate", { precision: 5, scale: 2 }),
+  priceRange: text("price_range"), // for competitors
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  profileTypeIdx: index("property_profiles_profile_type_idx").on(table.profileType),
+  urlIdx: index("property_profiles_url_idx").on(table.url),
+  locationIdx: index("property_profiles_location_idx").on(table.city, table.state),
+  createdAtIdx: index("property_profiles_created_at_idx").on(table.createdAt),
+  // Unique constraint on URL to prevent duplicates
+  urlUnique: unique("property_profiles_url_unique").on(table.url),
+  // Check constraint to ensure profileType is valid
+  profileTypeCheck: check("property_profiles_profile_type_check", sql`${table.profileType} IN ('subject', 'competitor')`)
+}));
+
+// Analysis sessions to group multiple properties for comparison
+export const analysisSessions = pgTable("analysis_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(), // e.g., "Downtown Portfolio Analysis"
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  nameIdx: index("analysis_sessions_name_idx").on(table.name),
+  createdAtIdx: index("analysis_sessions_created_at_idx").on(table.createdAt)
+}));
+
+// Junction table for many-to-many relationship between sessions and property profiles
+export const sessionPropertyProfiles = pgTable("session_property_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").references(() => analysisSessions.id).notNull(),
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id).notNull(),
+  role: text("role").notNull(), // "subject" | "competitor" - role in this specific analysis
+  createdAt: timestamp("created_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  sessionIdIdx: index("session_property_profiles_session_id_idx").on(table.sessionId),
+  propertyProfileIdIdx: index("session_property_profiles_property_profile_id_idx").on(table.propertyProfileId),
+  roleIdx: index("session_property_profiles_role_idx").on(table.role),
+  // Unique constraint to prevent duplicate property profiles in same session
+  sessionPropertyUnique: unique("session_property_profiles_session_property_unique").on(table.sessionId, table.propertyProfileId),
+  // Check constraint to ensure role is valid
+  roleCheck: check("session_property_profiles_role_check", sql`${table.role} IN ('subject', 'competitor')`)
+}));
+
+// Legacy properties table (maintained for backward compatibility)
 export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   address: text("address").notNull(),
@@ -20,7 +86,12 @@ export const properties = pgTable("properties", {
 
 export const propertyAnalysis = pgTable("property_analysis", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  // Legacy reference (for backward compatibility)
+  propertyId: varchar("property_id").references(() => properties.id),
+  // New reference to unified property profiles
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id),
+  // Analysis session reference for multi-property analysis
+  sessionId: varchar("session_id").references(() => analysisSessions.id),
   marketPosition: text("market_position").notNull(),
   competitiveAdvantages: json("competitive_advantages").$type<string[]>().notNull(),
   pricingInsights: text("pricing_insights").notNull(),
@@ -44,7 +115,10 @@ export const competitorProperties = pgTable("competitor_properties", {
 
 export const propertyUnits = pgTable("property_units", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  // Legacy reference (for backward compatibility)
+  propertyId: varchar("property_id").references(() => properties.id),
+  // New reference to unified property profiles
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id),
   unitNumber: text("unit_number").notNull(),
   unitType: text("unit_type").notNull(),
   currentRent: decimal("current_rent", { precision: 10, scale: 2 }).notNull(),
@@ -55,7 +129,12 @@ export const propertyUnits = pgTable("property_units", {
 
 export const optimizationReports = pgTable("optimization_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  // Legacy reference (for backward compatibility)
+  propertyId: varchar("property_id").references(() => properties.id),
+  // New reference to unified property profiles
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id),
+  // Analysis session reference for multi-property optimization
+  sessionId: varchar("session_id").references(() => analysisSessions.id),
   goal: text("goal").notNull(),
   riskTolerance: text("risk_tolerance").notNull(),
   timeline: text("timeline").notNull(),
@@ -69,7 +148,12 @@ export const optimizationReports = pgTable("optimization_reports", {
 // Scrapezy scraping jobs and cached data
 export const scrapingJobs = pgTable("scraping_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  propertyId: varchar("property_id").references(() => properties.id).notNull(),
+  // Legacy reference (for backward compatibility)
+  propertyId: varchar("property_id").references(() => properties.id),
+  // New reference to unified property profiles
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id),
+  // Analysis session reference for multi-property scraping
+  sessionId: varchar("session_id").references(() => analysisSessions.id),
   stage: text("stage").notNull(), // "city_discovery" or "unit_details"
   cityUrl: text("city_url").notNull(),
   scrapezyJobId: text("scrapezy_job_id"),
@@ -107,6 +191,12 @@ export const scrapedUnits = pgTable("scraped_units", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// Insert schemas for new property profiles system
+export const insertPropertyProfileSchema = createInsertSchema(propertyProfiles).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertAnalysisSessionSchema = createInsertSchema(analysisSessions).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertSessionPropertyProfileSchema = createInsertSchema(sessionPropertyProfiles).omit({ id: true, createdAt: true });
+
+// Legacy insert schemas (maintained for backward compatibility)
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });
 export const insertPropertyAnalysisSchema = createInsertSchema(propertyAnalysis).omit({ id: true, createdAt: true });
 export const insertCompetitorPropertySchema = createInsertSchema(competitorProperties).omit({ id: true, createdAt: true });
@@ -116,6 +206,15 @@ export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({ i
 export const insertScrapedPropertySchema = createInsertSchema(scrapedProperties).omit({ id: true, createdAt: true });
 export const insertScrapedUnitSchema = createInsertSchema(scrapedUnits).omit({ id: true, createdAt: true });
 
+// New property profiles system types
+export type PropertyProfile = typeof propertyProfiles.$inferSelect;
+export type InsertPropertyProfile = z.infer<typeof insertPropertyProfileSchema>;
+export type AnalysisSession = typeof analysisSessions.$inferSelect;
+export type InsertAnalysisSession = z.infer<typeof insertAnalysisSessionSchema>;
+export type SessionPropertyProfile = typeof sessionPropertyProfiles.$inferSelect;
+export type InsertSessionPropertyProfile = z.infer<typeof insertSessionPropertyProfileSchema>;
+
+// Legacy types (maintained for backward compatibility)
 export type Property = typeof properties.$inferSelect;
 export type InsertProperty = z.infer<typeof insertPropertySchema>;
 export type PropertyAnalysis = typeof propertyAnalysis.$inferSelect;
