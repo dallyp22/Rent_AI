@@ -1,7 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
+import { normalizeAmenities } from "@shared/utils";
 import OpenAI from "openai";
 
 const openai = new OpenAI({ 
@@ -2532,6 +2533,135 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     } catch (error) {
       console.error("[DEBUG_MATCHING] Error:", error);
       res.status(500).json({ message: "Failed to debug matching" });
+    }
+  });
+
+  // Property Profiles CRUD Routes
+  
+  // Get all property profiles
+  app.get("/api/property-profiles", async (req, res) => {
+    try {
+      const { type } = req.query;
+      
+      let profiles;
+      if (type && (type === 'subject' || type === 'competitor')) {
+        profiles = await storage.getPropertyProfilesByType(type as 'subject' | 'competitor');
+      } else {
+        profiles = await storage.getAllPropertyProfiles();
+      }
+      
+      res.json(profiles);
+    } catch (error) {
+      console.error("Error fetching property profiles:", error);
+      res.status(500).json({ message: "Failed to fetch property profiles" });
+    }
+  });
+
+  // Get single property profile
+  app.get("/api/property-profiles/:id", async (req, res) => {
+    try {
+      const profile = await storage.getPropertyProfile(req.params.id);
+      
+      if (!profile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      res.json(profile);
+    } catch (error) {
+      console.error("Error fetching property profile:", error);
+      res.status(500).json({ message: "Failed to fetch property profile" });
+    }
+  });
+
+  // Create property profile
+  app.post("/api/property-profiles", async (req, res) => {
+    try {
+      const rawData = req.body;
+      
+      // Normalize amenities using shared helper function
+      rawData.amenities = normalizeAmenities(rawData.amenities);
+      
+      const profileData = insertPropertyProfileSchema.parse(rawData);
+      const profile = await storage.createPropertyProfile(profileData);
+      
+      res.status(201).json(profile);
+    } catch (error) {
+      console.error("Error creating property profile:", error);
+      
+      // Return 400 for validation errors with detailed error information
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues || [{ message: error.message }]
+        });
+      }
+      
+      // Check if it's a Zod validation error by checking the error structure
+      if (error && typeof error === 'object' && 'issues' in error) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to create property profile" });
+    }
+  });
+
+  // Update property profile
+  app.put("/api/property-profiles/:id", async (req, res) => {
+    try {
+      const rawData = req.body;
+      
+      // Normalize amenities using shared helper function
+      rawData.amenities = normalizeAmenities(rawData.amenities);
+      
+      // Validate the request body using partial schema for updates
+      const validatedData = insertPropertyProfileSchema.partial().parse(rawData);
+      
+      const profile = await storage.updatePropertyProfile(req.params.id, validatedData);
+      
+      if (!profile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      res.json(profile);
+    } catch (error) {
+      console.error("Error updating property profile:", error);
+      
+      // Return 400 for validation errors with detailed error information
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues || [{ message: error.message }]
+        });
+      }
+      
+      // Check if it's a Zod validation error by checking the error structure
+      if (error && typeof error === 'object' && 'issues' in error) {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues
+        });
+      }
+      
+      res.status(500).json({ message: "Failed to update property profile" });
+    }
+  });
+
+  // Delete property profile
+  app.delete("/api/property-profiles/:id", async (req, res) => {
+    try {
+      const success = await storage.deletePropertyProfile(req.params.id);
+      
+      if (!success) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      res.status(204).send(); // 204 No Content is more appropriate for successful DELETE operations
+    } catch (error) {
+      console.error("Error deleting property profile:", error);
+      res.status(500).json({ message: "Failed to delete property profile" });
     }
   });
 

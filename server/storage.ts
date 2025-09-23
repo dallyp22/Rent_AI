@@ -213,9 +213,22 @@ export class MemStorage implements IStorage {
     const profile = this.propertyProfiles.get(id);
     if (!profile) return undefined;
     
+    // Ensure amenities field is properly handled as string[]
+    const processedUpdates = { ...updates };
+    if (processedUpdates.amenities !== undefined) {
+      // Force conversion to proper Array type, handle any array-like objects
+      if (processedUpdates.amenities && typeof processedUpdates.amenities === 'object') {
+        // Convert array-like objects (including Arguments objects) to proper arrays
+        processedUpdates.amenities = Array.from(processedUpdates.amenities as any)
+          .filter((item: any) => typeof item === 'string');
+      } else {
+        processedUpdates.amenities = [];
+      }
+    }
+    
     const updatedProfile = { 
       ...profile, 
-      ...updates, 
+      ...processedUpdates, 
       updatedAt: new Date() 
     };
     this.propertyProfiles.set(id, updatedProfile);
