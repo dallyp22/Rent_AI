@@ -137,7 +137,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
 
   // Session-based query for multi-property analysis
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
-    queryKey: ['/api/sessions', params.sessionId],
+    queryKey: ['/api/analysis-sessions', params.sessionId],
     enabled: isSessionMode && !!params.sessionId,
   });
 
@@ -196,9 +196,9 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
 
   // Session-based vacancy data query for multi-property portfolio analysis
   const sessionVacancyQuery = useQuery<SessionVacancyData>({
-    queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'],
+    queryKey: ['/api/analysis-sessions', params.sessionId, 'vacancy-summary'],
     queryFn: async () => {
-      const response = await apiRequest('GET', `/api/sessions/${params.sessionId}/vacancy-summary`);
+      const response = await apiRequest('GET', `/api/analysis-sessions/${params.sessionId}/vacancy-summary`);
       if (!response.ok) {
         throw new Error('Failed to fetch session vacancy data');
       }
@@ -269,9 +269,9 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
     try {
       // Check if vacancy data is available (indicates scraping completion)
       const response = await queryClient.fetchQuery({
-        queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'],
+        queryKey: ['/api/analysis-sessions', params.sessionId, 'vacancy-summary'],
         queryFn: async () => {
-          const res = await apiRequest('GET', `/api/sessions/${params.sessionId}/vacancy-summary`);
+          const res = await apiRequest('GET', `/api/analysis-sessions/${params.sessionId}/vacancy-summary`);
           if (!res.ok) {
             throw new Error('Not ready yet');
           }
@@ -282,7 +282,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
       if (response) {
         setScrapingStage('completed');
         setShowVacancyChart(true);
-        queryClient.invalidateQueries({ queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId, 'vacancy-summary'] });
         toast({
           title: "Session Scraping Completed",
           description: `All properties in the session have been successfully scraped.`
