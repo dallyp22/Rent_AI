@@ -235,6 +235,91 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
     }
   });
 
+  // Session-based scraping mutation for multi-property analysis
+  const sessionScrapingMutation = useMutation({
+    mutationFn: async (sessionId: string) => {
+      const response = await apiRequest('POST', `/api/analysis-sessions/${sessionId}/scrape`, {});
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      console.log('[SESSION_SCRAPING] Session scraping initiated successfully:', data);
+      setScrapingStage('scraping');
+      toast({
+        title: "Session Scraping Started",
+        description: `Initiated scraping for ${data.totalPropertiesToScrape} properties in session "${data.sessionName}".`
+      });
+      // Start polling for completion
+      setTimeout(() => checkSessionScrapingProgress(), 5000);
+    },
+    onError: (error) => {
+      setScrapingStage('error');
+      console.error('Session scraping error:', error);
+      toast({
+        title: "Session Scraping Failed",
+        description: "Failed to start session scraping. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Function to check session scraping progress
+  const checkSessionScrapingProgress = async () => {
+    if (!params.sessionId) return;
+    
+    try {
+      // Check if vacancy data is available (indicates scraping completion)
+      const response = await queryClient.fetchQuery({
+        queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'],
+        queryFn: async () => {
+          const res = await apiRequest('GET', `/api/sessions/${params.sessionId}/vacancy-summary`);
+          if (!res.ok) {
+            throw new Error('Not ready yet');
+          }
+          return await res.json();
+        }
+      });
+      
+      if (response) {
+        setScrapingStage('completed');
+        setShowVacancyChart(true);
+        queryClient.invalidateQueries({ queryKey: ['/api/sessions', params.sessionId, 'vacancy-summary'] });
+        toast({
+          title: "Session Scraping Completed",
+          description: `All properties in the session have been successfully scraped.`
+        });
+      }
+    } catch (error) {
+      // Still processing, check again in 10 seconds
+      setTimeout(() => checkSessionScrapingProgress(), 10000);
+    }
+  };
+
+  // Automatic session scraping trigger when page loads in session mode
+  useEffect(() => {
+    const triggerSessionScraping = async () => {
+      if (isSessionMode && params.sessionId && sessionQuery.data && scrapingStage === 'none') {
+        console.log('[SESSION_SCRAPING] Auto-triggering scraping for session:', params.sessionId);
+        
+        // Check if there are properties with URLs to scrape
+        const propertiesToScrape = sessionQuery.data.propertyProfiles?.filter(profile => profile.url);
+        
+        if (propertiesToScrape && propertiesToScrape.length > 0) {
+          console.log('[SESSION_SCRAPING] Found', propertiesToScrape.length, 'properties to scrape');
+          await sessionScrapingMutation.mutateAsync(params.sessionId);
+        } else {
+          console.log('[SESSION_SCRAPING] No properties with URLs found, skipping scraping');
+          setScrapingStage('completed');
+          setShowVacancyChart(true);
+        }
+      }
+    };
+
+    // Only trigger if we have session data and haven't started scraping yet
+    if (isSessionMode && sessionQuery.data && scrapingStage === 'none') {
+      triggerSessionScraping();
+    }
+  }, [isSessionMode, sessionQuery.data, scrapingStage, params.sessionId]);
+
   const handleCompetitorSelection = async (selectedIds: string[]) => {
     if (competitorsQuery.data) {
       const selected = competitorsQuery.data.filter(comp => selectedIds.includes(comp.id));
@@ -486,6 +571,95 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               </div>
             </CardContent>
           </Card>
+
+          {/* Session Scraping Progress Section */}
+          <div className="bg-card rounded-lg border border-border p-6" data-testid="session-scraping-section">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-semibold">Portfolio Data Collection</h3>
+              {scrapingStage === 'scraping' && (
+                <div className="flex items-center text-blue-600" data-testid="session-scraping-indicator">
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <span className="text-sm">Scraping portfolio properties...</span>
+                </div>
+              )}
+              {scrapingStage === 'completed' && (
+                <div className="flex items-center text-green-600" data-testid="session-scraping-completed">
+                  <CheckCircle className="h-4 w-4 mr-2" />
+                  <span className="text-sm">Portfolio collection completed</span>
+                </div>
+              )}
+              {scrapingStage === 'error' && (
+                <div className="flex items-center text-red-600" data-testid="session-scraping-error">
+                  <XCircle className="h-4 w-4 mr-2" />
+                  <span className="text-sm">Collection failed</span>
+                </div>
+              )}
+            </div>
+
+            {scrapingStage === 'scraping' && (
+              <div className="space-y-3" data-testid="session-scraping-progress">
+                <p className="text-sm text-muted-foreground">
+                  Collecting detailed unit information from all properties in the session. This may take several minutes...
+                </p>
+                <div className="space-y-2">
+                  {/* Subject Properties Progress */}
+                  {subjectProperties.filter(p => p.url).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-blue-600 dark:text-blue-400 uppercase tracking-wide mb-2">Subject Properties</h4>
+                      {subjectProperties.filter(p => p.url).map((property) => (
+                        <div key={property.id} className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-md mb-2">
+                          <div className="flex items-center">
+                            <Loader2 className="h-3 w-3 mr-2 animate-spin text-blue-500" />
+                            <div>
+                              <div className="text-sm font-medium">{property.name}</div>
+                              <div className="text-xs text-muted-foreground">Collecting unit data...</div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  {/* Competitor Properties Progress */}
+                  {competitorProfiles.filter(p => p.url).length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Competitor Properties</h4>
+                      {competitorProfiles.filter(p => p.url).map((property) => (
+                        <div key={property.id} className="flex items-center p-3 bg-muted rounded-md mb-1">
+                          <Loader2 className="h-3 w-3 mr-2 animate-spin text-blue-500" />
+                          <span className="text-sm">{property.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {scrapingStage === 'error' && (
+              <div className="text-center py-4" data-testid="session-scraping-error-message">
+                <p className="text-sm text-muted-foreground mb-3">
+                  Failed to collect portfolio data. Please try again or proceed with available data.
+                </p>
+                <Button
+                  onClick={() => sessionScrapingMutation.mutate(params.sessionId!)}
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-retry-session-scraping"
+                  disabled={sessionScrapingMutation.isPending}
+                >
+                  {sessionScrapingMutation.isPending ? (
+                    <>
+                      <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : (
+                    'Retry Collection'
+                  )}
+                </Button>
+              </div>
+            )}
+          </div>
 
           {/* Portfolio Vacancy Analysis */}
           {sessionVacancyQuery.data && (
