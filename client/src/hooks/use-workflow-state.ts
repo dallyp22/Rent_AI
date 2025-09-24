@@ -4,6 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 export interface WorkflowState {
   stage?: string;
   selectedCompetitorIds?: string[];
+  analysisSessionId?: string;
   filterCriteria?: any;
   optimizationParams?: any;
   timestamp?: string;
