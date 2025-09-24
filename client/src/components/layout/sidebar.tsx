@@ -16,12 +16,6 @@ export default function Sidebar() {
   // Generate navigation with dynamic property IDs
   const navigation = [
     { 
-      name: "Property Input", 
-      href: "/", 
-      icon: Home,
-      enabled: true 
-    },
-    { 
       name: "Property Profiles", 
       href: "/property-profiles", 
       icon: Building2,
@@ -37,6 +31,12 @@ export default function Sidebar() {
       name: "Selection Matrix", 
       href: "/property-selection-matrix", 
       icon: Grid3X3,
+      enabled: true 
+    },
+    { 
+      name: "Property Input", 
+      href: "/", 
+      icon: Home,
       enabled: true 
     },
     { 
