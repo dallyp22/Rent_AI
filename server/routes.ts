@@ -3773,6 +3773,111 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
+  // NEW: Get all scraped units grouped by property for a specific analysis session
+  app.get("/api/analysis-sessions/:sessionId/scraped-units", async (req, res) => {
+    try {
+      console.log('[SESSION_SCRAPED_UNITS] ===========================================');
+      console.log('[SESSION_SCRAPED_UNITS] Starting scraped units retrieval for session');
+      
+      const sessionId = req.params.sessionId;
+      console.log('[SESSION_SCRAPED_UNITS] Session ID:', sessionId);
+      
+      // Get the analysis session to verify it exists
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      // Get all property profiles in the session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      if (propertyProfiles.length === 0) {
+        return res.status(404).json({ 
+          message: "No property profiles found in this session",
+          suggestion: "Please add properties to the analysis session and run scraping first"
+        });
+      }
+
+      console.log('[SESSION_SCRAPED_UNITS] Found', propertyProfiles.length, 'property profiles');
+
+      const result = [];
+
+      // For each property profile, find the latest completed scraping job and get its scraped units
+      for (const profile of propertyProfiles) {
+        try {
+          // Get all scraping jobs for this property profile
+          const scrapingJobs = await storage.getScrapingJobsByProfile(profile.id);
+          
+          // Find the latest completed scraping job
+          const completedJobs = scrapingJobs
+            .filter(job => job.status === 'completed')
+            .sort((a, b) => {
+              const dateA = a.completedAt ? new Date(a.completedAt) : (a.createdAt ? new Date(a.createdAt) : new Date());
+              const dateB = b.completedAt ? new Date(b.completedAt) : (b.createdAt ? new Date(b.createdAt) : new Date());
+              return dateB.getTime() - dateA.getTime();
+            });
+
+          if (completedJobs.length === 0) {
+            console.log(`[SESSION_SCRAPED_UNITS] No completed scraping jobs found for property profile ${profile.id}`);
+            continue;
+          }
+
+          const latestJob = completedJobs[0];
+          console.log(`[SESSION_SCRAPED_UNITS] Using latest completed job ${latestJob.id} for property ${profile.name}`);
+
+          // Get scraped properties for this job
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(latestJob.id);
+          
+          if (scrapedProperties.length === 0) {
+            console.log(`[SESSION_SCRAPED_UNITS] No scraped properties found for job ${latestJob.id}`);
+            continue;
+          }
+
+          // For each scraped property, get its units
+          for (const scrapedProperty of scrapedProperties) {
+            const units = await storage.getScrapedUnitsByProperty(scrapedProperty.id);
+            
+            // Normalize the numeric values in the units
+            const normalizedUnits = units.map(unit => ({
+              ...unit,
+              rent: normalizeRent(unit.rent),
+              bathrooms: normalizeBathrooms(unit.bathrooms),
+              squareFootage: normalizeSquareFootage(unit.squareFootage),
+              bedrooms: unit.bedrooms || 0
+            }));
+
+            result.push({
+              propertyId: profile.id,
+              propertyName: profile.name,
+              propertyUrl: profile.url,
+              propertyAddress: profile.address,
+              scrapedPropertyId: scrapedProperty.id,
+              units: normalizedUnits
+            });
+          }
+
+        } catch (profileError) {
+          console.error(`[SESSION_SCRAPED_UNITS] Error processing property profile ${profile.id}:`, profileError);
+          // Continue with other properties instead of failing completely
+          continue;
+        }
+      }
+
+      if (result.length === 0) {
+        return res.status(404).json({ 
+          message: "No scraped units found for this session",
+          suggestion: "Please ensure scraping has been completed for the properties in this session"
+        });
+      }
+
+      console.log(`[SESSION_SCRAPED_UNITS] Successfully retrieved units for ${result.length} properties`);
+      res.json(result);
+      
+    } catch (error) {
+      console.error("[SESSION_SCRAPED_UNITS] Error:", error);
+      res.status(500).json({ message: "Failed to get scraped units for session" });
+    }
+  });
+
   // SESSION-BASED MULTI-PROPERTY ENDPOINTS
 
   // Get session-based vacancy summary for multi-property analysis
