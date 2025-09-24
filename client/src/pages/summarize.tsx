@@ -12,7 +12,7 @@ import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
-import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile } from "@shared/schema";
+import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile, ScrapedUnit } from "@shared/schema";
 
 interface PropertyWithAnalysis {
   property: Property;
@@ -62,6 +62,16 @@ interface VacancyData {
     totalVacancies: number;
     competitorAvgVacancies: number;
   };
+}
+
+// Interface for canonical scraped units API response
+interface CanonicalScrapedUnitsResponse {
+  propertyId: string;
+  propertyName: string;
+  propertyUrl: string;
+  propertyAddress: string;
+  scrapedPropertyId: string;
+  units: ScrapedUnit[];
 }
 
 // New interface for session-based vacancy data
@@ -190,6 +200,21 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
       return await response.json();
     },
     enabled: !isSessionMode && scrapingStage === 'completed' && selectedCompetitors.length > 0,
+    retry: 3,
+    retryDelay: 2000,
+  });
+
+  // NEW: Canonical scraped units query for session mode - this replaces legacy competitor data
+  const scrapedUnitsQuery = useQuery<CanonicalScrapedUnitsResponse[]>({
+    queryKey: ['/api/analysis-sessions', params.sessionId, 'scraped-units'],
+    queryFn: async () => {
+      const response = await apiRequest('GET', `/api/analysis-sessions/${params.sessionId}/scraped-units`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch scraped units data');
+      }
+      return await response.json();
+    },
+    enabled: isSessionMode && !!params.sessionId,
     retry: 3,
     retryDelay: 2000,
   });
@@ -452,11 +477,11 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
 
   // Loading state for both modes
   const isLoading = isSessionMode 
-    ? sessionQuery.isLoading 
+    ? (sessionQuery.isLoading || scrapedUnitsQuery.isLoading)
     : (propertyQuery.isLoading || competitorsQuery.isLoading);
     
   const hasError = isSessionMode 
-    ? sessionQuery.error 
+    ? (sessionQuery.error || scrapedUnitsQuery.error)
     : (propertyQuery.error || competitorsQuery.error);
 
   if (isLoading) {
@@ -544,17 +569,36 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                 <div>
                   <h4 className="font-medium mb-3 text-primary">Subject Properties ({subjectProperties.length})</h4>
                   <div className="space-y-2">
-                    {subjectProperties.map((property) => (
-                      <div key={property.id} className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                        <div className="font-medium text-blue-900 dark:text-blue-100">{property.name}</div>
-                        <div className="text-sm text-blue-600 dark:text-blue-400">{property.address}</div>
-                        {property.totalUnits && (
-                          <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
-                            {property.totalUnits} units
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {subjectProperties.map((property) => {
+                      // Find scraped data for this property
+                      const scrapedData = scrapedUnitsQuery.data?.find(data => data.propertyId === property.id);
+                      const actualUnitCount = scrapedData?.units.length;
+                      const availableUnits = scrapedData?.units.filter(unit => unit.status === 'available').length;
+                      
+                      return (
+                        <div key={property.id} className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <div className="font-medium text-blue-900 dark:text-blue-100">{property.name}</div>
+                          <div className="text-sm text-blue-600 dark:text-blue-400">{property.address}</div>
+                          {actualUnitCount !== undefined ? (
+                            <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                              {actualUnitCount} scraped units {availableUnits !== undefined && `• ${availableUnits} available`}
+                            </div>
+                          ) : property.totalUnits ? (
+                            <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                              {property.totalUnits} units (estimated)
+                            </div>
+                          ) : scrapedUnitsQuery.isLoading ? (
+                            <div className="text-xs text-blue-500 dark:text-blue-500 mt-1">
+                              Loading unit data...
+                            </div>
+                          ) : (
+                            <div className="text-xs text-red-500 dark:text-red-500 mt-1">
+                              No unit data available
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 
@@ -562,17 +606,36 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                 <div>
                   <h4 className="font-medium mb-3 text-muted-foreground">Competitor Properties ({competitorProfiles.length})</h4>
                   <div className="space-y-2">
-                    {competitorProfiles.map((property) => (
-                      <div key={property.id} className="p-3 bg-muted rounded-lg">
-                        <div className="font-medium">{property.name}</div>
-                        <div className="text-sm text-muted-foreground">{property.address}</div>
-                        {property.totalUnits && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {property.totalUnits} units
-                          </div>
-                        )}
-                      </div>
-                    ))}
+                    {competitorProfiles.map((property) => {
+                      // Find scraped data for this property
+                      const scrapedData = scrapedUnitsQuery.data?.find(data => data.propertyId === property.id);
+                      const actualUnitCount = scrapedData?.units.length;
+                      const availableUnits = scrapedData?.units.filter(unit => unit.status === 'available').length;
+                      
+                      return (
+                        <div key={property.id} className="p-3 bg-muted rounded-lg">
+                          <div className="font-medium">{property.name}</div>
+                          <div className="text-sm text-muted-foreground">{property.address}</div>
+                          {actualUnitCount !== undefined ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {actualUnitCount} scraped units {availableUnits !== undefined && `• ${availableUnits} available`}
+                            </div>
+                          ) : property.totalUnits ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              {property.totalUnits} units (estimated)
+                            </div>
+                          ) : scrapedUnitsQuery.isLoading ? (
+                            <div className="text-xs text-muted-foreground mt-1">
+                              Loading unit data...
+                            </div>
+                          ) : (
+                            <div className="text-xs text-red-500 mt-1">
+                              No unit data available
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>
@@ -667,6 +730,226 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               </div>
             )}
           </div>
+
+          {/* NEW: Scraped Units Display - Session Mode */}
+          {isSessionMode && scrapedUnitsQuery.isError && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2 text-red-600">
+                  <XCircle className="h-5 w-5" />
+                  <span>Failed to Load Scraped Units</span>
+                </CardTitle>
+                <CardDescription>
+                  Unable to retrieve scraped unit data from the canonical endpoint
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Error: {scrapedUnitsQuery.error?.message || 'Unknown error occurred'}
+                </p>
+                <div className="flex space-x-3">
+                  <Button
+                    onClick={() => scrapedUnitsQuery.refetch()}
+                    variant="outline"
+                    size="sm"
+                  >
+                    Retry Loading
+                  </Button>
+                  <Button
+                    onClick={handleContinueToAnalyze}
+                    variant="default"
+                    size="sm"
+                  >
+                    Continue Anyway
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {isSessionMode && scrapedUnitsQuery.isLoading && !scrapedUnitsQuery.data && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                  <span>Loading Scraped Unit Data</span>
+                </CardTitle>
+                <CardDescription>
+                  Retrieving detailed unit information from the canonical data source...
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="h-4 bg-muted rounded animate-pulse"></div>
+                  <div className="h-4 bg-muted rounded animate-pulse w-3/4"></div>
+                  <div className="h-4 bg-muted rounded animate-pulse w-1/2"></div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
+          {isSessionMode && scrapedUnitsQuery.data && scrapedUnitsQuery.data.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <Home className="h-5 w-5 text-primary" />
+                      <span>Scraped Unit Data</span>
+                    </CardTitle>
+                    <CardDescription>
+                      All scraped unit information from properties in this session - this is the data that will be used for analysis
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                <div className="space-y-6">
+                  {scrapedUnitsQuery.data.map((propertyData) => {
+                    const totalUnits = propertyData.units.length;
+                    const availableUnits = propertyData.units.filter(unit => unit.status === 'available').length;
+                    const vacancyRate = totalUnits > 0 ? Math.round((availableUnits / totalUnits) * 100) : 0;
+                    
+                    // Group units by type for summary
+                    const unitsByType = propertyData.units.reduce((acc, unit) => {
+                      const type = unit.unitType || 'Unknown';
+                      if (!acc[type]) {
+                        acc[type] = { total: 0, available: 0, avgRent: 0, rentSum: 0, avgSqFt: 0, sqFtSum: 0, count: 0 };
+                      }
+                      acc[type].total++;
+                      if (unit.status === 'available') {
+                        acc[type].available++;
+                      }
+                      // Handle rent calculation
+                      if (unit.rent) {
+                        const rentValue = typeof unit.rent === 'string' 
+                          ? parseFloat(unit.rent.replace(/[$,]/g, '')) 
+                          : typeof unit.rent === 'number' 
+                            ? unit.rent 
+                            : parseFloat(String(unit.rent));
+                        if (!isNaN(rentValue)) {
+                          acc[type].rentSum += rentValue;
+                          acc[type].count++;
+                        }
+                      }
+                      // Handle square footage
+                      if (unit.squareFootage) {
+                        const sqFtValue = typeof unit.squareFootage === 'string' 
+                          ? parseFloat(unit.squareFootage) 
+                          : typeof unit.squareFootage === 'number'
+                            ? unit.squareFootage
+                            : parseFloat(String(unit.squareFootage));
+                        if (!isNaN(sqFtValue)) {
+                          acc[type].sqFtSum += sqFtValue;
+                        }
+                      }
+                      return acc;
+                    }, {} as Record<string, { total: number; available: number; avgRent: number; rentSum: number; avgSqFt: number; sqFtSum: number; count: number; }>);
+
+                    // Calculate averages
+                    Object.keys(unitsByType).forEach(type => {
+                      const data = unitsByType[type];
+                      data.avgRent = data.count > 0 ? Math.round(data.rentSum / data.count) : 0;
+                      data.avgSqFt = data.total > 0 ? Math.round(data.sqFtSum / data.total) : 0;
+                    });
+
+                    return (
+                      <div key={propertyData.propertyId} className="border border-border rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-4">
+                          <div>
+                            <h4 className="font-semibold text-lg">{propertyData.propertyName}</h4>
+                            <p className="text-sm text-muted-foreground">{propertyData.propertyAddress}</p>
+                            {propertyData.propertyUrl && (
+                              <a 
+                                href={propertyData.propertyUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                View Property ↗
+                              </a>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-2xl font-bold">{totalUnits}</div>
+                            <div className="text-sm text-muted-foreground">Total Units</div>
+                            <div className="text-sm">
+                              <span className="text-green-600">{availableUnits} available</span>
+                              <span className="text-muted-foreground"> • </span>
+                              <span className="text-blue-600">{vacancyRate}% vacant</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Unit Type Summary */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 mb-4">
+                          {Object.entries(unitsByType).map(([type, data]) => (
+                            <div key={type} className="p-3 bg-muted rounded-md">
+                              <div className="font-medium text-sm">{type}</div>
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {data.total} units • {data.available} available
+                              </div>
+                              {data.avgRent > 0 && (
+                                <div className="text-xs text-green-600 mt-1">
+                                  Avg: ${data.avgRent.toLocaleString()}/mo
+                                </div>
+                              )}
+                              {data.avgSqFt > 0 && (
+                                <div className="text-xs text-blue-600">
+                                  {data.avgSqFt} sq ft avg
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Sample units display */}
+                        <div className="mt-3">
+                          <p className="text-sm font-medium mb-2">Sample Units (showing first 5):</p>
+                          <div className="space-y-1 max-h-40 overflow-y-auto">
+                            {propertyData.units.slice(0, 5).map((unit, index) => {
+                              const rentDisplay = unit.rent 
+                                ? (typeof unit.rent === 'string' 
+                                   ? unit.rent 
+                                   : `$${parseFloat(String(unit.rent)).toLocaleString()}`)
+                                : 'N/A';
+                              
+                              return (
+                                <div key={unit.id || index} className="text-xs p-2 bg-background rounded border">
+                                  <span className="font-medium">{unit.unitNumber || unit.unitType}</span>
+                                  <span className="text-muted-foreground"> • </span>
+                                  <span>{unit.bedrooms}BR</span>
+                                  {unit.bathrooms && (
+                                    <>
+                                      <span className="text-muted-foreground"> • </span>
+                                      <span>{unit.bathrooms}BA</span>
+                                    </>
+                                  )}
+                                  {unit.squareFootage && (
+                                    <>
+                                      <span className="text-muted-foreground"> • </span>
+                                      <span>{unit.squareFootage} sq ft</span>
+                                    </>
+                                  )}
+                                  <span className="text-muted-foreground"> • </span>
+                                  <span className="text-green-600">{rentDisplay}</span>
+                                  <span className="text-muted-foreground"> • </span>
+                                  <span className={unit.status === 'available' ? 'text-green-600' : 'text-red-600'}>
+                                    {unit.status}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {propertyData.units.length > 5 && (
+                              <p className="text-xs text-muted-foreground">
+                                ...and {propertyData.units.length - 5} more units
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Portfolio Vacancy Analysis */}
           {sessionVacancyQuery.data && (
