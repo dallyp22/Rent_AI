@@ -192,7 +192,15 @@ export const scrapedUnits = pgTable("scraped_units", {
 });
 
 // Insert schemas for new property profiles system
-export const insertPropertyProfileSchema = createInsertSchema(propertyProfiles).omit({ id: true, createdAt: true, updatedAt: true });
+// Custom schema to handle decimal fields properly (they can be strings or numbers)
+export const insertPropertyProfileSchema = createInsertSchema(propertyProfiles)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    // Allow decimal fields to accept both strings and numbers, then transform to string
+    distance: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    matchScore: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    vacancyRate: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+  });
 export const insertAnalysisSessionSchema = createInsertSchema(analysisSessions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertSessionPropertyProfileSchema = createInsertSchema(sessionPropertyProfiles).omit({ id: true, createdAt: true });
 

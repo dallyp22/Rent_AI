@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import PropertySidebar from "@/components/property-sidebar";
-import PropertyProfileForm from "@/components/property-profile-form";
+import PropertyProfileForm, { PropertyProfileFormRef } from "@/components/property-profile-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +52,9 @@ export default function PropertyInput() {
   
   // Form dialog state
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  
+  // Form reference for resetting
+  const formRef = useRef<PropertyProfileFormRef>(null);
 
   // Create property profile mutation
   const createPropertyProfileMutation = useMutation({
@@ -74,11 +77,14 @@ export default function PropertyInput() {
         startScrapingMutation.mutate(newProperty.id);
       }
       
+      // Reset form for next property creation
+      formRef.current?.resetForm();
+      
       setIsFormDialogOpen(false);
       
       toast({
         title: "Property Profile Created",
-        description: `${newProperty.name} has been added successfully.`,
+        description: `${newProperty.name} has been added successfully and auto-selected.`,
       });
     },
     onError: (error) => {
@@ -262,6 +268,7 @@ export default function PropertyInput() {
             </CardHeader>
             <CardContent>
               <PropertyProfileForm
+                ref={formRef}
                 onSubmit={handleFormSubmit}
                 onCancel={() => {}} // No cancel needed in this context
                 isLoading={createPropertyProfileMutation.isPending}

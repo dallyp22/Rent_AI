@@ -1,5 +1,7 @@
+import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { forwardRef, useImperativeHandle, useEffect } from "react";
 import { insertPropertyProfileSchema } from "@shared/schema";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -30,12 +32,21 @@ interface PropertyProfileFormProps {
   isLoading?: boolean;
 }
 
-export default function PropertyProfileForm({
-  initialData,
-  onSubmit,
-  onCancel,
-  isLoading = false
-}: PropertyProfileFormProps) {
+// Export interface for form ref to allow parent to reset form
+export interface PropertyProfileFormRef {
+  resetForm: () => void;
+}
+
+const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFormProps>(
+  (
+    {
+      initialData,
+      onSubmit,
+      onCancel,
+      isLoading = false
+    },
+    ref
+  ) => {
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -53,6 +64,26 @@ export default function PropertyProfileForm({
       amenities: initialData?.amenities ?? [],
     }
   });
+
+  // Expose form reset functionality to parent via ref
+  useImperativeHandle(ref, () => ({
+    resetForm: () => {
+      form.reset({
+        name: "",
+        address: "",
+        url: "",
+        profileType: "subject",
+        city: "",
+        state: "",
+        propertyType: "",
+        totalUnits: undefined,
+        builtYear: undefined,
+        squareFootage: undefined,
+        parkingSpaces: undefined,
+        amenities: [],
+      });
+    }
+  }), [form]);
 
   const handleSubmit = (data: FormData) => {
     onSubmit(data);
@@ -341,4 +372,8 @@ export default function PropertyProfileForm({
       </form>
     </Form>
   );
-}
+});
+
+PropertyProfileForm.displayName = "PropertyProfileForm";
+
+export default PropertyProfileForm;
