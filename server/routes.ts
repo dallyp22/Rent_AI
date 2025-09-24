@@ -765,8 +765,17 @@ function extractRentPrice(text: string): number | undefined {
 
 // Enhanced data normalization functions for proper numeric conversion
 function normalizeRent(value: any): number | undefined {
-  if (typeof value === 'number') return Math.round(value);
+  console.log(`💰 [NORMALIZE_RENT] Input: ${JSON.stringify(value)} (type: ${typeof value})`);
+  
+  if (typeof value === 'number') {
+    const result = Math.round(value);
+    console.log(`💰 [NORMALIZE_RENT] Number input → ${result}`);
+    return result;
+  }
+  
   if (typeof value === 'string') {
+    console.log(`💰 [NORMALIZE_RENT] Processing string: "${value}"`);
+    
     // Handle patterns like "$1,799+", "$1799", "1799+", "$1,799.00+"
     const cleanValue = value
       .replace(/^\$/, '') // Remove leading $
@@ -774,29 +783,67 @@ function normalizeRent(value: any): number | undefined {
       .replace(/\+$/, '') // Remove trailing +
       .replace(/\.0+$/, ''); // Remove .00 at the end
     
+    console.log(`💰 [NORMALIZE_RENT] Cleaned string: "${cleanValue}"`);
+    
     const num = parseFloat(cleanValue);
-    return isNaN(num) ? undefined : Math.round(num);
+    if (isNaN(num)) {
+      console.warn(`⚠️ [NORMALIZE_RENT] Failed to parse as number: "${cleanValue}"`);
+      return undefined;
+    }
+    
+    const result = Math.round(num);
+    console.log(`💰 [NORMALIZE_RENT] String "${value}" → ${result}`);
+    return result;
   }
+  
+  console.warn(`⚠️ [NORMALIZE_RENT] Unsupported type: ${typeof value}, value: ${JSON.stringify(value)}`);
   return undefined;
 }
 
 function normalizeBathrooms(value: any): number | undefined {
-  if (typeof value === 'number') return value;
+  console.log(`🚿 [NORMALIZE_BATHROOMS] Input: ${JSON.stringify(value)} (type: ${typeof value})`);
+  
+  if (typeof value === 'number') {
+    console.log(`🚿 [NORMALIZE_BATHROOMS] Number input → ${value}`);
+    return value;
+  }
+  
   if (typeof value === 'string') {
+    console.log(`🚿 [NORMALIZE_BATHROOMS] Processing string: "${value}"`);
+    
     // Handle patterns like "1.5", "2", "1.5 BA", "2 bathroom"
     const cleanValue = value
       .replace(/\s*(BA|bathroom|bath)\s*$/i, '') // Remove BA/bathroom suffix
       .trim();
     
+    console.log(`🚿 [NORMALIZE_BATHROOMS] Cleaned string: "${cleanValue}"`);
+    
     const num = parseFloat(cleanValue);
-    return isNaN(num) ? undefined : num;
+    if (isNaN(num)) {
+      console.warn(`⚠️ [NORMALIZE_BATHROOMS] Failed to parse as number: "${cleanValue}"`);
+      return undefined;
+    }
+    
+    console.log(`🚿 [NORMALIZE_BATHROOMS] String "${value}" → ${num}`);
+    return num;
   }
+  
+  console.warn(`⚠️ [NORMALIZE_BATHROOMS] Unsupported type: ${typeof value}, value: ${JSON.stringify(value)}`);
   return undefined;
 }
 
 function normalizeSquareFootage(value: any): number | undefined {
-  if (typeof value === 'number') return Math.round(value);
+  console.log(`📐 [NORMALIZE_SQFT] Input: ${JSON.stringify(value)} (type: ${typeof value})`);
+  
+  if (typeof value === 'number') {
+    const result = Math.round(value);
+    console.log(`📐 [NORMALIZE_SQFT] Number input → ${result}`);
+    return result;
+  }
+  
   if (typeof value === 'string') {
+    console.log(`📐 [NORMALIZE_SQFT] Processing string: "${value}"`);
+    
     // Handle patterns like "580", "580 sq ft", "580 sqft", "580+"
     const cleanValue = value
       .replace(/\s*(sq\s*ft|sqft|square\s*feet|sf)\s*$/i, '') // Remove sq ft suffix
@@ -804,9 +851,20 @@ function normalizeSquareFootage(value: any): number | undefined {
       .replace(/\+$/, '') // Remove trailing +
       .trim();
     
+    console.log(`📐 [NORMALIZE_SQFT] Cleaned string: "${cleanValue}"`);
+    
     const num = parseFloat(cleanValue);
-    return isNaN(num) ? undefined : Math.round(num);
+    if (isNaN(num)) {
+      console.warn(`⚠️ [NORMALIZE_SQFT] Failed to parse as number: "${cleanValue}"`);
+      return undefined;
+    }
+    
+    const result = Math.round(num);
+    console.log(`📐 [NORMALIZE_SQFT] String "${value}" → ${result}`);
+    return result;
   }
+  
+  console.warn(`⚠️ [NORMALIZE_SQFT] Unsupported type: ${typeof value}, value: ${JSON.stringify(value)}`);
   return undefined;
 }
 
@@ -4885,6 +4943,289 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       }))
     };
   }
+
+  // Debug endpoint for data integrity verification
+  app.get("/api/analysis-sessions/:sessionId/debug-scrape-integrity", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      console.log(`🔍 [DEBUG_INTEGRITY] Starting data integrity verification for session: ${sessionId}`);
+
+      // Get the analysis session
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        console.log(`❌ [DEBUG_INTEGRITY] Session ${sessionId} not found`);
+        return res.status(404).json({ message: "Analysis session not found" });
+      }
+
+      console.log(`✅ [DEBUG_INTEGRITY] Found session: ${session.name}`);
+
+      // Get all property profiles in this session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      console.log(`📋 [DEBUG_INTEGRITY] Found ${propertyProfiles.length} property profiles in session`);
+
+      // Get scraping jobs for this session
+      const scrapingJobs = await storage.getScrapingJobsBySession(sessionId);
+      console.log(`🔧 [DEBUG_INTEGRITY] Found ${scrapingJobs.length} scraping jobs for session`);
+
+      // Build comprehensive diagnostics
+      const diagnostics: any = {
+        session: {
+          id: session.id,
+          name: session.name,
+          description: session.description,
+          createdAt: session.createdAt
+        },
+        pipeline: {
+          totalPropertiesInSession: propertyProfiles.length,
+          propertiesWithUrls: propertyProfiles.filter(p => p.url).length,
+          totalScrapingJobs: scrapingJobs.length,
+          scrapingJobsByStatus: {}
+        },
+        properties: [],
+        scrapedData: {
+          totalScrapedProperties: 0,
+          totalScrapedUnits: 0,
+          sampleUnits: [],
+          dataValidation: {
+            validRents: 0,
+            invalidRents: 0,
+            validBathrooms: 0,
+            invalidBathrooms: 0,
+            validSquareFootage: 0,
+            invalidSquareFootage: 0,
+            validUnitTypes: 0,
+            invalidUnitTypes: 0
+          }
+        },
+        dataFlow: {
+          stages: [
+            { name: "Property Input", count: propertyProfiles.length, details: "Property profiles added to session" },
+            { name: "Scraping Jobs", count: scrapingJobs.length, details: "Scraping jobs created" },
+            { name: "Scraped Properties", count: 0, details: "Properties successfully scraped" },
+            { name: "Scraped Units", count: 0, details: "Individual units scraped" },
+            { name: "Analysis Ready", count: 0, details: "Units with complete data for analysis" }
+          ]
+        },
+        inconsistencies: [],
+        warnings: []
+      };
+
+      // Group scraping jobs by status
+      scrapingJobs.forEach(job => {
+        const status = job.status || 'unknown';
+        diagnostics.pipeline.scrapingJobsByStatus[status] = (diagnostics.pipeline.scrapingJobsByStatus[status] || 0) + 1;
+      });
+
+      // Process each property profile
+      for (const profile of propertyProfiles) {
+        console.log(`🏢 [DEBUG_INTEGRITY] Processing property: ${profile.name}`);
+        
+        const propertyDiagnostic: any = {
+          profile: {
+            id: profile.id,
+            name: profile.name,
+            address: profile.address,
+            url: profile.url,
+            profileType: profile.profileType,
+            amenities: profile.amenities || [],
+            totalUnits: profile.totalUnits
+          },
+          scrapingJobs: [],
+          scrapedProperties: [],
+          scrapedUnits: [],
+          dataIntegrity: {
+            hasUrl: !!profile.url,
+            hasScrapingJob: false,
+            scrapingJobStatus: null,
+            hasScrapedData: false,
+            scrapedUnitsCount: 0,
+            validUnitsCount: 0
+          }
+        };
+
+        // Get scraping jobs for this property
+        const propertyJobs = scrapingJobs.filter(job => job.propertyProfileId === profile.id);
+        propertyDiagnostic.scrapingJobs = propertyJobs.map(job => ({
+          id: job.id,
+          status: job.status,
+          stage: job.stage,
+          createdAt: job.createdAt,
+          completedAt: job.completedAt,
+          errorMessage: job.errorMessage,
+          resultsPreview: job.results ? Object.keys(job.results) : null
+        }));
+
+        if (propertyJobs.length > 0) {
+          propertyDiagnostic.dataIntegrity.hasScrapingJob = true;
+          const latestJob = propertyJobs[propertyJobs.length - 1];
+          propertyDiagnostic.dataIntegrity.scrapingJobStatus = latestJob.status;
+        }
+
+        // Get scraped properties for each job
+        for (const job of propertyJobs) {
+          const scrapedProperties = await storage.getScrapedPropertiesByJob(job.id);
+          propertyDiagnostic.scrapedProperties.push(...scrapedProperties.map(sp => ({
+            id: sp.id,
+            name: sp.name,
+            address: sp.address,
+            url: sp.url,
+            isSubjectProperty: sp.isSubjectProperty,
+            scrapingJobId: sp.scrapingJobId
+          })));
+
+          // Get scraped units for each scraped property
+          for (const scrapedProperty of scrapedProperties) {
+            const scrapedUnits = await storage.getScrapedUnitsByProperty(scrapedProperty.id);
+            console.log(`📊 [DEBUG_INTEGRITY] Found ${scrapedUnits.length} scraped units for property ${scrapedProperty.name}`);
+            
+            propertyDiagnostic.scrapedUnits.push(...scrapedUnits);
+            diagnostics.scrapedData.totalScrapedUnits += scrapedUnits.length;
+            
+            // Validate unit data
+            scrapedUnits.forEach(unit => {
+              // Validate rent
+              const rentValue = normalizeRent(unit.rent);
+              if (rentValue && rentValue > 0) {
+                diagnostics.scrapedData.dataValidation.validRents++;
+              } else {
+                diagnostics.scrapedData.dataValidation.invalidRents++;
+                if (!unit.rent) {
+                  diagnostics.inconsistencies.push({
+                    type: "missing_rent",
+                    propertyName: scrapedProperty.name,
+                    unitId: unit.id,
+                    message: `Unit ${unit.unitNumber || unit.unitType} missing rent data`
+                  });
+                }
+              }
+
+              // Validate bathrooms
+              const bathroomsValue = normalizeBathrooms(unit.bathrooms);
+              if (bathroomsValue && bathroomsValue > 0) {
+                diagnostics.scrapedData.dataValidation.validBathrooms++;
+              } else {
+                diagnostics.scrapedData.dataValidation.invalidBathrooms++;
+              }
+
+              // Validate square footage
+              const sqftValue = normalizeSquareFootage(unit.squareFootage);
+              if (sqftValue && sqftValue > 0) {
+                diagnostics.scrapedData.dataValidation.validSquareFootage++;
+              } else {
+                diagnostics.scrapedData.dataValidation.invalidSquareFootage++;
+              }
+
+              // Validate unit type
+              if (unit.unitType && unit.unitType.trim()) {
+                diagnostics.scrapedData.dataValidation.validUnitTypes++;
+              } else {
+                diagnostics.scrapedData.dataValidation.invalidUnitTypes++;
+                diagnostics.inconsistencies.push({
+                  type: "missing_unit_type",
+                  propertyName: scrapedProperty.name,
+                  unitId: unit.id,
+                  message: `Unit ${unit.unitNumber || 'unknown'} missing unit type`
+                });
+              }
+
+              // Add to sample units (first 5 units for inspection)
+              if (diagnostics.scrapedData.sampleUnits.length < 5) {
+                diagnostics.scrapedData.sampleUnits.push({
+                  id: unit.id,
+                  propertyName: scrapedProperty.name,
+                  unitNumber: unit.unitNumber,
+                  unitType: unit.unitType,
+                  bedrooms: unit.bedrooms,
+                  bathrooms: unit.bathrooms,
+                  squareFootage: unit.squareFootage,
+                  rent: unit.rent,
+                  availabilityDate: unit.availabilityDate,
+                  // Show normalized values for comparison
+                  normalized: {
+                    rent: rentValue,
+                    bathrooms: bathroomsValue,
+                    squareFootage: sqftValue
+                  }
+                });
+              }
+            });
+          }
+
+          diagnostics.scrapedData.totalScrapedProperties += scrapedProperties.length;
+        }
+
+        propertyDiagnostic.dataIntegrity.hasScrapedData = propertyDiagnostic.scrapedProperties.length > 0;
+        propertyDiagnostic.dataIntegrity.scrapedUnitsCount = propertyDiagnostic.scrapedUnits.length;
+        propertyDiagnostic.dataIntegrity.validUnitsCount = propertyDiagnostic.scrapedUnits.filter(unit => {
+          return normalizeRent(unit.rent) && unit.unitType && unit.unitType.trim();
+        }).length;
+
+        diagnostics.properties.push(propertyDiagnostic);
+      }
+
+      // Update data flow counts
+      diagnostics.dataFlow.stages[2].count = diagnostics.scrapedData.totalScrapedProperties;
+      diagnostics.dataFlow.stages[3].count = diagnostics.scrapedData.totalScrapedUnits;
+      diagnostics.dataFlow.stages[4].count = diagnostics.scrapedData.dataValidation.validRents;
+
+      // Add warnings for common issues
+      if (diagnostics.pipeline.totalPropertiesInSession === 0) {
+        diagnostics.warnings.push("No properties found in this analysis session");
+      }
+
+      if (diagnostics.pipeline.propertiesWithUrls === 0) {
+        diagnostics.warnings.push("No property profiles have URLs for scraping");
+      }
+
+      if (diagnostics.scrapedData.totalScrapedUnits === 0) {
+        diagnostics.warnings.push("No scraped units found - scraping may have failed or not been initiated");
+      }
+
+      const failedJobs = scrapingJobs.filter(job => job.status === 'failed').length;
+      if (failedJobs > 0) {
+        diagnostics.warnings.push(`${failedJobs} scraping job(s) failed - check error messages for details`);
+      }
+
+      const dataValidationRate = diagnostics.scrapedData.totalScrapedUnits > 0 ? 
+        (diagnostics.scrapedData.dataValidation.validRents / diagnostics.scrapedData.totalScrapedUnits) * 100 : 0;
+      
+      if (dataValidationRate < 80) {
+        diagnostics.warnings.push(`Low data validation rate: ${dataValidationRate.toFixed(1)}% of units have valid rent data`);
+      }
+
+      // Add summary metrics
+      diagnostics.summary = {
+        dataIntegrityScore: Math.round(dataValidationRate),
+        totalIssuesFound: diagnostics.inconsistencies.length,
+        totalWarnings: diagnostics.warnings.length,
+        pipelineCompleteness: diagnostics.scrapedData.totalScrapedUnits > 0 ? "Complete" : "Incomplete",
+        recommendedActions: []
+      };
+
+      if (diagnostics.scrapedData.totalScrapedUnits === 0) {
+        diagnostics.summary.recommendedActions.push("Initiate scraping jobs for properties with URLs");
+      }
+
+      if (diagnostics.inconsistencies.length > 0) {
+        diagnostics.summary.recommendedActions.push("Review and fix data parsing issues in scraping pipeline");
+      }
+
+      if (failedJobs > 0) {
+        diagnostics.summary.recommendedActions.push("Retry failed scraping jobs or investigate error causes");
+      }
+
+      console.log(`✅ [DEBUG_INTEGRITY] Completed verification for session ${sessionId}`);
+      console.log(`📊 [DEBUG_INTEGRITY] Summary: ${diagnostics.scrapedData.totalScrapedUnits} units, ${diagnostics.inconsistencies.length} issues, ${dataValidationRate.toFixed(1)}% validation rate`);
+
+      res.json(diagnostics);
+    } catch (error) {
+      console.error(`❌ [DEBUG_INTEGRITY] Error verifying data integrity for session ${req.params.sessionId}:`, error);
+      res.status(500).json({ 
+        message: "Failed to verify data integrity",
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
 
   // Test endpoint for matching logic - can be removed in production if desired
 
