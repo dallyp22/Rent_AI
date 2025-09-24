@@ -350,11 +350,18 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   const handleContinueToAnalyze = async () => {
     // Save workflow state before navigating
     if (isSessionMode) {
+      console.log('[SUMMARIZE] Navigation params.sessionId:', params.sessionId);
+      console.log('[SUMMARIZE] Navigation currentId:', currentId);
+      
       await saveWorkflowState({
         stage: 'analyze',
-        analysisSessionId: params.sessionId
+        analysisSessionId: params.sessionId || currentId
       });
-      setLocation(`/session/analyze/${params.sessionId}`);
+      
+      // Use currentId as fallback if params.sessionId is undefined
+      const sessionIdToUse = params.sessionId || currentId;
+      console.log('[SUMMARIZE] Navigating to:', `/session/analyze/${sessionIdToUse}`);
+      setLocation(`/session/analyze/${sessionIdToUse}`);
     } else {
       await saveWorkflowState({
         stage: 'analyze',
