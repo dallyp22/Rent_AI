@@ -1,4 +1,5 @@
-import { useState } from "react";
+import * as React from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { PROPERTY_PROFILE_QUERY_KEYS } from "@shared/query-keys";
 interface PropertySidebarProps {
   selectedPropertyIds: string[];
   onPropertySelectionChange: (propertyId: string, selected: boolean) => void;
+  onSelectionCountsChange?: (counts: PropertySelectionCounts) => void;
   className?: string;
 }
 
@@ -26,6 +28,7 @@ interface PropertySelectionCounts {
 export default function PropertySidebar({
   selectedPropertyIds,
   onPropertySelectionChange,
+  onSelectionCountsChange,
   className = ""
 }: PropertySidebarProps) {
   // Fetch subject properties
@@ -53,6 +56,13 @@ export default function PropertySidebar({
   };
 
   const counts = getSelectionCounts();
+
+  // Notify parent of count changes
+  useEffect(() => {
+    if (onSelectionCountsChange) {
+      onSelectionCountsChange(counts);
+    }
+  }, [counts.subjects, counts.competitors, counts.total, onSelectionCountsChange]);
 
   // Select/deselect all properties of a type
   const handleSelectAllType = (type: 'subject' | 'competitor', selectAll: boolean) => {

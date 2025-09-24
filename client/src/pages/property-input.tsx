@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -139,37 +139,47 @@ export default function PropertyInput() {
     }
   });
 
-  // Create analysis session mutation for quick start
+  // Create analysis session mutation with proper property role assignment
   const createAnalysisSessionMutation = useMutation({
     mutationFn: async (data: InsertAnalysisSession): Promise<AnalysisSession> => {
-      const res = await apiRequest("POST", "/api/analysis-sessions", data);
-      return res.json();
-    },
-    onSuccess: (session) => {
-      // Add selected properties to the session
-      const addPropertiesPromises = propertySelection.selectedPropertyIds.map(async (propertyId) => {
-        // Determine role based on property type (we'll need to fetch the property)
-        // For now, we'll determine this in the next step when we add properties
+      // First create the analysis session
+      const sessionRes = await apiRequest("POST", "/api/analysis-sessions", data);
+      const session = await sessionRes.json();
+
+      // Fetch all selected PropertyProfiles to get their profileType
+      const propertyPromises = propertySelection.selectedPropertyIds.map(async (propertyId) => {
+        const propRes = await apiRequest("GET", `/api/property-profiles/${propertyId}`);
+        return propRes.json();
+      });
+
+      const selectedProperties: PropertyProfile[] = await Promise.all(propertyPromises);
+
+      // Add each property to the session with the correct role based on profileType
+      const addPropertiesPromises = selectedProperties.map(async (property) => {
         return apiRequest("POST", `/api/analysis-sessions/${session.id}/properties`, {
-          propertyProfileId: propertyId,
-          role: 'subject' // We'll improve this logic
+          propertyProfileId: property.id,
+          role: property.profileType // Use the actual profileType ('subject' or 'competitor')
         });
       });
 
-      Promise.all(addPropertiesPromises).then(() => {
-        setLocation(`/analyze/${session.id}`);
-      });
+      await Promise.all(addPropertiesPromises);
+
+      return session;
+    },
+    onSuccess: (session) => {
+      // Navigate to session-based analysis
+      setLocation(`/analyze/${session.id}`);
 
       toast({
         title: "Analysis Session Created",
-        description: "Starting analysis with selected properties...",
+        description: `Portfolio analysis started with ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties.`,
       });
     },
     onError: (error) => {
       console.error("Error creating analysis session:", error);
       toast({
-        title: "Analysis Failed",
-        description: "Failed to create analysis session. Please try again.",
+        title: "Analysis Session Failed",
+        description: "Failed to create analysis session with selected properties. Please try again.",
         variant: "destructive",
       });
     }
@@ -182,13 +192,21 @@ export default function PropertyInput() {
         ? [...prev.selectedPropertyIds, propertyId]
         : prev.selectedPropertyIds.filter(id => id !== propertyId);
       
-      // Note: We'll update counts when queries refresh, but for immediate feedback:
       return {
         ...prev,
-        selectedPropertyIds: newSelectedIds,
-        totalCount: newSelectedIds.length
+        selectedPropertyIds: newSelectedIds
       };
     });
+  };
+
+  // Handle selection counts updates from sidebar
+  const handleSelectionCountsChange = (counts: { subjects: number; competitors: number; total: number }) => {
+    setPropertySelection(prev => ({
+      ...prev,
+      subjectCount: counts.subjects,
+      competitorCount: counts.competitors,
+      totalCount: counts.total
+    }));
   };
 
   // Handle form submission
@@ -196,7 +214,7 @@ export default function PropertyInput() {
     createPropertyProfileMutation.mutate(data);
   };
 
-  // Handle quick analysis start
+  // Handle analysis start with proper validation
   const handleStartAnalysis = () => {
     if (propertySelection.selectedPropertyIds.length === 0) {
       toast({
@@ -207,9 +225,27 @@ export default function PropertyInput() {
       return;
     }
 
+    if (propertySelection.subjectCount === 0) {
+      toast({
+        title: "No Subject Properties Selected",
+        description: "Please select at least one subject property to analyze.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (propertySelection.competitorCount === 0) {
+      toast({
+        title: "No Competitor Properties Selected",
+        description: "Please select at least one competitor property for comparison.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     createAnalysisSessionMutation.mutate({
-      name: `Quick Analysis - ${new Date().toLocaleDateString()}`,
-      description: `Analysis session with ${propertySelection.totalCount} selected properties`
+      name: `Portfolio Analysis - ${new Date().toLocaleDateString()}`,
+      description: `Analysis session with ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties`
     });
   };
 
@@ -236,7 +272,7 @@ export default function PropertyInput() {
               className="shrink-0"
             >
               <Play className="h-4 w-4 mr-2" />
-              {createAnalysisSessionMutation.isPending ? "Starting..." : "Start Analysis"}
+              {createAnalysisSessionMutation.isPending ? "Starting..." : `Analyze Selected Properties (${propertySelection.totalCount})`}
             </Button>
           </div>
         )}
@@ -249,6 +285,7 @@ export default function PropertyInput() {
           <PropertySidebar
             selectedPropertyIds={propertySelection.selectedPropertyIds}
             onPropertySelectionChange={handlePropertySelectionChange}
+            onSelectionCountsChange={handleSelectionCountsChange}
             className="sticky top-6"
           />
         </div>

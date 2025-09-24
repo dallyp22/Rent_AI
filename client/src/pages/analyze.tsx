@@ -10,7 +10,12 @@ import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import { motion, AnimatePresence } from "framer-motion";
-import type { FilterCriteria, FilteredAnalysis, AnalysisSession } from "@shared/schema";
+import type { FilterCriteria, FilteredAnalysis, AnalysisSession, PropertyProfile } from "@shared/schema";
+
+// Extended session type that includes propertyProfiles from API response
+type SessionWithPropertyProfiles = AnalysisSession & {
+  propertyProfiles?: PropertyProfile[];
+};
 
 export default function Analyze({ params }: { params: { id: string, sessionId?: string } }) {
   const [, setLocation] = useLocation();
@@ -30,8 +35,8 @@ export default function Analyze({ params }: { params: { id: string, sessionId?: 
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
   
   // Query for session data when in session mode
-  const sessionQuery = useQuery({
-    queryKey: ['/api/sessions', sessionId],
+  const sessionQuery = useQuery<SessionWithPropertyProfiles>({
+    queryKey: ['/api/analysis-sessions', sessionId],
     enabled: isSessionMode,
     staleTime: 30000
   });
@@ -40,7 +45,7 @@ export default function Analyze({ params }: { params: { id: string, sessionId?: 
   const analysisMutation = useMutation({
     mutationFn: async (filterCriteria: FilterCriteria): Promise<FilteredAnalysis> => {
       if (isSessionMode) {
-        const response = await apiRequest('POST', `/api/sessions/${sessionId}/filtered-analysis`, {
+        const response = await apiRequest('POST', `/api/analysis-sessions/${sessionId}/filtered-analysis`, {
           filterCriteria
         });
         return response.json();
@@ -126,7 +131,7 @@ export default function Analyze({ params }: { params: { id: string, sessionId?: 
   };
 
   const sessionData = sessionQuery.data;
-  const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
+  const subjectProperties = sessionData?.propertyProfiles?.filter((p: PropertyProfile) => p.profileType === 'subject') || [];
 
   return (
     <motion.div 
@@ -183,13 +188,13 @@ export default function Analyze({ params }: { params: { id: string, sessionId?: 
                   </div>
                   <div className="text-center">
                     <div className="font-semibold text-green-600 dark:text-green-400">
-                      {sessionData.propertyProfiles?.filter(p => p.profileType === 'competitor').length || 0}
+                      {sessionData.propertyProfiles?.filter((p: PropertyProfile) => p.profileType === 'competitor').length || 0}
                     </div>
                     <div className="text-muted-foreground">Competitors</div>
                   </div>
                   <div className="text-center">
                     <div className="font-semibold text-orange-600 dark:text-orange-400">
-                      {subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0)}
+                      {subjectProperties.reduce((sum: number, p: PropertyProfile) => sum + (p.totalUnits || 0), 0)}
                     </div>
                     <div className="text-muted-foreground">Total Units</div>
                   </div>
