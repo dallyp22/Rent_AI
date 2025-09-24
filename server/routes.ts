@@ -586,10 +586,10 @@ function parseDirectPropertyData(scrapezyResult: any): {
               floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.floorPlan || undefined,
               unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
               bedrooms: parseNumber(unit.bedrooms || unit.beds),
-              bathrooms: parseNumber(unit.bathrooms || unit.baths),
-              squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
-              rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
-              availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || undefined
+              bathrooms: normalizeBathrooms(unit.bathrooms || unit.baths),
+              squareFootage: normalizeSquareFootage(unit.squareFootage || unit.square_footage || unit.sqft),
+              rent: normalizeRent(unit.rent || unit.price || unit.monthlyRent),
+              availabilityDate: normalizeAvailability(unit.availabilityDate || unit.availability_date || unit.available)
             }));
         }
         
@@ -598,10 +598,10 @@ function parseDirectPropertyData(scrapezyResult: any): {
           propertyData.units.push({
             unitType: parsed.unitType || parsed.unit_type || 'Unknown',
             bedrooms: parseNumber(parsed.bedrooms || parsed.beds),
-            bathrooms: parseNumber(parsed.bathrooms || parsed.baths),
-            squareFootage: parseNumber(parsed.squareFootage || parsed.square_footage || parsed.sqft),
-            rent: parseNumber(parsed.rent || parsed.price || parsed.monthlyRent),
-            availabilityDate: parsed.availabilityDate || parsed.availability_date || undefined
+            bathrooms: normalizeBathrooms(parsed.bathrooms || parsed.baths),
+            squareFootage: normalizeSquareFootage(parsed.squareFootage || parsed.square_footage || parsed.sqft),
+            rent: normalizeRent(parsed.rent || parsed.price || parsed.monthlyRent),
+            availabilityDate: normalizeAvailability(parsed.availabilityDate || parsed.availability_date)
           });
         }
         
@@ -614,8 +614,8 @@ function parseDirectPropertyData(scrapezyResult: any): {
             propertyData.units.push({
               unitType: line.trim(),
               bedrooms: extractBedroomCount(line),
-              bathrooms: extractBathroomCount(line),
-              rent: extractRentPrice(line)
+              bathrooms: normalizeBathrooms(extractBathroomCount(line)),
+              rent: normalizeRent(extractRentPrice(line))
             });
           }
         }
@@ -642,10 +642,10 @@ function parseDirectPropertyData(scrapezyResult: any): {
             floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.floorPlan || undefined,
             unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
             bedrooms: parseNumber(unit.bedrooms || unit.beds),
-            bathrooms: parseNumber(unit.bathrooms || unit.baths),
-            squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
-            rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
-            availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || undefined
+            bathrooms: normalizeBathrooms(unit.bathrooms || unit.baths),
+            squareFootage: normalizeSquareFootage(unit.squareFootage || unit.square_footage || unit.sqft),
+            rent: normalizeRent(unit.rent || unit.price || unit.monthlyRent),
+            availabilityDate: normalizeAvailability(unit.availabilityDate || unit.availability_date || unit.available)
           }));
       }
     }
@@ -701,8 +701,8 @@ function parseUnitData(scrapezyResult: any): Array<{
             units.push({
               unitType: line.trim(),
               bedrooms: extractBedroomCount(line),
-              bathrooms: extractBathroomCount(line),
-              rent: extractRentPrice(line)
+              bathrooms: normalizeBathrooms(extractBathroomCount(line)),
+              rent: normalizeRent(extractRentPrice(line))
             });
           }
         }
@@ -737,10 +737,10 @@ function parseUnitData(scrapezyResult: any): Array<{
       floorPlanName: unit.floorPlanName || unit.floor_plan_name || unit.planName || unit.plan_name || null,
       unitType: unit.unitType || unit.unit_type || unit.type || 'Unknown',
       bedrooms: parseNumber(unit.bedrooms || unit.bedroom_count),
-      bathrooms: parseNumber(unit.bathrooms || unit.bathroom_count),
-      squareFootage: parseNumber(unit.squareFootage || unit.square_footage || unit.sqft),
-      rent: parseNumber(unit.rent || unit.price || unit.monthlyRent),
-      availabilityDate: unit.availabilityDate || unit.availability_date || unit.available || null
+      bathrooms: normalizeBathrooms(unit.bathrooms || unit.bathroom_count),
+      squareFootage: normalizeSquareFootage(unit.squareFootage || unit.square_footage || unit.sqft),
+      rent: normalizeRent(unit.rent || unit.price || unit.monthlyRent),
+      availabilityDate: normalizeAvailability(unit.availabilityDate || unit.availability_date || unit.available)
     }))
     .filter(unit => unit.unitType && unit.unitType !== 'Unknown');
 
@@ -761,6 +761,81 @@ function extractBathroomCount(text: string): number | undefined {
 function extractRentPrice(text: string): number | undefined {
   const match = text.match(/\$(\d{1,3}(?:,\d{3})*)/);
   return match ? parseInt(match[1].replace(/,/g, '')) : undefined;
+}
+
+// Enhanced data normalization functions for proper numeric conversion
+function normalizeRent(value: any): number | undefined {
+  if (typeof value === 'number') return Math.round(value);
+  if (typeof value === 'string') {
+    // Handle patterns like "$1,799+", "$1799", "1799+", "$1,799.00+"
+    const cleanValue = value
+      .replace(/^\$/, '') // Remove leading $
+      .replace(/[,\s]/g, '') // Remove commas and spaces
+      .replace(/\+$/, '') // Remove trailing +
+      .replace(/\.0+$/, ''); // Remove .00 at the end
+    
+    const num = parseFloat(cleanValue);
+    return isNaN(num) ? undefined : Math.round(num);
+  }
+  return undefined;
+}
+
+function normalizeBathrooms(value: any): number | undefined {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    // Handle patterns like "1.5", "2", "1.5 BA", "2 bathroom"
+    const cleanValue = value
+      .replace(/\s*(BA|bathroom|bath)\s*$/i, '') // Remove BA/bathroom suffix
+      .trim();
+    
+    const num = parseFloat(cleanValue);
+    return isNaN(num) ? undefined : num;
+  }
+  return undefined;
+}
+
+function normalizeSquareFootage(value: any): number | undefined {
+  if (typeof value === 'number') return Math.round(value);
+  if (typeof value === 'string') {
+    // Handle patterns like "580", "580 sq ft", "580 sqft", "580+"
+    const cleanValue = value
+      .replace(/\s*(sq\s*ft|sqft|square\s*feet|sf)\s*$/i, '') // Remove sq ft suffix
+      .replace(/[,\s]/g, '') // Remove commas and spaces
+      .replace(/\+$/, '') // Remove trailing +
+      .trim();
+    
+    const num = parseFloat(cleanValue);
+    return isNaN(num) ? undefined : Math.round(num);
+  }
+  return undefined;
+}
+
+function normalizeAvailability(value: any): string | undefined {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    const cleanValue = value.trim().toLowerCase();
+    
+    // Standardize common availability patterns
+    if (cleanValue.includes('now') || cleanValue.includes('available') || cleanValue === 'immediate') {
+      return 'Available Now';
+    }
+    if (cleanValue.includes('call') || cleanValue.includes('contact')) {
+      return 'Call for Availability';
+    }
+    if (cleanValue.match(/\d{1,2}\/\d{1,2}\/\d{4}/)) {
+      // Already in date format MM/DD/YYYY
+      return value.trim();
+    }
+    if (cleanValue.match(/\d{4}-\d{2}-\d{2}/)) {
+      // Convert YYYY-MM-DD to MM/DD/YYYY
+      const [year, month, day] = cleanValue.split('-');
+      return `${month}/${day}/${year}`;
+    }
+    
+    // Return original value if no specific pattern matches
+    return value.trim();
+  }
+  return undefined;
 }
 
 function parseNumber(value: any): number | undefined {
