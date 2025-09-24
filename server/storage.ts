@@ -69,6 +69,7 @@ export interface IStorage {
   generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
   getSubjectPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
   getCompetitorPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
+  getScrapedUnitsForSession(sessionId: string): Promise<ScrapedUnit[]>;
   
   // LEGACY: Properties (maintained for backward compatibility)
   createProperty(property: InsertProperty): Promise<Property>;
@@ -336,37 +337,290 @@ export class MemStorage implements IStorage {
 
   // Multi-property analysis support
   
-  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
-    // This is a placeholder implementation - in a real system this would perform complex analysis
-    const profilesInSession = await this.getPropertyProfilesInSession(sessionId);
-    const subjectProfiles = profilesInSession.filter(p => p.profileType === 'subject');
-    const competitorProfiles = profilesInSession.filter(p => p.profileType === 'competitor');
+  async getScrapedUnitsForSession(sessionId: string): Promise<ScrapedUnit[]> {
+    console.log('[STORAGE] Getting scraped units for session:', sessionId);
     
-    // Create basic analysis result
-    return {
-      marketPosition: "Mid-market",
-      pricingPowerScore: 75,
-      competitiveAdvantages: ["Multiple properties", "Diverse portfolio"],
-      recommendations: ["Optimize pricing across portfolio", "Leverage economies of scale"],
-      unitCount: subjectProfiles.reduce((sum, p) => sum + (p.totalUnits || 0), 0),
-      avgRent: 1500,
-      percentileRank: 75,
-      locationScore: 80,
-      amenityScore: 85,
-      pricePerSqFt: 2.5,
-      subjectUnits: [],
-      competitorUnits: [],
-      competitiveEdges: {
-        pricing: { edge: 0, label: "Market rate", status: "neutral" },
-        size: { edge: 0, label: "Average size", status: "neutral" },
-        availability: { edge: 0, label: "Standard availability", status: "neutral" },
-        amenities: { edge: 10, label: "Premium amenities", status: "advantage" }
+    // Get all property profiles in the session
+    const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
+    console.log('[STORAGE] Found', propertyProfiles.length, 'property profiles in session');
+    
+    const allUnits: ScrapedUnit[] = [];
+    
+    // For each property profile, find its scraped units
+    for (const profile of propertyProfiles) {
+      // Get the latest completed scraping job for this property profile
+      const scrapingJobs = await this.getScrapingJobsByProfile(profile.id);
+      const completedJobs = scrapingJobs
+        .filter(job => job.status === 'completed')
+        .sort((a, b) => {
+          const dateA = a.completedAt ? new Date(a.completedAt) : (a.createdAt ? new Date(a.createdAt) : new Date());
+          const dateB = b.completedAt ? new Date(b.completedAt) : (b.createdAt ? new Date(b.createdAt) : new Date());
+          return dateB.getTime() - dateA.getTime();
+        });
+
+      if (completedJobs.length === 0) {
+        console.log('[STORAGE] No completed scraping jobs for property profile:', profile.name);
+        continue;
+      }
+
+      const latestJob = completedJobs[0];
+      console.log('[STORAGE] Using latest job for', profile.name, ':', latestJob.id);
+
+      // Get scraped properties for this job
+      const scrapedProperties = await this.getScrapedPropertiesByJob(latestJob.id);
+      
+      // Get units for each scraped property
+      for (const scrapedProperty of scrapedProperties) {
+        const units = await this.getScrapedUnitsByProperty(scrapedProperty.id);
+        console.log('[STORAGE] Found', units.length, 'units for property:', scrapedProperty.name);
+        allUnits.push(...units);
+      }
+    }
+    
+    console.log('[STORAGE] Total scraped units for session:', allUnits.length);
+    return allUnits;
+  }
+
+  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
+    console.log('[STORAGE] Generating multi-property analysis for session:', sessionId);
+    console.log('[STORAGE] Filter criteria:', JSON.stringify(criteria, null, 2));
+    
+    // Get all scraped units for this session
+    const allSessionUnits = await this.getScrapedUnitsForSession(sessionId);
+    
+    if (allSessionUnits.length === 0) {
+      console.log('[STORAGE] No scraped units found for session, returning default analysis');
+      return {
+        marketPosition: "No Data Available",
+        pricingPowerScore: 0,
+        competitiveAdvantages: ["Scraping Required"],
+        recommendations: ["Please complete property scraping to generate analysis"],
+        unitCount: 0,
+        avgRent: 0,
+        percentileRank: 0,
+        locationScore: 0,
+        amenityScore: 0,
+        pricePerSqFt: 0,
+        subjectUnits: [],
+        competitorUnits: [],
+        competitiveEdges: {
+          pricing: { edge: 0, label: "No data", status: "neutral" },
+          size: { edge: 0, label: "No data", status: "neutral" },
+          availability: { edge: 0, label: "No data", status: "neutral" },
+          amenities: { edge: 0, label: "No data", status: "neutral" }
+        },
+        aiInsights: [
+          "Complete property scraping to enable portfolio analysis",
+          "Add properties from the Property Selection Matrix",
+          "Analysis requires unit-level data from scraped properties"
+        ],
+        subjectAvgRent: 0,
+        competitorAvgRent: 0,
+        subjectAvgSqFt: 0,
+        competitorAvgSqFt: 0
+      };
+    }
+
+    // Filter the units based on criteria by temporarily storing them and using existing filter logic
+    const originalUnits = this.scrapedUnits;
+    let filteredUnits: ScrapedUnit[];
+    try {
+      // Temporarily replace scraped units with session units for filtering
+      this.scrapedUnits = new Map();
+      allSessionUnits.forEach(unit => this.scrapedUnits.set(unit.id, unit));
+      
+      // Use existing filter method
+      filteredUnits = await this.getFilteredScrapedUnits(criteria);
+      console.log('[STORAGE] Filtered to', filteredUnits.length, 'units matching criteria');
+      
+    } finally {
+      // Always restore original units
+      this.scrapedUnits = originalUnits;
+    }
+    
+    // Get property profiles to determine subject vs competitor
+    const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
+    const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+    const competitorProfiles = propertyProfiles.filter(p => p.profileType === 'competitor');
+    
+    // Get property map for unit classification
+    const propertyMap = new Map<string, ScrapedProperty>();
+    for (const prop of Array.from(this.scrapedProperties.values())) {
+      propertyMap.set(prop.id, prop);
+    }
+    
+    // Map scraped properties to their profile types
+    const profileMap = new Map<string, PropertyProfile>();
+    for (const profile of propertyProfiles) {
+      // Find scraped properties associated with this profile
+      const jobs = await this.getScrapingJobsByProfile(profile.id);
+      for (const job of jobs) {
+        if (job.status === 'completed') {
+          const scrapedProps = await this.getScrapedPropertiesByJob(job.id);
+          for (const scrapedProp of scrapedProps) {
+            profileMap.set(scrapedProp.id, profile);
+          }
+        }
+      }
+    }
+    
+    // Separate subject and competitor units based on their property profiles
+    const subjectUnits = filteredUnits.filter(unit => {
+      const property = propertyMap.get(unit.propertyId);
+      const profile = property ? profileMap.get(property.id) : null;
+      return profile?.profileType === 'subject';
+    });
+    
+    const competitorUnits = filteredUnits.filter(unit => {
+      const property = propertyMap.get(unit.propertyId);
+      const profile = property ? profileMap.get(property.id) : null;
+      return profile?.profileType === 'competitor';
+    });
+    
+    console.log('[STORAGE] Subject units:', subjectUnits.length, 'Competitor units:', competitorUnits.length);
+    
+    // Use the same formatting and analysis logic as single property analysis
+    const formatUnit = (unit: ScrapedUnit, isSubject: boolean): UnitComparison => {
+      const property = propertyMap.get(unit.propertyId);
+      return {
+        unitId: unit.id,
+        propertyName: property?.name || "Unknown",
+        unitType: unit.unitType,
+        bedrooms: unit.bedrooms || 0,
+        bathrooms: unit.bathrooms ? parseFloat(unit.bathrooms.toString()) : null,
+        squareFootage: unit.squareFootage,
+        rent: unit.rent ? parseFloat(unit.rent.toString()) : 0,
+        isSubject,
+        availabilityDate: unit.availabilityDate || undefined
+      };
+    };
+    
+    const subjectUnitsFormatted = subjectUnits.map(u => formatUnit(u, true));
+    const competitorUnitsFormatted = competitorUnits.map(u => formatUnit(u, false));
+    
+    // Calculate averages using the same logic
+    const calcAverage = (units: UnitComparison[], field: 'rent' | 'squareFootage') => {
+      if (units.length === 0) return 0;
+      const sum = units.reduce((acc, unit) => {
+        const value = unit[field];
+        return acc + (value || 0);
+      }, 0);
+      return sum / units.length;
+    };
+    
+    const subjectAvgRent = calcAverage(subjectUnitsFormatted, 'rent');
+    const competitorAvgRent = calcAverage(competitorUnitsFormatted, 'rent');
+    const subjectAvgSqFt = calcAverage(subjectUnitsFormatted, 'squareFootage');
+    const competitorAvgSqFt = calcAverage(competitorUnitsFormatted, 'squareFootage');
+    
+    // Rest of analysis logic follows the same pattern as generateFilteredAnalysis
+    const competitorRents = competitorUnitsFormatted
+      .map(u => u.rent)
+      .filter(r => r > 0)
+      .sort((a, b) => a - b);
+    
+    let percentileRank = 50;
+    if (competitorRents.length > 0 && subjectAvgRent > 0) {
+      const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
+      percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+    }
+    
+    // Calculate competitive edges
+    const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+    const sizeEdge = competitorAvgSqFt > 0 ? subjectAvgSqFt - competitorAvgSqFt : 0;
+    const availabilityEdge = subjectUnits.filter(u => u.status === 'available').length - 
+                            competitorUnits.filter(u => u.status === 'available').length;
+    const amenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
+    
+    const competitiveEdges: CompetitiveEdges = {
+      pricing: {
+        edge: Math.round(pricingEdge * 10) / 10,
+        label: pricingEdge > 0 ? `+${Math.abs(Math.round(pricingEdge))}% above market` : 
+               pricingEdge < 0 ? `${Math.abs(Math.round(pricingEdge))}% below market` : "At market rate",
+        status: pricingEdge > 10 ? "disadvantage" as const : pricingEdge < -10 ? "advantage" as const : "neutral" as const
       },
-      aiInsights: [`Analysis of ${subjectProfiles.length} subject properties vs ${competitorProfiles.length} competitors`],
-      subjectAvgRent: 1500,
-      competitorAvgRent: 1450,
-      subjectAvgSqFt: 800,
-      competitorAvgSqFt: 780
+      size: {
+        edge: Math.round(sizeEdge),
+        label: sizeEdge > 0 ? `+${Math.round(sizeEdge)} sq ft larger` : 
+               sizeEdge < 0 ? `${Math.abs(Math.round(sizeEdge))} sq ft smaller` : "Similar size",
+        status: sizeEdge > 50 ? "advantage" as const : sizeEdge < -50 ? "disadvantage" as const : "neutral" as const
+      },
+      availability: {
+        edge: availabilityEdge,
+        label: availabilityEdge > 0 ? `${availabilityEdge} more units available` : 
+               availabilityEdge < 0 ? `${Math.abs(availabilityEdge)} fewer units available` : "Similar availability",
+        status: availabilityEdge > 2 ? "advantage" as const : availabilityEdge < -2 ? "disadvantage" as const : "neutral" as const
+      },
+      amenities: {
+        edge: amenityScore,
+        label: amenityScore > 60 ? "Premium amenities" : amenityScore > 40 ? "Standard amenities" : "Basic amenities",
+        status: amenityScore > 60 ? "advantage" as const : amenityScore < 40 ? "disadvantage" as const : "neutral" as const
+      }
+    };
+    
+    // Generate pricing power score
+    const pricingPowerScore = Math.min(100, Math.max(0, 
+      percentileRank + 
+      (competitiveEdges.size.status === "advantage" ? 10 : competitiveEdges.size.status === "disadvantage" ? -10 : 0) +
+      (competitiveEdges.amenities.status === "advantage" ? 5 : competitiveEdges.amenities.status === "disadvantage" ? -5 : 0)
+    ));
+    
+    // Generate dynamic recommendations for portfolio
+    const competitiveAdvantages = [];
+    if (percentileRank > 75) competitiveAdvantages.push("Portfolio has premium market positioning");
+    if (competitiveEdges.size.status === "advantage") competitiveAdvantages.push("Portfolio units are larger than market average");
+    if (competitiveEdges.pricing.status === "advantage") competitiveAdvantages.push("Portfolio has competitive pricing advantage");
+    if (competitiveEdges.availability.status === "advantage") competitiveAdvantages.push("Portfolio has higher unit availability");
+    if (competitiveEdges.amenities.status === "advantage") competitiveAdvantages.push("Portfolio properties offer superior amenities");
+    if (subjectProfiles.length > 1) competitiveAdvantages.push("Diversified portfolio reduces market risk");
+    
+    const recommendations = [];
+    if (percentileRank < 30) recommendations.push("Review pricing strategy across portfolio to better align with market");
+    if (competitiveEdges.size.status === "disadvantage") recommendations.push("Highlight portfolio value propositions to offset smaller unit sizes");
+    if (competitiveEdges.pricing.status === "disadvantage") recommendations.push("Ensure premium pricing is justified across all portfolio properties");
+    if (subjectProfiles.length > 1) recommendations.push("Leverage portfolio scale for operational efficiencies");
+    if (recommendations.length === 0) recommendations.push("Maintain current competitive positioning across portfolio");
+    
+    // Generate market position for portfolio
+    let marketPosition = "Portfolio Market Average";
+    if (percentileRank > 75) marketPosition = "Premium Portfolio Leader";
+    else if (percentileRank > 50) marketPosition = "Above Market Portfolio";
+    else if (percentileRank > 25) marketPosition = "Below Market Portfolio";
+    else marketPosition = "Value Portfolio Position";
+    
+    // Portfolio-specific AI insights
+    const aiInsights = [
+      `Portfolio analysis across ${subjectProfiles.length} subject properties vs ${competitorProfiles.length} competitors`,
+      `Portfolio ranks in the ${percentileRank}th percentile for this filter criteria`,
+      competitiveEdges.pricing.status === "advantage" ? 
+        "Portfolio pricing provides strong competitive advantage in the current market" :
+        competitiveEdges.pricing.status === "disadvantage" ?
+        "Consider reviewing pricing strategy across portfolio properties" :
+        "Portfolio pricing aligns well with market expectations",
+      subjectUnitsFormatted.length > 0 ?
+        `Portfolio has ${subjectUnitsFormatted.length} units matching filters across ${subjectProfiles.length} properties` :
+        "No portfolio units match the current filter criteria - consider expanding criteria"
+    ];
+    
+    return {
+      marketPosition,
+      pricingPowerScore,
+      competitiveAdvantages,
+      recommendations,
+      unitCount: subjectUnitsFormatted.length,
+      avgRent: Math.round(subjectAvgRent),
+      percentileRank,
+      locationScore: Math.min(100, Math.max(0, percentileRank + 5)),
+      amenityScore: Math.min(100, Math.max(0, amenityScore)),
+      pricePerSqFt: subjectAvgSqFt > 0 ? Math.round((subjectAvgRent / subjectAvgSqFt) * 100) / 100 : 0,
+      subjectUnits: subjectUnitsFormatted,
+      competitorUnits: competitorUnitsFormatted,
+      competitiveEdges,
+      aiInsights,
+      subjectAvgRent: Math.round(subjectAvgRent),
+      competitorAvgRent: Math.round(competitorAvgRent),
+      subjectAvgSqFt: Math.round(subjectAvgSqFt),
+      competitorAvgSqFt: Math.round(competitorAvgSqFt)
     };
   }
 
