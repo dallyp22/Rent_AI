@@ -17,6 +17,7 @@ import type {
   InsertAnalysisSession,
   AnalysisSession 
 } from "@shared/schema";
+import { getPropertyProfileInvalidationKeys } from "@shared/query-keys";
 
 // Property selection state management interface
 interface PropertySelectionState {
@@ -59,9 +60,11 @@ export default function PropertyInput() {
       return res.json();
     },
     onSuccess: (newProperty) => {
-      // Invalidate queries to refresh the sidebar
-      queryClient.invalidateQueries({ queryKey: ["/api/property-profiles"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/property-profiles", { type: newProperty.profileType }] });
+      // Invalidate queries to refresh the sidebar using correct query keys
+      const invalidationKeys = getPropertyProfileInvalidationKeys(newProperty.profileType as 'subject' | 'competitor');
+      invalidationKeys.forEach(queryKey => {
+        queryClient.invalidateQueries({ queryKey });
+      });
       
       // Auto-select the newly created property
       handlePropertySelectionChange(newProperty.id, true);

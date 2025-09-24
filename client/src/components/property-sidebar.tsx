@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Target, Users, CheckSquare, Square, Building2 } from "lucide-react";
 import PropertyCheckboxCard from "@/components/property-checkbox-card";
 import type { PropertyProfile } from "@shared/schema";
+import { PROPERTY_PROFILE_QUERY_KEYS } from "@shared/query-keys";
 
 interface PropertySidebarProps {
   selectedPropertyIds: string[];
@@ -29,12 +30,12 @@ export default function PropertySidebar({
 }: PropertySidebarProps) {
   // Fetch subject properties
   const { data: subjectProperties = [], isLoading: isLoadingSubjects } = useQuery<PropertyProfile[]>({
-    queryKey: ["/api/property-profiles", { type: "subject" }],
+    queryKey: PROPERTY_PROFILE_QUERY_KEYS.byType('subject'),
   });
 
   // Fetch competitor properties
   const { data: competitorProperties = [], isLoading: isLoadingCompetitors } = useQuery<PropertyProfile[]>({
-    queryKey: ["/api/property-profiles", { type: "competitor" }],
+    queryKey: PROPERTY_PROFILE_QUERY_KEYS.byType('competitor'),
   });
 
   const isLoading = isLoadingSubjects || isLoadingCompetitors;
