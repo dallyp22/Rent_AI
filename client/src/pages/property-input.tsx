@@ -1,175 +1,329 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import PropertyForm from "@/components/property-form";
-import AIAnalysis from "@/components/ai-analysis";
+import PropertySidebar from "@/components/property-sidebar";
+import PropertyProfileForm from "@/components/property-profile-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Loader2, CheckCircle, AlertCircle, Database } from "lucide-react";
-import type { InsertProperty, Property, PropertyAnalysis, ScrapingJob } from "@shared/schema";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { CheckCircle, AlertCircle, Database, Play, Building2, Plus } from "lucide-react";
+import { Link } from "wouter";
+import type { 
+  InsertPropertyProfile, 
+  PropertyProfile, 
+  InsertAnalysisSession,
+  AnalysisSession 
+} from "@shared/schema";
 
-interface PropertyWithAnalysis {
-  property: Property;
-  analysis: PropertyAnalysis;
+// Property selection state management interface
+interface PropertySelectionState {
+  selectedPropertyIds: string[];
+  subjectCount: number;
+  competitorCount: number;
+  totalCount: number;
 }
 
-interface ScrapingResult {
-  scrapingJob: ScrapingJob;
-  message: string;
-  targetUrl: string;
+// Scraping status interface for feedback
+interface ScrapingStatus {
+  propertyId: string;
+  propertyName: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  message?: string;
 }
 
 export default function PropertyInput() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [result, setResult] = useState<PropertyWithAnalysis | null>(null);
-  const [scrapingResult, setScrapingResult] = useState<ScrapingResult | null>(null);
+  
+  // Property selection state
+  const [propertySelection, setPropertySelection] = useState<PropertySelectionState>({
+    selectedPropertyIds: [],
+    subjectCount: 0,
+    competitorCount: 0,
+    totalCount: 0
+  });
+  
+  // Scraping status tracking
+  const [scrapingStatuses, setScrapingStatuses] = useState<Record<string, ScrapingStatus>>({});
+  
+  // Form dialog state
+  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
 
-  const createPropertyMutation = useMutation({
-    mutationFn: async (data: InsertProperty): Promise<PropertyWithAnalysis> => {
-      const res = await apiRequest("POST", "/api/properties", data);
+  // Create property profile mutation
+  const createPropertyProfileMutation = useMutation({
+    mutationFn: async (data: InsertPropertyProfile): Promise<PropertyProfile> => {
+      const res = await apiRequest("POST", "/api/property-profiles", data);
       return res.json();
     },
-    onSuccess: (data) => {
-      setResult(data);
-      // Automatically start scraping after property creation
-      startScrapingMutation.mutate(data.property.id);
+    onSuccess: (newProperty) => {
+      // Invalidate queries to refresh the sidebar
+      queryClient.invalidateQueries({ queryKey: ["/api/property-profiles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/property-profiles", { type: newProperty.profileType }] });
+      
+      // Auto-select the newly created property
+      handlePropertySelectionChange(newProperty.id, true);
+      
+      // Start scraping for the new property if it has a URL
+      if (newProperty.url) {
+        startScrapingMutation.mutate(newProperty.id);
+      }
+      
+      setIsFormDialogOpen(false);
+      
+      toast({
+        title: "Property Profile Created",
+        description: `${newProperty.name} has been added successfully.`,
+      });
     },
     onError: (error) => {
-      console.error("Error creating property:", error);
+      console.error("Error creating property profile:", error);
       toast({
-        title: "Analysis Failed",
-        description: "Failed to analyze your property. Please try again.",
+        title: "Creation Failed",
+        description: "Failed to create property profile. Please try again.",
         variant: "destructive",
       });
     }
   });
 
+  // Start scraping mutation
   const startScrapingMutation = useMutation({
-    mutationFn: async (propertyId: string): Promise<ScrapingResult> => {
-      const res = await apiRequest("POST", `/api/properties/${propertyId}/scrape`, {});
+    mutationFn: async (propertyProfileId: string): Promise<any> => {
+      const res = await apiRequest("POST", `/api/property-profiles/${propertyProfileId}/scrape`, {});
       return res.json();
     },
-    onSuccess: (data) => {
-      setScrapingResult(data);
+    onSuccess: (data, propertyProfileId) => {
+      setScrapingStatuses(prev => ({
+        ...prev,
+        [propertyProfileId]: {
+          propertyId: propertyProfileId,
+          propertyName: data.propertyProfile?.name || 'Unknown Property',
+          status: 'processing',
+          message: data.message
+        }
+      }));
+      
       toast({
         title: "Scraping Started",
         description: data.message,
       });
     },
-    onError: (error) => {
+    onError: (error, propertyProfileId) => {
       console.error("Error starting scraping:", error);
+      setScrapingStatuses(prev => ({
+        ...prev,
+        [propertyProfileId]: {
+          propertyId: propertyProfileId,
+          propertyName: 'Unknown Property',
+          status: 'failed',
+          message: 'Failed to start scraping'
+        }
+      }));
+      
       toast({
         title: "Scraping Failed",
-        description: "Failed to start competitive data scraping.",
+        description: "Failed to start property data scraping.",
         variant: "destructive",
       });
     }
   });
 
-  const handleSubmit = (data: InsertProperty) => {
-    createPropertyMutation.mutate(data);
+  // Create analysis session mutation for quick start
+  const createAnalysisSessionMutation = useMutation({
+    mutationFn: async (data: InsertAnalysisSession): Promise<AnalysisSession> => {
+      const res = await apiRequest("POST", "/api/analysis-sessions", data);
+      return res.json();
+    },
+    onSuccess: (session) => {
+      // Add selected properties to the session
+      const addPropertiesPromises = propertySelection.selectedPropertyIds.map(async (propertyId) => {
+        // Determine role based on property type (we'll need to fetch the property)
+        // For now, we'll determine this in the next step when we add properties
+        return apiRequest("POST", `/api/analysis-sessions/${session.id}/properties`, {
+          propertyProfileId: propertyId,
+          role: 'subject' // We'll improve this logic
+        });
+      });
+
+      Promise.all(addPropertiesPromises).then(() => {
+        setLocation(`/analyze/${session.id}`);
+      });
+
+      toast({
+        title: "Analysis Session Created",
+        description: "Starting analysis with selected properties...",
+      });
+    },
+    onError: (error) => {
+      console.error("Error creating analysis session:", error);
+      toast({
+        title: "Analysis Failed",
+        description: "Failed to create analysis session. Please try again.",
+        variant: "destructive",
+      });
+    }
+  });
+
+  // Handle property selection changes
+  const handlePropertySelectionChange = (propertyId: string, selected: boolean) => {
+    setPropertySelection(prev => {
+      const newSelectedIds = selected 
+        ? [...prev.selectedPropertyIds, propertyId]
+        : prev.selectedPropertyIds.filter(id => id !== propertyId);
+      
+      // Note: We'll update counts when queries refresh, but for immediate feedback:
+      return {
+        ...prev,
+        selectedPropertyIds: newSelectedIds,
+        totalCount: newSelectedIds.length
+      };
+    });
   };
 
-  const handleContinue = () => {
-    if (result?.property.id) {
-      setLocation(`/summarize/${result.property.id}`);
+  // Handle form submission
+  const handleFormSubmit = (data: InsertPropertyProfile) => {
+    createPropertyProfileMutation.mutate(data);
+  };
+
+  // Handle quick analysis start
+  const handleStartAnalysis = () => {
+    if (propertySelection.selectedPropertyIds.length === 0) {
+      toast({
+        title: "No Properties Selected",
+        description: "Please select at least one property to start analysis.",
+        variant: "destructive",
+      });
+      return;
     }
+
+    createAnalysisSessionMutation.mutate({
+      name: `Quick Analysis - ${new Date().toLocaleDateString()}`,
+      description: `Analysis session with ${propertySelection.totalCount} selected properties`
+    });
   };
 
   return (
-    <div className="space-y-6" data-testid="property-input-page">
-      <PropertyForm 
-        onSubmit={handleSubmit}
-        isLoading={createPropertyMutation.isPending}
-      />
-      
-      {result && (
-        <AIAnalysis
-          analysis={result.analysis}
-          onContinue={handleContinue}
-        />
-      )}
+    <div className="container mx-auto p-6 space-y-6" data-testid="enhanced-property-input-page">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Property Analysis Setup</h1>
+          <p className="text-muted-foreground">
+            Select properties and add new ones to create comprehensive market analysis
+          </p>
+        </div>
+        
+        {propertySelection.totalCount > 0 && (
+          <div className="flex items-center gap-3">
+            <Badge variant="default" className="px-3 py-1" data-testid="badge-total-selected">
+              {propertySelection.totalCount} Selected
+            </Badge>
+            <Button
+              onClick={handleStartAnalysis}
+              disabled={createAnalysisSessionMutation.isPending}
+              data-testid="button-start-analysis"
+              className="shrink-0"
+            >
+              <Play className="h-4 w-4 mr-2" />
+              {createAnalysisSessionMutation.isPending ? "Starting..." : "Start Analysis"}
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {/* Scraping Status Card */}
-      {(startScrapingMutation.isPending || scrapingResult) && (
-        <Card className="border-blue-200 bg-blue-50" data-testid="scraping-status">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-blue-900">
-              <Database className="h-5 w-5" />
-              Competitive Data Scraping
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {startScrapingMutation.isPending && (
-              <div className="flex items-center gap-3">
-                <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+      {/* Main Layout: Sidebar + Form Panel */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left Sidebar - Property Selection (1/3 on desktop) */}
+        <div className="lg:col-span-1">
+          <PropertySidebar
+            selectedPropertyIds={propertySelection.selectedPropertyIds}
+            onPropertySelectionChange={handlePropertySelectionChange}
+            className="sticky top-6"
+          />
+        </div>
+
+        {/* Right Panel - Quick Add Form (2/3 on desktop) */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Quick Add Property Form */}
+          <Card data-testid="quick-add-form-card">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Plus className="h-5 w-5" />
+                Add New Property Profile
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Add a new property profile to expand your analysis. Properties are automatically selected when created.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <PropertyProfileForm
+                onSubmit={handleFormSubmit}
+                onCancel={() => {}} // No cancel needed in this context
+                isLoading={createPropertyProfileMutation.isPending}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Scraping Status Display */}
+          {Object.keys(scrapingStatuses).length > 0 && (
+            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950" data-testid="scraping-status-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+                  <Database className="h-5 w-5" />
+                  Property Data Scraping
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Object.values(scrapingStatuses).map((status) => (
+                  <div
+                    key={status.propertyId}
+                    className="flex items-center gap-3 p-3 bg-white dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-800"
+                    data-testid={`scraping-status-${status.propertyId}`}
+                  >
+                    {status.status === 'processing' && (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                    )}
+                    {status.status === 'completed' && (
+                      <CheckCircle className="h-4 w-4 text-green-600" />
+                    )}
+                    {status.status === 'failed' && (
+                      <AlertCircle className="h-4 w-4 text-red-600" />
+                    )}
+                    
+                    <div className="flex-1">
+                      <p className="font-medium text-sm">{status.propertyName}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {status.message || `Status: ${status.status}`}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Quick Start Guide */}
+          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800" data-testid="quick-start-guide">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <Building2 className="text-blue-600 mt-1 h-6 w-6 shrink-0" />
                 <div>
-                  <p className="font-medium text-blue-900">Starting competitive data collection...</p>
-                  <p className="text-sm text-blue-700">Analyzing your property address and preparing scraping job</p>
+                  <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">How to Get Started:</h4>
+                  <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
+                    <li><strong>Add Properties:</strong> Use the form to add subject and competitor properties</li>
+                    <li><strong>Select for Analysis:</strong> Check properties in the sidebar to include them</li>
+                    <li><strong>Auto-Scraping:</strong> Properties with URLs are automatically scraped for data</li>
+                    <li><strong>Start Analysis:</strong> Click "Start Analysis" when you have properties selected</li>
+                    <li><strong>Review Results:</strong> Analyze competitive positioning and pricing insights</li>
+                  </ul>
                 </div>
               </div>
-            )}
-            
-            {scrapingResult && (
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-green-600" />
-                  <div>
-                    <p className="font-medium text-green-900">Scraping job initiated successfully!</p>
-                    <p className="text-sm text-green-700">{scrapingResult.message}</p>
-                  </div>
-                </div>
-                
-                <div className="bg-white rounded-lg p-4 border border-blue-200">
-                  <h4 className="font-medium text-blue-900 mb-2">Scraping Details:</h4>
-                  <div className="space-y-2 text-sm">
-                    <div>
-                      <span className="text-blue-700">Target URL:</span>
-                      <span className="ml-2 font-mono text-blue-900">{scrapingResult.targetUrl}</span>
-                    </div>
-                    <div>
-                      <span className="text-blue-700">Job ID:</span>
-                      <span className="ml-2 font-mono text-blue-900">{scrapingResult.scrapingJob.id}</span>
-                    </div>
-                    <div>
-                      <span className="text-blue-700">Status:</span>
-                      <span className="ml-2 text-blue-900 capitalize">{scrapingResult.scrapingJob.status}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5" />
-                      <div className="text-sm">
-                        <p className="font-medium text-yellow-900">Background Processing</p>
-                        <p className="text-yellow-800">
-                          The scraping job is now running in the background. You can continue with the analysis 
-                          while competitive data is being collected. Real scraped data will be available for 
-                          comparison shortly.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-            
-            {startScrapingMutation.isError && (
-              <div className="flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-red-600" />
-                <div>
-                  <p className="font-medium text-red-900">Scraping failed</p>
-                  <p className="text-sm text-red-700">
-                    Unable to start competitive data collection. You can still proceed with manual analysis.
-                  </p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

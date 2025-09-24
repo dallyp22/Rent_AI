@@ -69,7 +69,7 @@ export default function PropertySelectionMatrix() {
 
   // Fetch all analysis sessions
   const { data: sessions = [], isLoading: isLoadingSessions } = useQuery<AnalysisSession[]>({
-    queryKey: ["/api/sessions"],
+    queryKey: ["/api/analysis-sessions"],
   });
 
   // Fetch all property profiles
@@ -83,18 +83,18 @@ export default function PropertySelectionMatrix() {
 
   // Fetch property profiles for selected session
   const { data: sessionProperties = [] } = useQuery<PropertyProfile[]>({
-    queryKey: ["/api/sessions", selectedSession, "properties"],
+    queryKey: ["/api/analysis-sessions", selectedSession, "properties"],
     enabled: !!selectedSession,
   });
 
   // Create session mutation
   const createSessionMutation = useMutation({
     mutationFn: async (data: InsertAnalysisSession): Promise<AnalysisSession> => {
-      const res = await apiRequest("POST", "/api/sessions", data);
+      const res = await apiRequest("POST", "/api/analysis-sessions", data);
       return res.json();
     },
     onSuccess: (session) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analysis-sessions"] });
       setIsCreateSessionDialogOpen(false);
       setSelectedSession(session.id);
       form.reset();
@@ -116,11 +116,11 @@ export default function PropertySelectionMatrix() {
   // Update session mutation
   const updateSessionMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<AnalysisSession> }): Promise<AnalysisSession> => {
-      const res = await apiRequest("PUT", `/api/sessions/${id}`, data);
+      const res = await apiRequest("PUT", `/api/analysis-sessions/${id}`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analysis-sessions"] });
       setEditingSession(null);
       form.reset();
       toast({
@@ -144,7 +144,7 @@ export default function PropertySelectionMatrix() {
       await apiRequest("DELETE", `/api/analysis-sessions/${sessionId}`);
     },
     onSuccess: (_, sessionId) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analysis-sessions"] });
       if (selectedSession === sessionId) {
         setSelectedSession(null);
       }
