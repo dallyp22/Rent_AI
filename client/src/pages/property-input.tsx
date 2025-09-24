@@ -167,8 +167,8 @@ export default function PropertyInput() {
       return session;
     },
     onSuccess: (session) => {
-      // Navigate to session-based analysis
-      setLocation(`/analyze/${session.id}`);
+      // Navigate to session-based summary page first (multi-property workflow)
+      setLocation(`/session/summarize/${session.id}`);
 
       toast({
         title: "Analysis Session Created",
