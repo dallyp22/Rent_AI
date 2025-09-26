@@ -20,6 +20,7 @@ import { FileSpreadsheet, Save, Building2, Home, BarChart3 } from "lucide-react"
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
+import OptimizationControls from "@/components/optimization-controls";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis } from "@shared/schema";
@@ -186,6 +187,9 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
       }
+      
+      // This should never be reached but satisfies TypeScript
+      throw new Error('Unexpected error during optimization');
     },
     onSuccess: (data) => {
       const queryKey = isSessionMode 
@@ -300,14 +304,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     }
   };
 
-  const getRiskLabel = (value: number) => {
-    switch (value) {
-      case 1: return "Low";
-      case 2: return "Medium";
-      case 3: return "High";
-      default: return "Medium";
-    }
-  };
 
   const handleApplyChanges = (unitPrices: Record<string, number>) => {
     setPendingPrices(unitPrices);
@@ -481,79 +477,14 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         </div>
 
         {/* Optimization Controls */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6" data-testid="optimization-controls">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Optimization Goal</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <RadioGroup value={goal} onValueChange={setGoal} data-testid="radio-goal">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="maximize-revenue" id="maximize-revenue" />
-                  <Label htmlFor="maximize-revenue">Maximize Revenue</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="maximize-occupancy" id="maximize-occupancy" />
-                  <Label htmlFor="maximize-occupancy">Maximize Occupancy</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="balanced" id="balanced" />
-                  <Label htmlFor="balanced">Balanced</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="custom" id="custom" />
-                  <Label htmlFor="custom">Custom</Label>
-                </div>
-              </RadioGroup>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Target Occupancy</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="px-2" data-testid="slider-occupancy">
-                <Slider
-                  value={targetOccupancy}
-                  onValueChange={setTargetOccupancy}
-                  max={100}
-                  min={85}
-                  step={1}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>85%</span>
-                <span className="font-semibold">{targetOccupancy[0]}%</span>
-                <span>100%</span>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Risk Tolerance</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="px-2" data-testid="slider-risk">
-                <Slider
-                  value={riskTolerance}
-                  onValueChange={setRiskTolerance}
-                  max={3}
-                  min={1}
-                  step={1}
-                  className="w-full"
-                />
-              </div>
-              <div className="flex justify-between text-sm text-muted-foreground">
-                <span>Low</span>
-                <span className="font-semibold">{getRiskLabel(riskTolerance[0])}</span>
-                <span>High</span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <OptimizationControls
+          goal={goal}
+          targetOccupancy={targetOccupancy}
+          riskTolerance={riskTolerance}
+          onGoalChange={setGoal}
+          onTargetOccupancyChange={setTargetOccupancy}
+          onRiskToleranceChange={setRiskTolerance}
+        />
 
         {/* Generate Button */}
         <div className="flex justify-center mb-6">
