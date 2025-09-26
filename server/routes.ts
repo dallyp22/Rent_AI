@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
@@ -1441,10 +1441,23 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       console.log('[SESSION_FILTERED_ANALYSIS] Starting session-based filtered analysis');
       
       const sessionId = req.params.sessionId;
-      const { filterCriteria } = req.body;
+      
+      // Validate request body with the new schema that supports metadata
+      const validationResult = sessionFilteredAnalysisRequestSchema.safeParse(req.body);
+      if (!validationResult.success) {
+        console.error('[SESSION_FILTERED_ANALYSIS] Invalid request body:', validationResult.error);
+        return res.status(400).json({ 
+          message: "Invalid request body", 
+          errors: validationResult.error.errors 
+        });
+      }
+
+      const { filterCriteria, competitiveRelationships, propertyProfiles } = validationResult.data;
       
       console.log('[SESSION_FILTERED_ANALYSIS] Session ID:', sessionId);
       console.log('[SESSION_FILTERED_ANALYSIS] Filter criteria:', JSON.stringify(filterCriteria, null, 2));
+      console.log('[SESSION_FILTERED_ANALYSIS] Has competitive relationships:', !!competitiveRelationships);
+      console.log('[SESSION_FILTERED_ANALYSIS] Has property profiles:', !!propertyProfiles);
 
       // Get the analysis session
       const session = await storage.getAnalysisSession(sessionId);
@@ -1452,8 +1465,39 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         return res.status(404).json({ message: "Analysis session not found" });
       }
 
-      // Generate multi-property analysis with filter criteria
-      const analysis = await storage.generateMultiPropertyAnalysis(sessionId, filterCriteria);
+      // For backward compatibility, if metadata is not provided by frontend,
+      // fetch it server-side when competitive filtering is enabled
+      let effectiveCompetitiveRelationships = competitiveRelationships;
+      let effectivePropertyProfiles = propertyProfiles;
+      
+      if (filterCriteria.competitiveSet && filterCriteria.competitiveSet !== "all_competitors") {
+        // If metadata wasn't provided but competitive filtering is requested, fetch it server-side
+        if (!effectiveCompetitiveRelationships && session.portfolioId) {
+          try {
+            effectiveCompetitiveRelationships = await storage.getCompetitiveRelationshipsByPortfolio(session.portfolioId);
+            console.log('[SESSION_FILTERED_ANALYSIS] Fetched competitive relationships server-side:', effectiveCompetitiveRelationships.length);
+          } catch (fetchError) {
+            console.warn('[SESSION_FILTERED_ANALYSIS] Failed to fetch competitive relationships server-side:', fetchError);
+          }
+        }
+        
+        if (!effectivePropertyProfiles) {
+          try {
+            effectivePropertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+            console.log('[SESSION_FILTERED_ANALYSIS] Fetched property profiles server-side:', effectivePropertyProfiles.length);
+          } catch (fetchError) {
+            console.warn('[SESSION_FILTERED_ANALYSIS] Failed to fetch property profiles server-side:', fetchError);
+          }
+        }
+      }
+
+      // Generate multi-property analysis with filter criteria and metadata
+      const analysis = await storage.generateMultiPropertyAnalysis(
+        sessionId, 
+        filterCriteria, 
+        effectiveCompetitiveRelationships, 
+        effectivePropertyProfiles
+      );
 
       console.log('[SESSION_FILTERED_ANALYSIS] Analysis generated successfully for session:', session.name);
       res.json(analysis);

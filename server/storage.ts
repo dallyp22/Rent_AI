@@ -76,7 +76,7 @@ export interface IStorage {
   getSessionsForPropertyProfile(propertyProfileId: string): Promise<AnalysisSession[]>;
   
   // Multi-property analysis support
-  generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis>;
+  generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria, competitiveRelationships?: any[], propertyProfiles?: any[]): Promise<FilteredAnalysis>;
   getSubjectPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
   getCompetitorPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]>;
   getScrapedUnitsForSession(sessionId: string): Promise<ScrapedUnit[]>;
@@ -438,7 +438,7 @@ export class MemStorage implements IStorage {
     return allUnits;
   }
 
-  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria): Promise<FilteredAnalysis> {
+  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria, competitiveRelationships?: any[], propertyProfiles?: any[]): Promise<FilteredAnalysis> {
     console.log('[STORAGE] Generating multi-property analysis for session:', sessionId);
     console.log('[STORAGE] Filter criteria:', JSON.stringify(criteria, null, 2));
     

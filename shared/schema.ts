@@ -374,7 +374,45 @@ export const filterCriteriaSchema = z.object({
   amenities: z.array(z.enum(["in_unit_laundry", "parking", "gym", "pool", "pet_friendly"])).optional(),
   leaseTerms: z.array(z.enum(["6_month", "12_month", "month_to_month"])).optional(),
   floorLevel: z.enum(["ground", "mid", "top"]).optional(),
-  renovationStatus: z.enum(["newly_renovated", "updated", "original"]).optional()
+  renovationStatus: z.enum(["newly_renovated", "updated", "original"]).optional(),
+  // Competitive set filters
+  competitiveSet: z.enum(["all_competitors", "internal_competitors_only", "external_competitors_only", "subject_properties_only"]).default("all_competitors").optional()
+});
+
+// Schema for session-based filtered analysis requests with optional metadata
+export const sessionFilteredAnalysisRequestSchema = z.object({
+  filterCriteria: filterCriteriaSchema,
+  // Optional metadata for competitive set filtering
+  competitiveRelationships: z.array(z.object({
+    id: z.string(),
+    portfolioId: z.string(),
+    propertyAId: z.string(),
+    propertyBId: z.string(),
+    relationshipType: z.enum(["direct_competitor", "indirect_competitor", "market_leader", "market_follower"]),
+    isActive: z.boolean(),
+    createdAt: z.string()
+  })).optional(),
+  propertyProfiles: z.array(z.object({
+    id: z.string(),
+    name: z.string(),
+    address: z.string(),
+    url: z.string(),
+    profileType: z.string(),
+    city: z.string().nullable().optional(),
+    state: z.string().nullable().optional(),
+    propertyType: z.string().nullable().optional(),
+    totalUnits: z.number().nullable().optional(),
+    builtYear: z.number().nullable().optional(),
+    squareFootage: z.number().nullable().optional(),
+    parkingSpaces: z.number().nullable().optional(),
+    amenities: z.array(z.string()).default([]),
+    unitMix: z.record(z.string(), z.number()).nullable().optional(),
+    distance: z.string().nullable().optional(),
+    matchScore: z.string().nullable().optional(),
+    vacancyRate: z.string().nullable().optional(),
+    createdAt: z.string().optional(),
+    updatedAt: z.string().optional()
+  })).optional()
 });
 
 // Unit comparison data for visualization
