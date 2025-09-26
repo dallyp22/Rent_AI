@@ -66,6 +66,21 @@ interface PropertyPerformance {
   lastAnalyzed: Date;
 }
 
+// Backend property performance data interface
+interface BackendPropertyPerformance {
+  propertyId: string;
+  propertyName: string;
+  address: string;
+  totalUnits: number;
+  currentMonthlyRevenue: number;
+  optimizedMonthlyRevenue: number;
+  optimizationPotential: number;
+  annualOptimizationPotential: number;
+  occupancyRate: number;
+  performanceScore: number;
+  lastAnalyzed: string;
+}
+
 export default function PortfolioDashboard() {
   const [selectedTimeframe, setSelectedTimeframe] = useState<'30d' | '90d' | '1y'>('90d');
   const { toast } = useToast();
@@ -524,7 +539,7 @@ export default function PortfolioDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {portfolioFinancialData?.propertyPerformance?.map((property, index) => (
+                    {portfolioFinancialData?.propertyPerformance?.map((property: BackendPropertyPerformance, index: number) => (
                       <tr key={property.propertyId} className="border-b hover:bg-muted/50">
                         <td className="p-2">
                           <div>
@@ -601,7 +616,7 @@ export default function PortfolioDashboard() {
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-green-600">
-                      {portfolioFinancialData?.propertyPerformance?.filter(p => p.optimizationPotential > 5000).length || 0}
+                      {portfolioFinancialData?.propertyPerformance?.filter((p: BackendPropertyPerformance) => p.optimizationPotential > 5000).length || 0}
                     </div>
                   </div>
                   
@@ -613,7 +628,7 @@ export default function PortfolioDashboard() {
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-blue-600">
-                      {portfolioFinancialData?.propertyPerformance?.filter(p => 
+                      {portfolioFinancialData?.propertyPerformance?.filter((p: BackendPropertyPerformance) => 
                         p.optimizationPotential >= 1000 && p.optimizationPotential <= 5000
                       ).length || 0}
                     </div>
@@ -627,7 +642,7 @@ export default function PortfolioDashboard() {
                       </div>
                     </div>
                     <div className="text-2xl font-bold text-gray-600">
-                      {portfolioFinancialData?.propertyPerformance?.filter(p => p.optimizationPotential < 1000).length || 0}
+                      {portfolioFinancialData?.propertyPerformance?.filter((p: BackendPropertyPerformance) => p.optimizationPotential < 1000).length || 0}
                     </div>
                   </div>
                 </div>

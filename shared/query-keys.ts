@@ -30,11 +30,49 @@ export const ANALYSIS_SESSION_QUERY_KEYS = {
 } as const;
 
 /**
+ * Portfolio query keys
+ */
+export const PORTFOLIO_QUERY_KEYS = {
+  // Get all portfolios
+  all: () => ['/api/portfolios'] as const,
+  
+  // Get a specific portfolio
+  byId: (id: string) => [`/api/portfolios/${id}`] as const,
+  
+  // Get properties in a portfolio
+  properties: (portfolioId: string) => [`/api/portfolios/${portfolioId}/properties`] as const,
+  
+  // Get competitive relationships in a portfolio
+  competitiveRelationships: (portfolioId: string) => [`/api/portfolios/${portfolioId}/competitive-relationships`] as const,
+} as const;
+
+/**
+ * Competitive Relationships query keys
+ */
+export const COMPETITIVE_RELATIONSHIP_QUERY_KEYS = {
+  // Get all relationships for a portfolio
+  byPortfolio: (portfolioId: string) => PORTFOLIO_QUERY_KEYS.competitiveRelationships(portfolioId),
+  
+  // Get a specific relationship
+  byId: (portfolioId: string, relationshipId: string) => [`/api/portfolios/${portfolioId}/competitive-relationships/${relationshipId}`] as const,
+} as const;
+
+/**
  * Utility function to invalidate property profile queries after mutations
  */
 export const getPropertyProfileInvalidationKeys = (profileType: 'subject' | 'competitor') => {
   return [
     PROPERTY_PROFILE_QUERY_KEYS.all(),
     PROPERTY_PROFILE_QUERY_KEYS.byType(profileType),
+  ];
+};
+
+/**
+ * Utility function to invalidate competitive relationship queries after mutations
+ */
+export const getCompetitiveRelationshipInvalidationKeys = (portfolioId: string) => {
+  return [
+    COMPETITIVE_RELATIONSHIP_QUERY_KEYS.byPortfolio(portfolioId),
+    PORTFOLIO_QUERY_KEYS.properties(portfolioId),
   ];
 };
