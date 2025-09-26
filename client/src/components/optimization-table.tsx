@@ -33,7 +33,6 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
 
   return (
     <tr 
-      key={`${unit.id}-${unit.unitNumber}`} 
       className="hover:bg-accent transition-colors duration-200" 
       data-testid={`unit-row-${unit.unitNumber}`}
     >
@@ -569,7 +568,7 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
             <tbody className="divide-y divide-border">
               {units.map((unit) => (
                 <TableRow
-                  key={`${unit.id}-${unit.unitNumber}`}
+                  key={`${unit.id}-${unit.unitNumber}-row`}
                   unit={unit}
                   modifiedPrices={modifiedPrices}
                   handlePriceChange={handlePriceChange}
