@@ -118,3 +118,62 @@
   background: var(--muted);
   color: var(--muted-foreground);
 }
+
+/* Optimization Table Enhanced Styling */
+.optimization-table {
+  position: relative;
+}
+
+.optimization-table tr {
+  transition: all 0.2s ease-in-out;
+}
+
+.optimization-table tr:hover {
+  transform: translateX(2px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.optimization-table td {
+  transition: all 0.2s ease-in-out;
+}
+
+.optimization-table .impact-card {
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.optimization-table .impact-card.positive {
+  border-left: 4px solid hsl(142.1, 76.2%, 36.3%);
+}
+
+.optimization-table .impact-card.negative {
+  border-left: 4px solid hsl(0, 84.2%, 60.2%);
+}
+
+.optimization-table .quick-adjust-buttons {
+  opacity: 0.7;
+  transition: opacity 0.2s ease-in-out;
+}
+
+.optimization-table tr:hover .quick-adjust-buttons {
+  opacity: 1;
+}
+
+.optimization-table .price-input {
+  transition: all 0.2s ease-in-out;
+}
+
+.optimization-table .price-input:focus {
+  transform: scale(1.02);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+/* Enhanced number input styling */
+.optimization-table input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+.optimization-table input[type="number"]::-webkit-outer-spin-button,
+.optimization-table input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}

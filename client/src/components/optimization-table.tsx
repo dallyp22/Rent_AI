@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback, memo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign } from "lucide-react";
-import { formatCurrency, formatCurrencyChange } from "@/utils/formatters";
+import { formatCurrency, formatCurrencyChange, formatLargeCurrency } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
 interface OptimizationTableProps {
@@ -21,12 +21,121 @@ interface UnitWithDetails extends PropertyUnit {
   marketAverage?: string;
 }
 
-export default function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableProps) {
+// Memoized table row component for better performance
+const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getConfidenceBadge, getStatusBadge, formatCurrency, formatCurrencyChange }: any) => {
+  const unitWithDetails = unit as UnitWithDetails;
+  const currentRent = parseFloat(unit.currentRent);
+  const recommendedRent = unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent;
+  const marketAvg = unitWithDetails.marketAverage ? parseFloat(unitWithDetails.marketAverage) : currentRent;
+  const newRent = modifiedPrices[unit.id] || recommendedRent;
+  const change = newRent - currentRent;
+  const annualImpact = change * 12;
+
+  return (
+    <tr 
+      key={`${unit.id}-${unit.unitNumber}`} 
+      className="hover:bg-accent transition-colors duration-200" 
+      data-testid={`unit-row-${unit.unitNumber}`}
+    >
+      <td className="px-4 py-3 font-medium" data-testid={`unit-number-${unit.unitNumber}`}>
+        {unit.unitNumber}
+      </td>
+      <td className="px-4 py-3" data-testid={`unit-type-${unit.unitNumber}`}>
+        {unit.unitType}
+      </td>
+      <td className="px-4 py-3" data-testid={`current-rent-${unit.unitNumber}`}>
+        {formatCurrency(currentRent)}
+      </td>
+      <td className="px-4 py-3" data-testid={`ai-recommended-${unit.unitNumber}`}>
+        <span className="text-blue-600 font-medium">
+          {formatCurrency(recommendedRent)}
+        </span>
+      </td>
+      <td className="px-4 py-3" data-testid={`market-avg-${unit.unitNumber}`}>
+        {formatCurrency(marketAvg)}
+      </td>
+      <td className="px-4 py-3" data-testid={`editable-rent-${unit.unitNumber}`}>
+        <Input
+          type="number"
+          value={newRent.toFixed(2)}
+          onChange={(e) => handlePriceChange(unit.id, parseFloat(e.target.value) || 0)}
+          className="w-28 font-medium price-input"
+          step="0.01"
+          min="0"
+          data-testid={`input-rent-${unit.unitNumber}`}
+        />
+      </td>
+      <td className="px-4 py-3" data-testid={`quick-adjust-${unit.unitNumber}`}>
+        <div className="flex gap-1 quick-adjust-buttons">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => handleQuickAdjust(unit.id, -10)}
+            data-testid={`button-minus-10-${unit.unitNumber}`}
+            className="transition-all duration-200 hover:scale-105 hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+          >
+            -$10
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => handleQuickAdjust(unit.id, -5)}
+            data-testid={`button-minus-5-${unit.unitNumber}`}
+            className="transition-all duration-200 hover:scale-105 hover:bg-red-50 hover:border-red-300 hover:text-red-700"
+          >
+            -$5
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => handleQuickAdjust(unit.id, 5)}
+            data-testid={`button-plus-5-${unit.unitNumber}`}
+            className="transition-all duration-200 hover:scale-105 hover:bg-green-50 hover:border-green-300 hover:text-green-700"
+          >
+            +$5
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onClick={() => handleQuickAdjust(unit.id, 10)}
+            data-testid={`button-plus-10-${unit.unitNumber}`}
+            className="transition-all duration-200 hover:scale-105 hover:bg-green-50 hover:border-green-300 hover:text-green-700"
+          >
+            +$10
+          </Button>
+        </div>
+      </td>
+      <td className="px-4 py-3" data-testid={`change-${unit.unitNumber}`}>
+        {getChangeIndicator(currentRent, newRent)}
+      </td>
+      <td className="px-4 py-3" data-testid={`impact-${unit.unitNumber}`}>
+        <span className={
+          annualImpact > 0 ? "text-green-600 font-medium" : 
+          annualImpact < 0 ? "text-red-600 font-medium" : 
+          "text-gray-600"
+        }>
+          {formatCurrencyChange(annualImpact, true)}/year
+        </span>
+      </td>
+      <td className="px-4 py-3" data-testid={`confidence-${unit.unitNumber}`}>
+        {getConfidenceBadge(unitWithDetails.confidenceLevel)}
+      </td>
+      <td className="px-4 py-3" data-testid={`status-${unit.unitNumber}`}>
+        {getStatusBadge(unit.status)}
+      </td>
+    </tr>
+  );
+});
+
+TableRow.displayName = 'TableRow';
+
+function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableProps) {
   const [modifiedPrices, setModifiedPrices] = useState<Record<string, number>>({});
   const [selectedUnitType, setSelectedUnitType] = useState<string>("all");
   const [bulkFixedAmount, setBulkFixedAmount] = useState<string>("");
   const [history, setHistory] = useState<Record<string, number>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
 
   // Initialize modified prices with recommended rents
   useEffect(() => {
@@ -80,16 +189,41 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
     };
   }, [modifiedPrices, units]);
 
-  const handlePriceChange = (unitId: string, newPrice: number) => {
+  // Debounced price change handler to prevent excessive re-renders
+  const handlePriceChange = useCallback((unitId: string, newPrice: number) => {
+    // Clear existing timeout
+    if (debounceTimeout) {
+      clearTimeout(debounceTimeout);
+    }
+
+    // Immediately update the price for responsive UI
+    const updated = { ...modifiedPrices, [unitId]: newPrice };
+    setModifiedPrices(updated);
+
+    // Debounce the history update to avoid excessive history entries during rapid changes
+    const timeout = setTimeout(() => {
+      addToHistory(updated);
+    }, 300);
+    setDebounceTimeout(timeout);
+  }, [modifiedPrices, debounceTimeout]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeout) {
+        clearTimeout(debounceTimeout);
+      }
+    };
+  }, [debounceTimeout]);
+
+  const handleQuickAdjust = useCallback((unitId: string, amount: number) => {
+    const currentPrice = modifiedPrices[unitId] || 0;
+    const newPrice = Math.max(0, currentPrice + amount);
+    // Use immediate update for quick adjustments without debouncing
     const updated = { ...modifiedPrices, [unitId]: newPrice };
     setModifiedPrices(updated);
     addToHistory(updated);
-  };
-
-  const handleQuickAdjust = (unitId: string, amount: number) => {
-    const currentPrice = modifiedPrices[unitId] || 0;
-    handlePriceChange(unitId, Math.max(0, currentPrice + amount));
-  };
+  }, [modifiedPrices]);
 
   const applyBulkPercentage = (percentage: number) => {
     const updated: Record<string, number> = {};
@@ -217,7 +351,7 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
   };
 
   return (
-    <div className="space-y-6" data-testid="optimization-table">
+    <div className="space-y-6 optimization-table" data-testid="optimization-table">
       {/* Bulk Adjustment Toolbar */}
       <Card>
         <CardHeader>
@@ -370,19 +504,19 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
       </Card>
 
       {/* Real-time Impact Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4" data-testid="impact-cards">
-        <Card className={impact.totalMonthlyIncrease > 0 ? "border-green-200 bg-green-50" : impact.totalMonthlyIncrease < 0 ? "border-red-200 bg-red-50" : ""}>
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 transition-all duration-300" data-testid="impact-cards">
+        <Card className={`transition-all duration-500 ${impact.totalMonthlyIncrease > 0 ? "border-green-200 bg-green-50 shadow-green-100 shadow-md" : impact.totalMonthlyIncrease < 0 ? "border-red-200 bg-red-50 shadow-red-100 shadow-md" : ""}`}>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold" data-testid="monthly-impact">
-              {formatCurrencyChange(impact.totalMonthlyIncrease)}
+            <div className="text-2xl font-bold transition-all duration-300" data-testid="monthly-impact">
+              {formatLargeCurrency(impact.totalMonthlyIncrease)}
             </div>
             <div className="text-sm text-muted-foreground">Monthly Impact</div>
           </CardContent>
         </Card>
-        <Card className={impact.totalAnnualIncrease > 0 ? "border-green-200 bg-green-50" : impact.totalAnnualIncrease < 0 ? "border-red-200 bg-red-50" : ""}>
+        <Card className={`transition-all duration-500 ${impact.totalAnnualIncrease > 0 ? "border-green-200 bg-green-50 shadow-green-100 shadow-md" : impact.totalAnnualIncrease < 0 ? "border-red-200 bg-red-50 shadow-red-100 shadow-md" : ""}`}>
           <CardContent className="p-4">
-            <div className="text-2xl font-bold" data-testid="annual-impact">
-              {formatCurrencyChange(impact.totalAnnualIncrease)}
+            <div className="text-2xl font-bold transition-all duration-300" data-testid="annual-impact">
+              {formatLargeCurrency(impact.totalAnnualIncrease)}
             </div>
             <div className="text-sm text-muted-foreground">Annual Impact</div>
           </CardContent>
@@ -433,104 +567,20 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {units.map((unit) => {
-                const unitWithDetails = unit as UnitWithDetails;
-                const currentRent = parseFloat(unit.currentRent);
-                const recommendedRent = unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent;
-                const marketAvg = unitWithDetails.marketAverage ? parseFloat(unitWithDetails.marketAverage) : currentRent;
-                const newRent = modifiedPrices[unit.id] || recommendedRent;
-                const change = newRent - currentRent;
-                const annualImpact = change * 12;
-
-                return (
-                  <tr 
-                    key={unit.id} 
-                    className="hover:bg-accent" 
-                    data-testid={`unit-row-${unit.unitNumber}`}
-                  >
-                    <td className="px-4 py-3 font-medium" data-testid={`unit-number-${unit.unitNumber}`}>
-                      {unit.unitNumber}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`unit-type-${unit.unitNumber}`}>
-                      {unit.unitType}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`current-rent-${unit.unitNumber}`}>
-                      ${currentRent}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`ai-recommended-${unit.unitNumber}`}>
-                      <span className="text-blue-600 font-medium">
-                        ${recommendedRent}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3" data-testid={`market-avg-${unit.unitNumber}`}>
-                      ${marketAvg}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`editable-rent-${unit.unitNumber}`}>
-                      <Input
-                        type="number"
-                        value={newRent}
-                        onChange={(e) => handlePriceChange(unit.id, parseFloat(e.target.value) || 0)}
-                        className="w-24"
-                        data-testid={`input-rent-${unit.unitNumber}`}
-                      />
-                    </td>
-                    <td className="px-4 py-3" data-testid={`quick-adjust-${unit.unitNumber}`}>
-                      <div className="flex gap-1">
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleQuickAdjust(unit.id, -10)}
-                          data-testid={`button-minus-10-${unit.unitNumber}`}
-                        >
-                          -$10
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleQuickAdjust(unit.id, -5)}
-                          data-testid={`button-minus-5-${unit.unitNumber}`}
-                        >
-                          -$5
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleQuickAdjust(unit.id, 5)}
-                          data-testid={`button-plus-5-${unit.unitNumber}`}
-                        >
-                          +$5
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onClick={() => handleQuickAdjust(unit.id, 10)}
-                          data-testid={`button-plus-10-${unit.unitNumber}`}
-                        >
-                          +$10
-                        </Button>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3" data-testid={`change-${unit.unitNumber}`}>
-                      {getChangeIndicator(currentRent, newRent)}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`impact-${unit.unitNumber}`}>
-                      <span className={
-                        annualImpact > 0 ? "text-green-600 font-medium" : 
-                        annualImpact < 0 ? "text-red-600 font-medium" : 
-                        "text-gray-600"
-                      }>
-                        {formatCurrencyChange(annualImpact, true)}/year
-                      </span>
-                    </td>
-                    <td className="px-4 py-3" data-testid={`confidence-${unit.unitNumber}`}>
-                      {getConfidenceBadge(unitWithDetails.confidenceLevel)}
-                    </td>
-                    <td className="px-4 py-3" data-testid={`status-${unit.unitNumber}`}>
-                      {getStatusBadge(unit.status)}
-                    </td>
-                  </tr>
-                );
-              })}
+              {units.map((unit) => (
+                <TableRow
+                  key={`${unit.id}-${unit.unitNumber}`}
+                  unit={unit}
+                  modifiedPrices={modifiedPrices}
+                  handlePriceChange={handlePriceChange}
+                  handleQuickAdjust={handleQuickAdjust}
+                  getChangeIndicator={getChangeIndicator}
+                  getConfidenceBadge={getConfidenceBadge}
+                  getStatusBadge={getStatusBadge}
+                  formatCurrency={formatCurrency}
+                  formatCurrencyChange={formatCurrencyChange}
+                />
+              ))}
             </tbody>
           </table>
         </div>
@@ -554,3 +604,5 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
     </div>
   );
 }
+
+export default memo(OptimizationTable);
