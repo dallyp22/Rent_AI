@@ -553,7 +553,7 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
             <tbody className="divide-y divide-border">
               {units.map((unit) => (
                 <TableRow
-                  key={`${unit.id}-${unit.unitNumber}-row`}
+                  key={unit.id}
                   unit={unit}
                   modifiedPrices={modifiedPrices}
                   handlePriceChange={handlePriceChange}

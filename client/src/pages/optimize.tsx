@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -458,6 +458,55 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const sessionData = sessionQuery.data;
   const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
 
+  // Client-side deduplication of units to prevent React key warnings
+  const deduplicatedUnits = useMemo(() => {
+    if (!optimizationQuery.data) {
+      return [];
+    }
+
+    let allUnits: PropertyUnit[] = [];
+    
+    if (isSessionMode && optimizationQuery.data.portfolio) {
+      // Session mode: collect units from all properties in portfolio
+      Object.values(optimizationQuery.data.portfolio).forEach(propertyData => {
+        allUnits = allUnits.concat(propertyData.units);
+      });
+    } else {
+      // Single property mode: use units directly
+      allUnits = optimizationQuery.data.units || [];
+    }
+
+    // Development logging to detect duplicates early
+    if (import.meta.env.DEV) {
+      const unitIds = allUnits.map(unit => unit.id);
+      const uniqueIds = new Set(unitIds);
+      
+      console.log(`[OPTIMIZE] Unit deduplication check:`);
+      console.log(`  Original units count: ${allUnits.length}`);
+      console.log(`  Unique unit IDs count: ${uniqueIds.size}`);
+      
+      if (uniqueIds.size !== unitIds.length) {
+        console.warn(`[OPTIMIZE] WARNING: Duplicate units detected! ${unitIds.length - uniqueIds.size} duplicates found.`);
+        const duplicates = unitIds.filter((id, index) => unitIds.indexOf(id) !== index);
+        console.warn(`[OPTIMIZE] Duplicate unit IDs:`, duplicates);
+      }
+    }
+
+    // Use Map to deduplicate by unit.id, keeping the last occurrence
+    const unitMap = new Map<string, PropertyUnit>();
+    allUnits.forEach(unit => {
+      unitMap.set(unit.id, unit);
+    });
+
+    const deduplicatedArray = Array.from(unitMap.values());
+    
+    if (import.meta.env.DEV) {
+      console.log(`[OPTIMIZE] Final deduplicated units count: ${deduplicatedArray.length}`);
+    }
+
+    return deduplicatedArray;
+  }, [optimizationQuery.data, isSessionMode]);
+
   return (
     <div className="space-y-6" data-testid="optimize-page">
       {/* Header with mode indicator */}
@@ -572,7 +621,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         {/* Optimization Table */}
         {optimizationQuery.data ? (
           <OptimizationTable
-            units={optimizationQuery.data.units}
+            units={deduplicatedUnits}
             report={optimizationQuery.data.report}
             onApplyChanges={handleApplyChanges}
           />
