@@ -42,12 +42,17 @@ export const analysisSessions = pgTable("analysis_sessions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(), // e.g., "Downtown Portfolio Analysis"
   description: text("description"),
+  // NEW: Link to users and portfolios
+  userId: varchar("user_id").references(() => users.id),
+  portfolioId: varchar("portfolio_id").references(() => savedPortfolios.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
 }, (table) => ({
   // Indexes for performance
   nameIdx: index("analysis_sessions_name_idx").on(table.name),
-  createdAtIdx: index("analysis_sessions_created_at_idx").on(table.createdAt)
+  createdAtIdx: index("analysis_sessions_created_at_idx").on(table.createdAt),
+  userIdIdx: index("analysis_sessions_user_id_idx").on(table.userId),
+  portfolioIdIdx: index("analysis_sessions_portfolio_id_idx").on(table.portfolioId)
 }));
 
 // Junction table for many-to-many relationship between sessions and property profiles
@@ -213,6 +218,69 @@ export const users = pgTable("users", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// NEW: Portfolio Management Tables
+
+// Saved portfolios for users
+export const savedPortfolios = pgTable("saved_portfolios", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  lastAccessedAt: timestamp("last_accessed_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  userIdIdx: index("saved_portfolios_user_id_idx").on(table.userId),
+  nameIdx: index("saved_portfolios_name_idx").on(table.name),
+  createdAtIdx: index("saved_portfolios_created_at_idx").on(table.createdAt),
+  lastAccessedIdx: index("saved_portfolios_last_accessed_idx").on(table.lastAccessedAt)
+}));
+
+// Saved property profiles within portfolios
+export const savedPropertyProfiles = pgTable("saved_property_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  portfolioId: varchar("portfolio_id").references(() => savedPortfolios.id).notNull(),
+  name: text("name").notNull(),
+  url: text("url").notNull(),
+  role: text("role").notNull(), // "subject" | "competitor"
+  address: text("address").notNull(),
+  unitMix: json("unit_mix").$type<{[unitType: string]: number}>().default({}),
+  createdAt: timestamp("created_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  portfolioIdIdx: index("saved_property_profiles_portfolio_id_idx").on(table.portfolioId),
+  roleIdx: index("saved_property_profiles_role_idx").on(table.role),
+  urlIdx: index("saved_property_profiles_url_idx").on(table.url),
+  createdAtIdx: index("saved_property_profiles_created_at_idx").on(table.createdAt),
+  // Check constraint to ensure role is valid
+  roleCheck: check("saved_property_profiles_role_check", sql`${table.role} IN ('subject', 'competitor')`)
+}));
+
+// Competitive relationships between properties in a portfolio
+export const competitiveRelationships = pgTable("competitive_relationships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  portfolioId: varchar("portfolio_id").references(() => savedPortfolios.id).notNull(),
+  propertyAId: varchar("property_a_id").references(() => savedPropertyProfiles.id).notNull(),
+  propertyBId: varchar("property_b_id").references(() => savedPropertyProfiles.id).notNull(),
+  relationshipType: text("relationship_type").notNull(), // "direct_competitor" | "indirect_competitor" | "market_leader" | "market_follower"
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  portfolioIdIdx: index("competitive_relationships_portfolio_id_idx").on(table.portfolioId),
+  propertyAIdx: index("competitive_relationships_property_a_idx").on(table.propertyAId),
+  propertyBIdx: index("competitive_relationships_property_b_idx").on(table.propertyBId),
+  relationshipTypeIdx: index("competitive_relationships_type_idx").on(table.relationshipType),
+  isActiveIdx: index("competitive_relationships_is_active_idx").on(table.isActive),
+  createdAtIdx: index("competitive_relationships_created_at_idx").on(table.createdAt),
+  // Unique constraint to prevent duplicate relationships
+  uniqueRelationship: unique("competitive_relationships_unique").on(table.portfolioId, table.propertyAId, table.propertyBId),
+  // Check constraint to ensure relationship type is valid
+  relationshipTypeCheck: check("competitive_relationships_type_check", 
+    sql`${table.relationshipType} IN ('direct_competitor', 'indirect_competitor', 'market_leader', 'market_follower')`)
+}));
+
 // Insert schemas for new property profiles system
 // Custom schema to handle decimal fields properly (they can be strings or numbers)
 export const insertPropertyProfileSchema = createInsertSchema(propertyProfiles)
@@ -239,6 +307,11 @@ export const insertScrapedUnitSchema = createInsertSchema(scrapedUnits).omit({ i
 // User authentication schemas
 export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 
+// NEW: Portfolio management insert schemas
+export const insertSavedPortfolioSchema = createInsertSchema(savedPortfolios).omit({ id: true, createdAt: true, updatedAt: true, lastAccessedAt: true });
+export const insertSavedPropertyProfileSchema = createInsertSchema(savedPropertyProfiles).omit({ id: true, createdAt: true });
+export const insertCompetitiveRelationshipSchema = createInsertSchema(competitiveRelationships).omit({ id: true, createdAt: true });
+
 // New property profiles system types
 export type PropertyProfile = typeof propertyProfiles.$inferSelect;
 export type InsertPropertyProfile = z.infer<typeof insertPropertyProfileSchema>;
@@ -264,6 +337,14 @@ export type ScrapedProperty = typeof scrapedProperties.$inferSelect;
 export type InsertScrapedProperty = z.infer<typeof insertScrapedPropertySchema>;
 export type ScrapedUnit = typeof scrapedUnits.$inferSelect;
 export type InsertScrapedUnit = z.infer<typeof insertScrapedUnitSchema>;
+
+// NEW: Portfolio management types
+export type SavedPortfolio = typeof savedPortfolios.$inferSelect;
+export type InsertSavedPortfolio = z.infer<typeof insertSavedPortfolioSchema>;
+export type SavedPropertyProfile = typeof savedPropertyProfiles.$inferSelect;
+export type InsertSavedPropertyProfile = z.infer<typeof insertSavedPropertyProfileSchema>;
+export type CompetitiveRelationship = typeof competitiveRelationships.$inferSelect;
+export type InsertCompetitiveRelationship = z.infer<typeof insertCompetitiveRelationshipSchema>;
 
 // Filter criteria and analysis schemas
 export const filterCriteriaSchema = z.object({

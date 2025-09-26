@@ -6,6 +6,13 @@ import {
   type InsertAnalysisSession,
   type SessionPropertyProfile,
   type InsertSessionPropertyProfile,
+  // Portfolio management types
+  type SavedPortfolio,
+  type InsertSavedPortfolio,
+  type SavedPropertyProfile,
+  type InsertSavedPropertyProfile,
+  type CompetitiveRelationship,
+  type InsertCompetitiveRelationship,
   // Legacy types (for backward compatibility)
   type Property, 
   type InsertProperty,
@@ -138,6 +145,30 @@ export interface IStorage {
   getScrapingJobsBySession(sessionId: string): Promise<ScrapingJob[]>;
   getAllOptimizationReports(): Promise<OptimizationReport[]>;
   
+  // NEW: Portfolio Management Operations
+  // Portfolio CRUD operations
+  createPortfolio(portfolio: InsertSavedPortfolio): Promise<SavedPortfolio>;
+  getPortfolio(id: string): Promise<SavedPortfolio | undefined>;
+  getPortfoliosByUser(userId: string): Promise<SavedPortfolio[]>;
+  updatePortfolio(id: string, updates: Partial<SavedPortfolio>): Promise<SavedPortfolio | undefined>;
+  deletePortfolio(id: string): Promise<boolean>;
+  updatePortfolioLastAccessed(id: string): Promise<void>;
+  
+  // Property profile operations within portfolios
+  createSavedPropertyProfile(profile: InsertSavedPropertyProfile): Promise<SavedPropertyProfile>;
+  getSavedPropertyProfile(id: string): Promise<SavedPropertyProfile | undefined>;
+  getSavedPropertyProfilesByPortfolio(portfolioId: string): Promise<SavedPropertyProfile[]>;
+  updateSavedPropertyProfile(id: string, updates: Partial<SavedPropertyProfile>): Promise<SavedPropertyProfile | undefined>;
+  deleteSavedPropertyProfile(id: string): Promise<boolean>;
+  
+  // Competitive relationship operations
+  createCompetitiveRelationship(relationship: InsertCompetitiveRelationship): Promise<CompetitiveRelationship>;
+  getCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined>;
+  getCompetitiveRelationshipsByPortfolio(portfolioId: string): Promise<CompetitiveRelationship[]>;
+  updateCompetitiveRelationship(id: string, updates: Partial<CompetitiveRelationship>): Promise<CompetitiveRelationship | undefined>;
+  toggleCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined>;
+  deleteCompetitiveRelationship(id: string): Promise<boolean>;
+
   // User authentication operations - MANDATORY for Replit Auth
   getUser(id: string): Promise<User | undefined>;
   upsertUser(user: UpsertUser): Promise<User>;
@@ -148,6 +179,11 @@ export class MemStorage implements IStorage {
   private propertyProfiles: Map<string, PropertyProfile>;
   private analysisSessions: Map<string, AnalysisSession>;
   private sessionPropertyProfiles: Map<string, SessionPropertyProfile>;
+  
+  // Portfolio management system
+  private savedPortfolios: Map<string, SavedPortfolio>;
+  private savedPropertyProfiles: Map<string, SavedPropertyProfile>;
+  private competitiveRelationships: Map<string, CompetitiveRelationship>;
   
   // Legacy maps (maintained for backward compatibility)
   private properties: Map<string, Property>;
@@ -168,6 +204,11 @@ export class MemStorage implements IStorage {
     this.propertyProfiles = new Map();
     this.analysisSessions = new Map();
     this.sessionPropertyProfiles = new Map();
+    
+    // Initialize portfolio management system
+    this.savedPortfolios = new Map();
+    this.savedPropertyProfiles = new Map();
+    this.competitiveRelationships = new Map();
     
     // Initialize legacy maps
     this.properties = new Map();
@@ -264,7 +305,9 @@ export class MemStorage implements IStorage {
       id,
       createdAt: new Date(),
       updatedAt: new Date(),
-      description: insertSession.description ?? null
+      description: insertSession.description ?? null,
+      userId: insertSession.userId ?? null,
+      portfolioId: insertSession.portfolioId ?? null
     };
     this.analysisSessions.set(id, session);
     return session;
@@ -1420,6 +1463,158 @@ export class MemStorage implements IStorage {
       totalOptimizationPotential: propertyPerformance.reduce((sum, p) => sum + p.optimizationPotential, 0),
       propertyPerformance
     };
+  }
+
+  // NEW: PORTFOLIO MANAGEMENT OPERATIONS
+  
+  // Portfolio CRUD operations
+  async createPortfolio(insertPortfolio: InsertSavedPortfolio): Promise<SavedPortfolio> {
+    const id = randomUUID();
+    const portfolio: SavedPortfolio = {
+      ...insertPortfolio,
+      id,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      lastAccessedAt: new Date(),
+      description: insertPortfolio.description ?? null
+    };
+    this.savedPortfolios.set(id, portfolio);
+    return portfolio;
+  }
+
+  async getPortfolio(id: string): Promise<SavedPortfolio | undefined> {
+    return this.savedPortfolios.get(id);
+  }
+
+  async getPortfoliosByUser(userId: string): Promise<SavedPortfolio[]> {
+    return Array.from(this.savedPortfolios.values()).filter(
+      portfolio => portfolio.userId === userId
+    );
+  }
+
+  async updatePortfolio(id: string, updates: Partial<SavedPortfolio>): Promise<SavedPortfolio | undefined> {
+    const portfolio = this.savedPortfolios.get(id);
+    if (!portfolio) return undefined;
+    
+    const updatedPortfolio = { 
+      ...portfolio, 
+      ...updates, 
+      updatedAt: new Date() 
+    };
+    this.savedPortfolios.set(id, updatedPortfolio);
+    return updatedPortfolio;
+  }
+
+  async deletePortfolio(id: string): Promise<boolean> {
+    // Also delete related property profiles and competitive relationships
+    const propertyProfiles = await this.getSavedPropertyProfilesByPortfolio(id);
+    for (const profile of propertyProfiles) {
+      await this.deleteSavedPropertyProfile(profile.id);
+    }
+    
+    const relationships = await this.getCompetitiveRelationshipsByPortfolio(id);
+    for (const relationship of relationships) {
+      await this.deleteCompetitiveRelationship(relationship.id);
+    }
+    
+    return this.savedPortfolios.delete(id);
+  }
+
+  async updatePortfolioLastAccessed(id: string): Promise<void> {
+    const portfolio = this.savedPortfolios.get(id);
+    if (portfolio) {
+      portfolio.lastAccessedAt = new Date();
+      this.savedPortfolios.set(id, portfolio);
+    }
+  }
+
+  // Property profile operations within portfolios
+  async createSavedPropertyProfile(insertProfile: InsertSavedPropertyProfile): Promise<SavedPropertyProfile> {
+    const id = randomUUID();
+    const profile: SavedPropertyProfile = {
+      ...insertProfile,
+      id,
+      createdAt: new Date(),
+      unitMix: insertProfile.unitMix ?? {}
+    };
+    this.savedPropertyProfiles.set(id, profile);
+    return profile;
+  }
+
+  async getSavedPropertyProfile(id: string): Promise<SavedPropertyProfile | undefined> {
+    return this.savedPropertyProfiles.get(id);
+  }
+
+  async getSavedPropertyProfilesByPortfolio(portfolioId: string): Promise<SavedPropertyProfile[]> {
+    return Array.from(this.savedPropertyProfiles.values()).filter(
+      profile => profile.portfolioId === portfolioId
+    );
+  }
+
+  async updateSavedPropertyProfile(id: string, updates: Partial<SavedPropertyProfile>): Promise<SavedPropertyProfile | undefined> {
+    const profile = this.savedPropertyProfiles.get(id);
+    if (!profile) return undefined;
+    
+    const updatedProfile = { ...profile, ...updates };
+    this.savedPropertyProfiles.set(id, updatedProfile);
+    return updatedProfile;
+  }
+
+  async deleteSavedPropertyProfile(id: string): Promise<boolean> {
+    // Also delete related competitive relationships
+    const relationships = Array.from(this.competitiveRelationships.values()).filter(
+      rel => rel.propertyAId === id || rel.propertyBId === id
+    );
+    for (const relationship of relationships) {
+      await this.deleteCompetitiveRelationship(relationship.id);
+    }
+    
+    return this.savedPropertyProfiles.delete(id);
+  }
+
+  // Competitive relationship operations
+  async createCompetitiveRelationship(insertRelationship: InsertCompetitiveRelationship): Promise<CompetitiveRelationship> {
+    const id = randomUUID();
+    const relationship: CompetitiveRelationship = {
+      ...insertRelationship,
+      id,
+      createdAt: new Date(),
+      isActive: insertRelationship.isActive ?? true
+    };
+    this.competitiveRelationships.set(id, relationship);
+    return relationship;
+  }
+
+  async getCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined> {
+    return this.competitiveRelationships.get(id);
+  }
+
+  async getCompetitiveRelationshipsByPortfolio(portfolioId: string): Promise<CompetitiveRelationship[]> {
+    return Array.from(this.competitiveRelationships.values()).filter(
+      relationship => relationship.portfolioId === portfolioId
+    );
+  }
+
+  async updateCompetitiveRelationship(id: string, updates: Partial<CompetitiveRelationship>): Promise<CompetitiveRelationship | undefined> {
+    const relationship = this.competitiveRelationships.get(id);
+    if (!relationship) return undefined;
+    
+    const updatedRelationship = { ...relationship, ...updates };
+    this.competitiveRelationships.set(id, updatedRelationship);
+    return updatedRelationship;
+  }
+
+  async toggleCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined> {
+    const relationship = this.competitiveRelationships.get(id);
+    if (!relationship) return undefined;
+    
+    const updatedRelationship = { ...relationship, isActive: !relationship.isActive };
+    this.competitiveRelationships.set(id, updatedRelationship);
+    return updatedRelationship;
+  }
+
+  async deleteCompetitiveRelationship(id: string): Promise<boolean> {
+    return this.competitiveRelationships.delete(id);
   }
 
   // USER AUTHENTICATION OPERATIONS - MANDATORY for Replit Auth

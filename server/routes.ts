@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
@@ -5238,6 +5238,437 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       res.status(500).json({ 
         message: "Failed to verify data integrity",
         error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // NEW: PORTFOLIO MANAGEMENT API ENDPOINTS
+
+  // GET/POST /api/portfolios (list and create portfolios for authenticated user)
+  app.get("/api/portfolios", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolios = await storage.getPortfoliosByUser(userId);
+      res.json(portfolios);
+    } catch (error) {
+      console.error("Error fetching portfolios:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch portfolios", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.post("/api/portfolios", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolioData = insertSavedPortfolioSchema.parse({
+        ...req.body,
+        userId
+      });
+
+      const portfolio = await storage.createPortfolio(portfolioData);
+      res.status(201).json(portfolio);
+    } catch (error) {
+      console.error("Error creating portfolio:", error);
+      res.status(500).json({ 
+        message: "Failed to create portfolio", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET/PUT/DELETE /api/portfolios/:id (get, update, delete specific portfolio)
+  app.get("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      // Update last accessed timestamp
+      await storage.updatePortfolioLastAccessed(req.params.id);
+
+      res.json(portfolio);
+    } catch (error) {
+      console.error("Error fetching portfolio:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch portfolio", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.put("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updates = insertSavedPortfolioSchema.partial().parse(req.body);
+      const updatedPortfolio = await storage.updatePortfolio(req.params.id, updates);
+
+      if (!updatedPortfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      res.json(updatedPortfolio);
+    } catch (error) {
+      console.error("Error updating portfolio:", error);
+      res.status(500).json({ 
+        message: "Failed to update portfolio", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.delete("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const deleted = await storage.deletePortfolio(req.params.id);
+      if (!deleted) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      res.json({ message: "Portfolio deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting portfolio:", error);
+      res.status(500).json({ 
+        message: "Failed to delete portfolio", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET/POST /api/portfolios/:id/property-profiles (list and add properties to portfolio)
+  app.get("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const propertyProfiles = await storage.getSavedPropertyProfilesByPortfolio(req.params.id);
+      res.json(propertyProfiles);
+    } catch (error) {
+      console.error("Error fetching property profiles:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch property profiles", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.post("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const propertyProfileData = insertSavedPropertyProfileSchema.parse({
+        ...req.body,
+        portfolioId: req.params.id
+      });
+
+      const propertyProfile = await storage.createSavedPropertyProfile(propertyProfileData);
+      res.status(201).json(propertyProfile);
+    } catch (error) {
+      console.error("Error creating property profile:", error);
+      res.status(500).json({ 
+        message: "Failed to create property profile", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // PUT/DELETE for individual property profiles
+  app.put("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.portfolioId);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updates = insertSavedPropertyProfileSchema.partial().parse(req.body);
+      const updatedProfile = await storage.updateSavedPropertyProfile(req.params.profileId, updates);
+
+      if (!updatedProfile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+
+      res.json(updatedProfile);
+    } catch (error) {
+      console.error("Error updating property profile:", error);
+      res.status(500).json({ 
+        message: "Failed to update property profile", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.delete("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.portfolioId);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const deleted = await storage.deleteSavedPropertyProfile(req.params.profileId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+
+      res.json({ message: "Property profile deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting property profile:", error);
+      res.status(500).json({ 
+        message: "Failed to delete property profile", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/portfolios/:id/competitive-relationships (manage competitive relationships)
+  app.post("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const relationshipData = insertCompetitiveRelationshipSchema.parse({
+        ...req.body,
+        portfolioId: req.params.id
+      });
+
+      const relationship = await storage.createCompetitiveRelationship(relationshipData);
+      res.status(201).json(relationship);
+    } catch (error) {
+      console.error("Error creating competitive relationship:", error);
+      res.status(500).json({ 
+        message: "Failed to create competitive relationship", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.get("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.id);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const relationships = await storage.getCompetitiveRelationshipsByPortfolio(req.params.id);
+      res.json(relationships);
+    } catch (error) {
+      console.error("Error fetching competitive relationships:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch competitive relationships", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.put("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.portfolioId);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const updates = insertCompetitiveRelationshipSchema.partial().parse(req.body);
+      const updatedRelationship = await storage.updateCompetitiveRelationship(req.params.relationshipId, updates);
+
+      if (!updatedRelationship) {
+        return res.status(404).json({ message: "Competitive relationship not found" });
+      }
+
+      res.json(updatedRelationship);
+    } catch (error) {
+      console.error("Error updating competitive relationship:", error);
+      res.status(500).json({ 
+        message: "Failed to update competitive relationship", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.post("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId/toggle", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.portfolioId);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const toggledRelationship = await storage.toggleCompetitiveRelationship(req.params.relationshipId);
+
+      if (!toggledRelationship) {
+        return res.status(404).json({ message: "Competitive relationship not found" });
+      }
+
+      res.json(toggledRelationship);
+    } catch (error) {
+      console.error("Error toggling competitive relationship:", error);
+      res.status(500).json({ 
+        message: "Failed to toggle competitive relationship", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  app.delete("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const portfolio = await storage.getPortfolio(req.params.portfolioId);
+      if (!portfolio) {
+        return res.status(404).json({ message: "Portfolio not found" });
+      }
+
+      // Check if user owns this portfolio
+      if (portfolio.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+
+      const deleted = await storage.deleteCompetitiveRelationship(req.params.relationshipId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Competitive relationship not found" });
+      }
+
+      res.json({ message: "Competitive relationship deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting competitive relationship:", error);
+      res.status(500).json({ 
+        message: "Failed to delete competitive relationship", 
+        error: error instanceof Error ? error.message : String(error) 
       });
     }
   });
