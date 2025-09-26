@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,15 +55,29 @@ export default function PropertySidebar({
     };
   }, [subjectProperties, competitorProperties, selectedPropertyIds]);
 
-  // Notify parent of count changes
+  // Track previous counts to prevent infinite loops
+  const prevCountsRef = useRef<PropertySelectionCounts | null>(null);
+  
+  // Notify parent of count changes only when values actually change
   useEffect(() => {
     if (onSelectionCountsChange) {
-      onSelectionCountsChange(counts);
+      const prev = prevCountsRef.current;
+      const hasChanged = !prev || 
+        prev.subjects !== counts.subjects || 
+        prev.competitors !== counts.competitors || 
+        prev.total !== counts.total;
+      
+      if (hasChanged) {
+        prevCountsRef.current = { ...counts };
+        onSelectionCountsChange(counts);
+      }
     }
-  }, [counts, onSelectionCountsChange]);
+    // Note: onSelectionCountsChange is intentionally excluded from dependencies
+    // as it's memoized in the parent component and including it would cause infinite re-renders
+  }, [counts]);
 
   // Select/deselect all properties of a type
-  const handleSelectAllType = (type: 'subject' | 'competitor', selectAll: boolean) => {
+  const handleSelectAllType = useCallback((type: 'subject' | 'competitor', selectAll: boolean) => {
     const properties = type === 'subject' ? subjectProperties : competitorProperties;
     
     properties.forEach(property => {
@@ -74,13 +88,13 @@ export default function PropertySidebar({
         onPropertySelectionChange(property.id, false);
       }
     });
-  };
+  }, [subjectProperties, competitorProperties, selectedPropertyIds, onPropertySelectionChange]);
 
   // Check if all properties of a type are selected
-  const areAllSelected = (type: 'subject' | 'competitor'): boolean => {
+  const areAllSelected = useCallback((type: 'subject' | 'competitor'): boolean => {
     const properties = type === 'subject' ? subjectProperties : competitorProperties;
     return properties.length > 0 && properties.every(p => selectedPropertyIds.includes(p.id));
-  };
+  }, [subjectProperties, competitorProperties, selectedPropertyIds]);
 
   if (isLoading) {
     return (

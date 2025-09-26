@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -228,7 +228,7 @@ export default function PropertyInput() {
   });
 
   // Handle property selection changes
-  const handlePropertySelectionChange = (propertyId: string, selected: boolean) => {
+  const handlePropertySelectionChange = useCallback((propertyId: string, selected: boolean) => {
     setPropertySelection(prev => {
       const newSelectedIds = selected 
         ? [...prev.selectedPropertyIds, propertyId]
@@ -239,17 +239,17 @@ export default function PropertyInput() {
         selectedPropertyIds: newSelectedIds
       };
     });
-  };
+  }, []);
 
   // Handle selection counts updates from sidebar
-  const handleSelectionCountsChange = (counts: { subjects: number; competitors: number; total: number }) => {
+  const handleSelectionCountsChange = useCallback((counts: { subjects: number; competitors: number; total: number }) => {
     setPropertySelection(prev => ({
       ...prev,
       subjectCount: counts.subjects,
       competitorCount: counts.competitors,
       totalCount: counts.total
     }));
-  };
+  }, []);
 
   // Handle form submission
   const handleFormSubmit = (data: InsertPropertyProfile) => {
