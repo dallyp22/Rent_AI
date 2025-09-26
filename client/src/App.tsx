@@ -43,40 +43,52 @@ function Router() {
       
       {/* Protected routes - Session-based multi-property workflow */}
       <Route path="/session/summarize/:sessionId">
-        <ProtectedRoute>
-          <Summarize />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Summarize params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       <Route path="/session/analyze/:sessionId">
-        <ProtectedRoute>
-          <Analyze />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Analyze params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       <Route path="/session/optimize/:sessionId">
-        <ProtectedRoute>
-          <Optimize />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Optimize params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       {/* Protected routes - Legacy single-property workflow (backward compatibility) */}
       <Route path="/summarize/:id">
-        <ProtectedRoute>
-          <Summarize />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Summarize params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       <Route path="/analyze/:id">
-        <ProtectedRoute>
-          <Analyze />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Analyze params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       <Route path="/optimize/:id">
-        <ProtectedRoute>
-          <Optimize />
-        </ProtectedRoute>
+        {(params) => (
+          <ProtectedRoute>
+            <Optimize params={params} />
+          </ProtectedRoute>
+        )}
       </Route>
       
       <Route component={NotFound} />

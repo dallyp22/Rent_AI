@@ -35,7 +35,7 @@ interface PropertyWithAnalysis {
   analysis: PropertyAnalysis | null;
 }
 
-export default function Optimize({ params }: { params: { id: string, sessionId?: string } }) {
+export default function Optimize({ params }: { params: { id?: string, sessionId?: string } }) {
   const { toast } = useToast();
   // Determine session mode and ID based on URL pattern
   const isSessionMode = !!params.sessionId;

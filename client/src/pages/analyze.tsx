@@ -28,7 +28,7 @@ type SessionWithPropertyProfiles = AnalysisSession & {
   propertyProfiles?: PropertyProfile[];
 };
 
-export default function Analyze({ params }: { params: { id: string, sessionId?: string } }) {
+export default function Analyze({ params }: { params: { id?: string, sessionId?: string } }) {
   const [, setLocation] = useLocation();
   const [filters, setFilters] = useState<FilterCriteria>({
     bedroomTypes: [],
