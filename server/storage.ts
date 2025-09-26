@@ -243,6 +243,7 @@ export class MemStorage implements IStorage {
       squareFootage: insertProfile.squareFootage ?? null,
       parkingSpaces: insertProfile.parkingSpaces ?? null,
       amenities: insertProfile.amenities ? [...insertProfile.amenities] : [],
+      unitMix: insertProfile.unitMix ?? null,
       distance: insertProfile.distance ?? null,
       matchScore: insertProfile.matchScore ?? null,
       vacancyRate: insertProfile.vacancyRate ?? null,

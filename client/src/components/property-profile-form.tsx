@@ -2,14 +2,14 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { forwardRef, useImperativeHandle, useEffect } from "react";
-import { insertPropertyProfileSchema } from "@shared/schema";
+import { insertPropertyProfileSchema, unitMixSchema, type UnitMix } from "@shared/schema";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Loader2 } from "lucide-react";
+import { Loader2, Home } from "lucide-react";
 import type { PropertyProfile, InsertPropertyProfile } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 
@@ -21,6 +21,7 @@ const formSchema = insertPropertyProfileSchema.extend({
   profileType: z.enum(["subject", "competitor"], {
     required_error: "Please select a property type",
   }),
+  unitMix: unitMixSchema.optional(),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -62,6 +63,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
       squareFootage: initialData?.squareFootage ?? undefined,
       parkingSpaces: initialData?.parkingSpaces ?? undefined,
       amenities: initialData?.amenities ?? [],
+      unitMix: initialData?.unitMix ?? {
+        studio: 0,
+        oneBedroom: 0,
+        twoBedroom: 0,
+        threeBedroom: 0,
+        fourPlusBedroom: 0
+      },
     }
   });
 
@@ -81,6 +89,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
         squareFootage: undefined,
         parkingSpaces: undefined,
         amenities: [],
+        unitMix: {
+          studio: 0,
+          oneBedroom: 0,
+          twoBedroom: 0,
+          threeBedroom: 0,
+          fourPlusBedroom: 0
+        },
       });
     }
   }), [form]);
@@ -88,6 +103,34 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
   const handleSubmit = (data: FormData) => {
     onSubmit(data);
   };
+
+  // Calculate total units from unit mix with NaN protection
+  const calculateTotalUnitsFromMix = (unitMix: UnitMix): number => {
+    const studio = Number(unitMix.studio) || 0;
+    const oneBedroom = Number(unitMix.oneBedroom) || 0;
+    const twoBedroom = Number(unitMix.twoBedroom) || 0;
+    const threeBedroom = Number(unitMix.threeBedroom) || 0;
+    const fourPlusBedroom = Number(unitMix.fourPlusBedroom) || 0;
+    return studio + oneBedroom + twoBedroom + threeBedroom + fourPlusBedroom;
+  };
+
+  // Watch unit mix changes to calculate total with proper validation
+  const unitMixValues = form.watch("unitMix");
+  const calculatedTotalUnits = React.useMemo(() => {
+    if (!unitMixValues || typeof unitMixValues !== 'object') return 0;
+    
+    // Additional validation to ensure all required properties exist
+    const hasRequiredProps = 'studio' in unitMixValues && 
+                            'oneBedroom' in unitMixValues && 
+                            'twoBedroom' in unitMixValues && 
+                            'threeBedroom' in unitMixValues && 
+                            'fourPlusBedroom' in unitMixValues;
+    
+    if (!hasRequiredProps) return 0;
+    
+    const total = calculateTotalUnitsFromMix(unitMixValues);
+    return isNaN(total) ? 0 : total;
+  }, [unitMixValues]);
 
   return (
     <Form {...form}>
@@ -348,6 +391,147 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
             </FormItem>
           )}
         />
+
+        {/* Unit Mix Section */}
+        <div className="space-y-4 p-4 bg-muted/50 rounded-lg border">
+          <div className="flex items-center gap-2">
+            <Home className="h-5 w-5 text-muted-foreground" />
+            <h3 className="text-lg font-medium">Unit Mix Breakdown</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Enter the number of units for each bedroom type. The total will be calculated automatically.
+          </p>
+          
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <FormField
+              control={form.control}
+              name="unitMix.studio"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Studio Units</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                      value={field.value || 0}
+                      data-testid="input-studio-units"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="unitMix.oneBedroom"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>1 Bedroom</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                      value={field.value || 0}
+                      data-testid="input-one-bedroom-units"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="unitMix.twoBedroom"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>2 Bedroom</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                      value={field.value || 0}
+                      data-testid="input-two-bedroom-units"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="unitMix.threeBedroom"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>3 Bedroom</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                      value={field.value || 0}
+                      data-testid="input-three-bedroom-units"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="unitMix.fourPlusBedroom"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>4+ Bedroom</FormLabel>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      {...field}
+                      onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
+                      value={field.value || 0}
+                      data-testid="input-four-plus-bedroom-units"
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {/* Calculated Total Units Display */}
+          <div className="pt-4 border-t">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium text-muted-foreground">Total Units from Mix:</span>
+              <span 
+                className="text-lg font-bold text-primary" 
+                data-testid="text-calculated-total-units"
+              >
+                {calculatedTotalUnits}
+              </span>
+            </div>
+            {calculatedTotalUnits > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                This total is calculated from your unit mix breakdown above.
+              </p>
+            )}
+          </div>
+        </div>
 
         {/* Action Buttons */}
         <div className="flex justify-end gap-3 pt-4 border-t">

@@ -3,6 +3,17 @@ import { pgTable, text, varchar, integer, decimal, boolean, json, timestamp, ind
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// Define unit mix type for property profiles
+export const unitMixSchema = z.object({
+  studio: z.number().int().min(0).default(0),
+  oneBedroom: z.number().int().min(0).default(0),
+  twoBedroom: z.number().int().min(0).default(0),
+  threeBedroom: z.number().int().min(0).default(0),
+  fourPlusBedroom: z.number().int().min(0).default(0)
+});
+
+export type UnitMix = z.infer<typeof unitMixSchema>;
+
 // New unified property profiles table
 export const propertyProfiles = pgTable("property_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -18,6 +29,7 @@ export const propertyProfiles = pgTable("property_profiles", {
   squareFootage: integer("square_footage"),
   parkingSpaces: integer("parking_spaces"),
   amenities: json("amenities").$type<string[]>().default([]),
+  unitMix: json("unit_mix").$type<UnitMix>(),
   // Additional fields for competitors (optional, mainly from scraping)
   distance: decimal("distance", { precision: 5, scale: 2 }), // distance from subject property
   matchScore: decimal("match_score", { precision: 5, scale: 2 }), // similarity score
