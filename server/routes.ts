@@ -924,7 +924,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Create property and get initial AI analysis
-  app.post("/api/properties", async (req, res) => {
+  app.post("/api/properties", isAuthenticated, async (req: any, res) => {
     try {
       const propertyData = insertPropertySchema.parse(req.body);
       
@@ -1212,7 +1212,7 @@ Please provide your analysis in this exact JSON format:
   });
 
   // Generate session-based analysis for Property Selection Matrix
-  app.post("/api/session-analysis", async (req, res) => {
+  app.post("/api/session-analysis", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_ANALYSIS] Starting session-based analysis generation');
       
@@ -1314,7 +1314,7 @@ Return insights as a JSON array of strings.`;
   });
 
   // Generate filtered analysis based on filter criteria
-  app.post("/api/filtered-analysis", async (req, res) => {
+  app.post("/api/filtered-analysis", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[FILTERED_ANALYSIS] ===========================================');
       console.log('[FILTERED_ANALYSIS] Starting filtered analysis generation');
@@ -1435,7 +1435,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based filtered analysis (consistent API pattern)
-  app.post("/api/analysis-sessions/:sessionId/filtered-analysis", async (req, res) => {
+  app.post("/api/analysis-sessions/:sessionId/filtered-analysis", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_FILTERED_ANALYSIS] ===========================================');
       console.log('[SESSION_FILTERED_ANALYSIS] Starting session-based filtered analysis');
@@ -1509,7 +1509,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Generate optimization report
-  app.post("/api/properties/:id/optimize", async (req, res) => {
+  app.post("/api/properties/:id/optimize", isAuthenticated, async (req: any, res) => {
     try {
       const propertyId = req.params.id;
       const { goal, targetOccupancy, riskTolerance } = req.body;
@@ -1685,7 +1685,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get optimization report
-  app.get("/api/properties/:id/optimization", async (req, res) => {
+  app.get("/api/properties/:id/optimization", isAuthenticated, async (req: any, res) => {
     try {
       const report = await storage.getOptimizationReport(req.params.id);
       const units = await storage.getPropertyUnits(req.params.id);
@@ -1702,7 +1702,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Apply pricing changes
-  app.post("/api/properties/:id/apply-pricing", async (req, res) => {
+  app.post("/api/properties/:id/apply-pricing", isAuthenticated, async (req: any, res) => {
     try {
       const propertyId = req.params.id;
       const { unitPrices } = req.body; // { unitId: newPrice }
@@ -1749,7 +1749,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based apply pricing changes (portfolio-aware)
-  app.post("/api/analysis-sessions/:sessionId/apply-pricing", async (req, res) => {
+  app.post("/api/analysis-sessions/:sessionId/apply-pricing", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       const { unitPrices } = req.body; // { unitId: newPrice }

@@ -3,13 +3,14 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 import PropertySidebar from "@/components/property-sidebar";
 import PropertyProfileForm, { PropertyProfileFormRef } from "@/components/property-profile-form";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, AlertCircle, Database, Play, Building2, Plus } from "lucide-react";
+import { CheckCircle, AlertCircle, Database, Play, Building2, Plus, Lock, LogIn, ShieldAlert } from "lucide-react";
 import { Link } from "wouter";
 import type { 
   InsertPropertyProfile, 
@@ -38,6 +39,7 @@ interface ScrapingStatus {
 export default function PropertyInput() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   
   // Property selection state
   const [propertySelection, setPropertySelection] = useState<PropertySelectionState>({
@@ -55,6 +57,28 @@ export default function PropertyInput() {
   
   // Form reference for resetting
   const formRef = useRef<PropertyProfileFormRef>(null);
+
+  // Handle 401 authentication errors
+  const handleAuthError = (error: any, actionName: string) => {
+    if (error.message && error.message.includes('401')) {
+      // Store the current path to redirect back after login
+      sessionStorage.setItem('auth_redirect_path', window.location.pathname + window.location.search);
+      
+      toast({
+        title: "Authentication Required",
+        description: `You need to sign in to ${actionName}. Redirecting to login...`,
+        variant: "default",
+      });
+      
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        window.location.href = '/api/login';
+      }, 2000);
+      
+      return true;
+    }
+    return false;
+  };
 
   // Create property profile mutation
   const createPropertyProfileMutation = useMutation({
@@ -89,6 +113,12 @@ export default function PropertyInput() {
     },
     onError: (error) => {
       console.error("Error creating property profile:", error);
+      
+      // Handle 401 authentication errors
+      if (handleAuthError(error, "create property profiles")) {
+        return;
+      }
+      
       toast({
         title: "Creation Failed",
         description: "Failed to create property profile. Please try again.",
@@ -121,6 +151,12 @@ export default function PropertyInput() {
     },
     onError: (error, propertyProfileId) => {
       console.error("Error starting scraping:", error);
+      
+      // Handle 401 authentication errors
+      if (handleAuthError(error, "start property data scraping")) {
+        return;
+      }
+      
       setScrapingStatuses(prev => ({
         ...prev,
         [propertyProfileId]: {
@@ -177,6 +213,12 @@ export default function PropertyInput() {
     },
     onError: (error) => {
       console.error("Error creating analysis session:", error);
+      
+      // Handle 401 authentication errors
+      if (handleAuthError(error, "create analysis sessions")) {
+        return;
+      }
+      
       toast({
         title: "Analysis Session Failed",
         description: "Failed to create analysis session with selected properties. Please try again.",
@@ -251,12 +293,51 @@ export default function PropertyInput() {
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="enhanced-property-input-page">
+      {/* Guest Mode Banner */}
+      {!authLoading && !isAuthenticated && (
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950" data-testid="guest-mode-banner">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-4">
+              <ShieldAlert className="text-blue-600 mt-1 h-5 w-5 shrink-0" />
+              <div className="flex-1">
+                <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
+                  🎯 Trial Mode - Create Your First Analysis
+                </h4>
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                  You're browsing as a guest! You can view existing property data and explore basic features, 
+                  but creating properties and saving analysis requires an account.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      sessionStorage.setItem('auth_redirect_path', window.location.pathname + window.location.search);
+                      window.location.href = '/api/login';
+                    }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                    data-testid="button-guest-login"
+                  >
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Sign In to Save & Create
+                  </Button>
+                  <span className="text-xs text-blue-700 dark:text-blue-300 self-center">
+                    Free account • Portfolio management • Data persistence
+                  </span>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Property Analysis Setup</h1>
           <p className="text-muted-foreground">
-            Select properties and add new ones to create comprehensive market analysis
+            {isAuthenticated 
+              ? "Select properties and add new ones to create comprehensive market analysis"
+              : "Explore existing property data and discover market insights"}
           </p>
         </div>
         
@@ -297,19 +378,43 @@ export default function PropertyInput() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Plus className="h-5 w-5" />
-                Add New Property Profile
+                {isAuthenticated ? "Add New Property Profile" : "Add Property Profile (Sign In Required)"}
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Add a new property profile to expand your analysis. Properties are automatically selected when created.
+                {isAuthenticated 
+                  ? "Add a new property profile to expand your analysis. Properties are automatically selected when created."
+                  : "To create and save property profiles, you'll need to sign in to your account."}
               </p>
             </CardHeader>
             <CardContent>
-              <PropertyProfileForm
-                ref={formRef}
-                onSubmit={handleFormSubmit}
-                onCancel={() => {}} // No cancel needed in this context
-                isLoading={createPropertyProfileMutation.isPending}
-              />
+              {!isAuthenticated ? (
+                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center space-y-4">
+                  <Lock className="h-12 w-12 text-gray-400 mx-auto" />
+                  <div>
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Create Account to Add Properties</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                      Sign in to create property profiles, save your analysis, and access portfolio management features.
+                    </p>
+                    <Button
+                      onClick={() => {
+                        sessionStorage.setItem('auth_redirect_path', window.location.pathname + window.location.search);
+                        window.location.href = '/api/login';
+                      }}
+                      data-testid="button-form-login"
+                    >
+                      <LogIn className="h-4 w-4 mr-2" />
+                      Sign In to Continue
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <PropertyProfileForm
+                  ref={formRef}
+                  onSubmit={handleFormSubmit}
+                  onCancel={() => {}} // No cancel needed in this context
+                  isLoading={createPropertyProfileMutation.isPending}
+                />
+              )}
             </CardContent>
           </Card>
 

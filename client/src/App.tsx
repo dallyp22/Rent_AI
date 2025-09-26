@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import Sidebar from "@/components/layout/sidebar";
 import Header from "@/components/layout/header";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import PropertyInput from "@/pages/property-input";
 import PropertyProfiles from "@/pages/property-profiles";
 import PortfolioDashboard from "@/pages/portfolio-dashboard";
@@ -12,25 +13,71 @@ import PropertySelectionMatrix from "@/pages/property-selection-matrix";
 import Summarize from "@/pages/summarize";
 import Analyze from "@/pages/analyze";
 import Optimize from "@/pages/optimize";
+import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
+      {/* Public routes */}
       <Route path="/" component={PropertyInput} />
-      <Route path="/property-profiles" component={PropertyProfiles} />
-      <Route path="/portfolio-dashboard" component={PortfolioDashboard} />
-      <Route path="/property-selection-matrix" component={PropertySelectionMatrix} />
       
-      {/* Session-based multi-property workflow routes */}
-      <Route path="/session/summarize/:sessionId" component={Summarize} />
-      <Route path="/session/analyze/:sessionId" component={Analyze} />
-      <Route path="/session/optimize/:sessionId" component={Optimize} />
+      {/* Protected routes - Portfolio management */}
+      <Route path="/property-profiles">
+        <ProtectedRoute>
+          <PropertyProfiles />
+        </ProtectedRoute>
+      </Route>
       
-      {/* Legacy single-property workflow routes (backward compatibility) */}
-      <Route path="/summarize/:id" component={Summarize} />
-      <Route path="/analyze/:id" component={Analyze} />
-      <Route path="/optimize/:id" component={Optimize} />
+      <Route path="/portfolio-dashboard">
+        <ProtectedRoute>
+          <PortfolioDashboard />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/property-selection-matrix">
+        <ProtectedRoute>
+          <PropertySelectionMatrix />
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Protected routes - Session-based multi-property workflow */}
+      <Route path="/session/summarize/:sessionId">
+        <ProtectedRoute>
+          <Summarize />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/session/analyze/:sessionId">
+        <ProtectedRoute>
+          <Analyze />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/session/optimize/:sessionId">
+        <ProtectedRoute>
+          <Optimize />
+        </ProtectedRoute>
+      </Route>
+      
+      {/* Protected routes - Legacy single-property workflow (backward compatibility) */}
+      <Route path="/summarize/:id">
+        <ProtectedRoute>
+          <Summarize />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/analyze/:id">
+        <ProtectedRoute>
+          <Analyze />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/optimize/:id">
+        <ProtectedRoute>
+          <Optimize />
+        </ProtectedRoute>
+      </Route>
       
       <Route component={NotFound} />
     </Switch>
@@ -42,15 +89,25 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <Toaster />
-        <div className="flex min-h-screen">
-          <Sidebar />
-          <div className="flex-1 flex flex-col">
-            <Header />
-            <main className="flex-1 p-6 overflow-auto">
-              <Router />
-            </main>
-          </div>
-        </div>
+        <Switch>
+          {/* Full-page login layout */}
+          <Route path="/login">
+            <LoginPage />
+          </Route>
+          
+          {/* Main application layout */}
+          <Route>
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <div className="flex-1 flex flex-col">
+                <Header />
+                <main className="flex-1 p-6 overflow-auto">
+                  <Router />
+                </main>
+              </div>
+            </div>
+          </Route>
+        </Switch>
       </TooltipProvider>
     </QueryClientProvider>
   );
