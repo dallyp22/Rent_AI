@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
@@ -317,24 +318,10 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
           )}
         </div>
 
-        {/* 3-Column Layout Container */}
+        {/* 2-Column Layout Container */}
         <div className="flex flex-col lg:flex-row h-full">
-          {/* Left Sidebar - Properties Filter (20% width) - Only show in portfolio mode with properties */}
-          {isSessionMode && sessionData?.propertyProfiles && sessionData.propertyProfiles.length > 0 && (
-            <div className="lg:w-1/5 lg:border-r border-border p-4 bg-muted/5 overflow-y-auto">
-              <div className="sticky top-0">
-                <PropertyFilterSidebar
-                  availableProperties={sessionData.propertyProfiles}
-                  selectedProperties={filters.selectedProperties}
-                  onPropertySelectionChange={handlePropertySelectionChange}
-                  isLoadingProperties={isLoadingSession}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Main Analysis Area - 55% width (or wider if no left sidebar) */}
-          <div className={`flex-1 ${isSessionMode && sessionData?.propertyProfiles && sessionData.propertyProfiles.length > 0 ? 'lg:w-11/20' : 'lg:w-3/4'} p-6 overflow-y-auto relative`}>
+          {/* Main Analysis Area - 75% width */}
+          <div className="flex-1 lg:w-3/4 p-6 overflow-y-auto relative">
             {/* Debouncing Indicator */}
             <AnimatePresence>
               {isDebouncing && (
@@ -411,25 +398,41 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
 
           {/* Filter Sidebar - 25% width */}
           <div className="lg:w-1/4 lg:border-l border-border p-6 bg-muted/5 overflow-y-auto">
-            <div className="sticky top-0">
-              <div className="mb-4">
-                <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground mb-2">
-                  Analysis Filters
-                </h3>
-                {isSessionMode && (
-                  <p className="text-xs text-muted-foreground mb-4">
-                    Filters apply across all {subjectProperties.length} subject properties in the portfolio
-                  </p>
-                )}
+            <div className="sticky top-0 space-y-6">
+              {/* Properties Filter - FIRST (session mode only) */}
+              {isSessionMode && sessionData?.propertyProfiles && sessionData.propertyProfiles.length > 0 && (
+                <>
+                  <PropertyFilterSidebar
+                    availableProperties={sessionData.propertyProfiles}
+                    selectedProperties={filters.selectedProperties}
+                    onPropertySelectionChange={handlePropertySelectionChange}
+                    isLoadingProperties={isLoadingSession}
+                  />
+                  <Separator className="my-6" />
+                </>
+              )}
+              
+              {/* Analysis Filters - SECOND */}
+              <div>
+                <div className="mb-4">
+                  <h3 className="font-medium text-sm uppercase tracking-wide text-muted-foreground mb-2">
+                    Analysis Filters
+                  </h3>
+                  {isSessionMode && (
+                    <p className="text-xs text-muted-foreground mb-4">
+                      Filters apply across all {subjectProperties.length} subject properties in the portfolio
+                    </p>
+                  )}
+                </div>
+                <AnalysisFilters
+                  filters={filters}
+                  onFiltersChange={handleFiltersChange}
+                  isPortfolioMode={isSessionMode}
+                  isLoadingRelationships={isLoadingRelationships}
+                  hasCompetitiveRelationships={hasCompetitiveRelationships}
+                  relationshipsError={hasLoadingError ? new Error('Failed to load relationships') : null}
+                />
               </div>
-              <AnalysisFilters
-                filters={filters}
-                onFiltersChange={handleFiltersChange}
-                isPortfolioMode={isSessionMode}
-                isLoadingRelationships={isLoadingRelationships}
-                hasCompetitiveRelationships={hasCompetitiveRelationships}
-                relationshipsError={hasLoadingError ? new Error('Failed to load relationships') : null}
-              />
             </div>
           </div>
         </div>
