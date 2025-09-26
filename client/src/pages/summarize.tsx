@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -116,6 +118,350 @@ interface UnitTypeData {
   avgSqFt: number;
   rentRange: { min: number; max: number };
 }
+
+// Helper types for bedroom organization
+interface BedroomTypeMetrics {
+  type: string;
+  displayKey: string;
+  units: ScrapedUnit[];
+  totalUnits: number;
+  availableUnits: number;
+  vacancyRate: number;
+  avgRent: number;
+  avgSqFt: number;
+  pricePerSqFt: number;
+}
+
+interface PropertyUnitsOrganized {
+  propertyId: string;
+  propertyName: string;
+  propertyAddress: string;
+  isSubjectProperty: boolean;
+  bedroomTypes: BedroomTypeMetrics[];
+  totalUnits: number;
+  availableUnits: number;
+  vacancyRate: number;
+}
+
+// Helper functions for bedroom organization
+const getBedroomDisplayKey = (bedrooms: number | null | undefined): string => {
+  if (bedrooms === null || bedrooms === undefined) return 'unknown';
+  if (bedrooms === 0) return 'studio';
+  if (bedrooms === 1) return 'oneBed';
+  if (bedrooms === 2) return 'twoBed';
+  if (bedrooms === 3) return 'threeBed';
+  if (bedrooms >= 4) return 'fourPlusBed';
+  return 'unknown';
+};
+
+const getBedroomDisplayLabel = (bedrooms: number | null | undefined): string => {
+  if (bedrooms === null || bedrooms === undefined) return 'Unknown';
+  if (bedrooms === 0) return 'Studio';
+  if (bedrooms === 1) return '1BR';
+  if (bedrooms === 2) return '2BR';
+  if (bedrooms === 3) return '3BR';
+  if (bedrooms >= 4) return '4+BR';
+  return 'Unknown';
+};
+
+const calculateBedroomMetrics = (units: ScrapedUnit[]): BedroomTypeMetrics[] => {
+  // Group units by bedroom count
+  const bedroomGroups = units.reduce((acc, unit) => {
+    const key = getBedroomDisplayKey(unit.bedrooms);
+    if (!acc[key]) {
+      acc[key] = [];
+    }
+    acc[key].push(unit);
+    return acc;
+  }, {} as Record<string, ScrapedUnit[]>);
+
+  // Calculate metrics for each bedroom type
+  return Object.entries(bedroomGroups).map(([key, groupUnits]) => {
+    const availableUnits = groupUnits.filter(unit => unit.status === 'available');
+    const totalUnits = groupUnits.length;
+    const vacancyRate = totalUnits > 0 ? (availableUnits.length / totalUnits) * 100 : 0;
+    
+    // Calculate average rent (only for units with rent data)
+    const unitsWithRent = groupUnits.filter(unit => unit.rent && Number(unit.rent) > 0);
+    const avgRent = unitsWithRent.length > 0 
+      ? unitsWithRent.reduce((sum, unit) => sum + Number(unit.rent), 0) / unitsWithRent.length 
+      : 0;
+    
+    // Calculate average square footage (only for units with sqft data)
+    const unitsWithSqFt = groupUnits.filter(unit => unit.squareFootage && Number(unit.squareFootage) > 0);
+    const avgSqFt = unitsWithSqFt.length > 0 
+      ? unitsWithSqFt.reduce((sum, unit) => sum + Number(unit.squareFootage), 0) / unitsWithSqFt.length 
+      : 0;
+    
+    // Calculate price per square foot
+    const pricePerSqFt = avgRent > 0 && avgSqFt > 0 ? avgRent / avgSqFt : 0;
+    
+    const firstUnit = groupUnits[0];
+    const displayLabel = getBedroomDisplayLabel(firstUnit?.bedrooms);
+    
+    return {
+      type: displayLabel,
+      displayKey: key,
+      units: groupUnits,
+      totalUnits,
+      availableUnits: availableUnits.length,
+      vacancyRate,
+      avgRent,
+      avgSqFt,
+      pricePerSqFt
+    };
+  }).sort((a, b) => {
+    // Sort by bedroom count (studio, 1BR, 2BR, etc.)
+    const order = ['studio', 'oneBed', 'twoBed', 'threeBed', 'fourPlusBed', 'unknown'];
+    return order.indexOf(a.displayKey) - order.indexOf(b.displayKey);
+  });
+};
+
+const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse[], sessionData?: AnalysisSession & { propertyProfiles: PropertyProfile[] }): PropertyUnitsOrganized[] => {
+  return scrapedUnitsData.map(propertyData => {
+    const bedroomTypes = calculateBedroomMetrics(propertyData.units);
+    const totalUnits = propertyData.units.length;
+    const availableUnits = propertyData.units.filter(unit => unit.status === 'available').length;
+    const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    
+    // Check if this is a subject property
+    const isSubjectProperty = sessionData?.propertyProfiles
+      ?.find(profile => profile.id === propertyData.propertyId)?.profileType === 'subject' || false;
+    
+    return {
+      propertyId: propertyData.propertyId,
+      propertyName: propertyData.propertyName,
+      propertyAddress: propertyData.propertyAddress,
+      isSubjectProperty,
+      bedroomTypes,
+      totalUnits,
+      availableUnits,
+      vacancyRate
+    };
+  });
+};
+
+// Helper function to organize legacy vacancy data for hierarchical display
+const organizeLegacyUnitsByProperty = (vacancyData: VacancyData): PropertyUnitsOrganized[] => {
+  const properties: PropertyUnitsOrganized[] = [];
+  
+  // Add subject property
+  if (vacancyData.subjectProperty.units) {
+    const subjectUnits = vacancyData.subjectProperty.units.map(unit => ({
+      id: `legacy-${unit.unitNumber}-${unit.unitType}`,
+      unitNumber: unit.unitNumber,
+      floorPlanName: null,
+      unitType: unit.unitType,
+      bedrooms: parseInt(unit.unitType.match(/(\d+)BR/)?.[1] || '0') || (unit.unitType.toLowerCase().includes('studio') ? 0 : null),
+      bathrooms: unit.bathrooms, // Keep as string
+      squareFootage: unit.squareFootage,
+      rent: unit.rent, // Keep as string
+      availabilityDate: unit.availabilityDate,
+      status: unit.status,
+      propertyId: vacancyData.subjectProperty.id,
+      createdAt: new Date()
+    } as ScrapedUnit));
+    
+    const bedroomTypes = calculateBedroomMetrics(subjectUnits);
+    const totalUnits = subjectUnits.length;
+    const availableUnits = subjectUnits.filter(unit => unit.status === 'available').length;
+    const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    
+    properties.push({
+      propertyId: vacancyData.subjectProperty.id,
+      propertyName: vacancyData.subjectProperty.name,
+      propertyAddress: 'Subject Property', // Legacy data doesn't have address
+      isSubjectProperty: true,
+      bedroomTypes,
+      totalUnits,
+      availableUnits,
+      vacancyRate
+    });
+  }
+  
+  // Add competitor properties
+  vacancyData.competitors.forEach(competitor => {
+    if (competitor.units) {
+      const competitorUnits = competitor.units.map(unit => ({
+        id: `legacy-${competitor.id}-${unit.unitNumber}-${unit.unitType}`,
+        unitNumber: unit.unitNumber,
+        floorPlanName: null,
+        unitType: unit.unitType,
+        bedrooms: parseInt(unit.unitType.match(/(\d+)BR/)?.[1] || '0') || (unit.unitType.toLowerCase().includes('studio') ? 0 : null),
+        bathrooms: unit.bathrooms, // Keep as string
+        squareFootage: unit.squareFootage,
+        rent: unit.rent, // Keep as string
+        availabilityDate: unit.availabilityDate,
+        status: unit.status,
+        propertyId: competitor.id,
+        createdAt: new Date()
+      } as ScrapedUnit));
+      
+      const bedroomTypes = calculateBedroomMetrics(competitorUnits);
+      const totalUnits = competitorUnits.length;
+      const availableUnits = competitorUnits.filter(unit => unit.status === 'available').length;
+      const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+      
+      properties.push({
+        propertyId: competitor.id,
+        propertyName: competitor.name,
+        propertyAddress: 'Competitor Property', // Legacy data doesn't have address
+        isSubjectProperty: false,
+        bedroomTypes,
+        totalUnits,
+        availableUnits,
+        vacancyRate
+      });
+    }
+  });
+  
+  return properties;
+};
+
+// Component for rendering bedroom tabs with unit counts
+const BedroomTabsView = ({ propertyData }: { propertyData: PropertyUnitsOrganized }) => {
+  if (!propertyData.bedroomTypes.length) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No unit data available for this property
+      </div>
+    );
+  }
+
+  return (
+    <Tabs defaultValue={propertyData.bedroomTypes[0]?.displayKey} className="w-full">
+      <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${propertyData.bedroomTypes.length}, 1fr)` }}>
+        {propertyData.bedroomTypes.map((bedroomType) => (
+          <TabsTrigger 
+            key={bedroomType.displayKey} 
+            value={bedroomType.displayKey}
+            data-testid={`tab-${bedroomType.displayKey}-${propertyData.propertyId}`}
+          >
+            {bedroomType.type} ({bedroomType.totalUnits})
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      
+      {propertyData.bedroomTypes.map((bedroomType) => (
+        <TabsContent key={bedroomType.displayKey} value={bedroomType.displayKey} className="mt-4">
+          <div className="space-y-4">
+            {/* Bedroom Type Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="text-sm font-medium text-blue-700 dark:text-blue-300">Avg Rent</div>
+                <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
+                  ${bedroomType.avgRent > 0 ? Math.round(bedroomType.avgRent).toLocaleString() : 'N/A'}
+                </div>
+              </div>
+              
+              <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                <div className="text-sm font-medium text-green-700 dark:text-green-300">Avg Sq Ft</div>
+                <div className="text-lg font-bold text-green-900 dark:text-green-100">
+                  {bedroomType.avgSqFt > 0 ? Math.round(bedroomType.avgSqFt).toLocaleString() : 'N/A'}
+                </div>
+              </div>
+              
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                <div className="text-sm font-medium text-amber-700 dark:text-amber-300">Vacancy Rate</div>
+                <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
+                  {bedroomType.vacancyRate.toFixed(1)}%
+                </div>
+              </div>
+              
+              <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                <div className="text-sm font-medium text-purple-700 dark:text-purple-300">$/Sq Ft</div>
+                <div className="text-lg font-bold text-purple-900 dark:text-purple-100">
+                  ${bedroomType.pricePerSqFt > 0 ? bedroomType.pricePerSqFt.toFixed(2) : 'N/A'}
+                </div>
+              </div>
+            </div>
+            
+            {/* Units Table */}
+            <BedroomUnitsTable bedroomType={bedroomType} propertyId={propertyData.propertyId} />
+          </div>
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+};
+
+// Component for rendering units table within each bedroom tab
+const BedroomUnitsTable = ({ bedroomType, propertyId }: { bedroomType: BedroomTypeMetrics; propertyId: string }) => {
+  if (!bedroomType.units.length) {
+    return (
+      <div className="text-center py-4 text-muted-foreground">
+        No units available for this bedroom type
+      </div>
+    );
+  }
+
+  return (
+    <div className="border rounded-lg">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead data-testid={`table-header-unit-${propertyId}`}>Unit</TableHead>
+            <TableHead data-testid={`table-header-rent-${propertyId}`}>Rent</TableHead>
+            <TableHead data-testid={`table-header-sqft-${propertyId}`}>Sq Ft</TableHead>
+            <TableHead data-testid={`table-header-price-per-sqft-${propertyId}`}>$/Sq Ft</TableHead>
+            <TableHead data-testid={`table-header-available-${propertyId}`}>Available</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {bedroomType.units.map((unit, index) => {
+            const rent = Number(unit.rent) || 0;
+            const sqft = Number(unit.squareFootage) || 0;
+            const pricePerSqFt = rent > 0 && sqft > 0 ? rent / sqft : 0;
+            const isAvailable = unit.status === 'available';
+            
+            return (
+              <TableRow 
+                key={unit.id || index} 
+                data-testid={`unit-row-${unit.id || index}-${propertyId}`}
+                className={isAvailable ? "" : "opacity-60"}
+              >
+                <TableCell className="font-medium">
+                  <div>
+                    <div>{unit.unitNumber || unit.floorPlanName || `Unit ${index + 1}`}</div>
+                    {unit.floorPlanName && unit.unitNumber && (
+                      <div className="text-xs text-muted-foreground">{unit.floorPlanName}</div>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="font-medium">
+                    {rent > 0 ? `$${rent.toLocaleString()}` : 'N/A'}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div>{sqft > 0 ? `${sqft.toLocaleString()} sq ft` : 'N/A'}</div>
+                </TableCell>
+                <TableCell>
+                  <div className="font-medium">
+                    {pricePerSqFt > 0 ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <Badge 
+                    variant={isAvailable ? "default" : "secondary"}
+                    className={isAvailable ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
+                  >
+                    {isAvailable ? 'Available' : 'Occupied'}
+                  </Badge>
+                  {unit.availabilityDate && isAvailable && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {unit.availabilityDate}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+};
 
 export default function Summarize({ params }: { params: { id?: string; sessionId?: string } }) {
   const [, setLocation] = useLocation();
@@ -641,6 +987,70 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               </div>
             </CardContent>
           </Card>
+
+          {/* Organized Units Display - NEW HIERARCHICAL VIEW */}
+          {scrapedUnitsQuery.data && scrapedUnitsQuery.data.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <BarChart3 className="h-5 w-5 text-primary" />
+                  <span>Property Unit Analysis</span>
+                </CardTitle>
+                <CardDescription>
+                  Detailed unit breakdown by bedroom type for each property
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-8">
+                  {organizeUnitsByProperty(scrapedUnitsQuery.data, sessionData).map((propertyData) => (
+                    <div key={propertyData.propertyId} className="space-y-4">
+                      {/* Property Header */}
+                      <div className={`p-4 rounded-lg border ${
+                        propertyData.isSubjectProperty 
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                          : 'bg-muted border-border'
+                      }`}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <h4 className={`text-lg font-semibold ${
+                                propertyData.isSubjectProperty 
+                                  ? 'text-blue-900 dark:text-blue-100'
+                                  : 'text-foreground'
+                              }`}>
+                                {propertyData.propertyName}
+                              </h4>
+                              {propertyData.isSubjectProperty && (
+                                <Badge variant="default" className="bg-blue-600">
+                                  Subject Property
+                                </Badge>
+                              )}
+                            </div>
+                            <div className={`text-sm ${
+                              propertyData.isSubjectProperty 
+                                ? 'text-blue-600 dark:text-blue-400'
+                                : 'text-muted-foreground'
+                            }`}>
+                              {propertyData.propertyAddress}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold">{propertyData.totalUnits} Total Units</div>
+                            <div className="text-sm text-muted-foreground">
+                              {propertyData.availableUnits} available • {propertyData.vacancyRate.toFixed(1)}% vacancy
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {/* Bedroom Tabs */}
+                      <BedroomTabsView propertyData={propertyData} />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Session Scraping Progress Section */}
           <div className="bg-card rounded-lg border border-border p-6" data-testid="session-scraping-section">
@@ -1331,34 +1741,68 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                 </Card>
               )}
 
-              {/* Unit Listings Tables Section */}
+              {/* Hierarchical Unit Listings Section - Legacy Mode */}
               {vacancyQuery.data?.subjectProperty?.units && (
-                <div className="space-y-6" data-testid="unit-listings-section">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-xl font-semibold">Detailed Unit Listings</h3>
-                    <Badge variant="outline" className="text-xs">
-                      {vacancyQuery.data.subjectProperty.units.length + 
-                       vacancyQuery.data.competitors.reduce((sum, c) => sum + (c.units?.length || 0), 0)} Total Units
-                    </Badge>
-                  </div>
-
-                  {/* Subject Property Units Table */}
-                  <UnitListingsTable
-                    propertyName={vacancyQuery.data.subjectProperty.name}
-                    units={vacancyQuery.data.subjectProperty.units || []}
-                    isSubjectProperty={true}
-                  />
-
-                  {/* Competitor Property Units Tables */}
-                  {vacancyQuery.data.competitors.map((competitor) => (
-                    <UnitListingsTable
-                      key={competitor.id}
-                      propertyName={competitor.name}
-                      units={competitor.units || []}
-                      isSubjectProperty={false}
-                    />
-                  ))}
-                </div>
+                <Card data-testid="legacy-unit-listings-section">
+                  <CardHeader>
+                    <CardTitle className="flex items-center space-x-2">
+                      <BarChart3 className="h-5 w-5 text-primary" />
+                      <span>Property Unit Analysis</span>
+                    </CardTitle>
+                    <CardDescription>
+                      Detailed unit breakdown by bedroom type for each property
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-8">
+                      {organizeLegacyUnitsByProperty(vacancyQuery.data).map((propertyData) => (
+                        <div key={propertyData.propertyId} className="space-y-4">
+                          {/* Property Header */}
+                          <div className={`p-4 rounded-lg border ${
+                            propertyData.isSubjectProperty 
+                              ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                              : 'bg-muted border-border'
+                          }`}>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h4 className={`text-lg font-semibold ${
+                                    propertyData.isSubjectProperty 
+                                      ? 'text-blue-900 dark:text-blue-100'
+                                      : 'text-foreground'
+                                  }`}>
+                                    {propertyData.propertyName}
+                                  </h4>
+                                  {propertyData.isSubjectProperty && (
+                                    <Badge variant="default" className="bg-blue-600">
+                                      Subject Property
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className={`text-sm ${
+                                  propertyData.isSubjectProperty 
+                                    ? 'text-blue-600 dark:text-blue-400'
+                                    : 'text-muted-foreground'
+                                }`}>
+                                  {propertyData.propertyAddress}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-lg font-bold">{propertyData.totalUnits} Total Units</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {propertyData.availableUnits} available • {propertyData.vacancyRate.toFixed(1)}% vacancy
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Bedroom Tabs */}
+                          <BedroomTabsView propertyData={propertyData} />
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </div>
           )}
