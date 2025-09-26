@@ -4506,13 +4506,12 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
       const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
 
-      // Collect all optimized units from all subject properties
+      // Collect ALL units from all subject properties (not just optimized ones)
       const allUnits = [];
       for (const profile of subjectProfiles) {
         const units = await storage.getPropertyUnitsByProfile(profile.id);
-        const optimizedUnits = units.filter(unit => unit.recommendedRent && unit.recommendedRent !== unit.currentRent);
         
-        for (const unit of optimizedUnits) {
+        for (const unit of units) {
           allUnits.push({
             ...unit,
             propertyProfileId: profile.id,
@@ -4523,11 +4522,14 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       }
 
       const response = {
-        sessionId,
-        sessionName: session.name,
         report: sessionReport,
         units: allUnits,
-        propertiesOptimized: subjectProfiles.length
+        portfolio: {
+          [sessionId]: {
+            units: allUnits,
+            report: sessionReport
+          }
+        }
       };
 
       res.json(response);

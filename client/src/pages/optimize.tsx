@@ -71,7 +71,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
 
   const optimizationQuery = useQuery<OptimizationData>({
     queryKey: isSessionMode 
-      ? ['/api/sessions', sessionId, 'optimization']
+      ? ['/api/analysis-sessions', sessionId, 'optimization']
       : ['/api/properties', params.id, 'optimization'],
     enabled: hasInitialized
   });
@@ -194,7 +194,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     },
     onSuccess: (data) => {
       const queryKey = isSessionMode 
-        ? ['/api/sessions', sessionId, 'optimization']
+        ? ['/api/analysis-sessions', sessionId, 'optimization']
         : ['/api/properties', params.id, 'optimization'];
       queryClient.setQueryData(queryKey, data);
       
