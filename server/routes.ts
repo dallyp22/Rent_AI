@@ -7,7 +7,7 @@ import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Using GPT-4o as the latest available model
 const openai = new OpenAI({ 
   apiKey: process.env.OPENAI_API_KEY
 });
@@ -978,7 +978,7 @@ Please provide your analysis in this exact JSON format:
 }`;
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using GPT-4o as the latest available model
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" }
       });
@@ -1290,7 +1290,7 @@ Please provide 3-5 key strategic insights for this multi-property portfolio anal
 Return insights as a JSON array of strings.`;
 
           const aiResponse = await openai.chat.completions.create({
-            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+            model: "gpt-4o", // Using GPT-4o as the latest available model
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" }
           });
@@ -1396,7 +1396,7 @@ Filter Criteria Applied: ${filterDescription.join(", ")}
 Based on this data, provide exactly 3 specific, actionable insights that would help a property manager optimize their competitive position. Each insight should be concise (under 100 characters) and directly actionable. Format as a JSON array of strings.`;
           
           const completion = await openai.chat.completions.create({
-            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+            model: "gpt-4o", // Using GPT-4o as the latest available model
             messages: [
               {
                 role: "system",
@@ -1632,7 +1632,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       Important: Generate recommendations for ALL ${units.length} units based on the optimization goal and parameters.`;
 
       const aiResponse = await openai.chat.completions.create({
-        model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+        model: "gpt-4o", // Using GPT-4o as the latest available model
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" }
       });
@@ -4116,7 +4116,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         console.log(`[OPENAI_RETRY] Attempt ${attempt}/${maxRetries}`);
         
         const response = await openai.chat.completions.create({
-          model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+          model: "gpt-4o", // Using GPT-4o as the latest available model
           messages: [{ role: "user", content: prompt }],
           response_format: { type: "json_object" }
           // Note: temperature parameter not supported by GPT-5
@@ -5011,7 +5011,7 @@ Risk Profile:
 Provide exactly 3 strategic insights as a JSON array of strings. Each insight should be specific, actionable, and under 150 characters. Focus on the highest-impact opportunities based on the data.`;
           
           const completion = await openai.chat.completions.create({
-            model: "gpt-5", // the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+            model: "gpt-4o", // Using GPT-4o as the latest available model
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" }
           });
