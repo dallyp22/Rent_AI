@@ -8,6 +8,7 @@ import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3 } from "lu
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
+import PropertyFilterSidebar from "@/components/property-filter-sidebar";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import { motion, AnimatePresence } from "framer-motion";
 import type { FilterCriteria, FilteredAnalysis, AnalysisSession, PropertyProfile } from "@shared/schema";
@@ -165,6 +166,13 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
     setFilters(newFilters);
   };
 
+  const handlePropertySelectionChange = (propertyIds: string[] | undefined) => {
+    setFilters({
+      ...filters,
+      selectedProperties: propertyIds
+    });
+  };
+
   const handleContinueToOptimize = async () => {
     // Save workflow state before navigating
     await saveWorkflowState({
@@ -309,10 +317,24 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
           )}
         </div>
 
-        {/* 75/25 Layout Container */}
+        {/* 3-Column Layout Container */}
         <div className="flex flex-col lg:flex-row h-full">
-          {/* Main Analysis Area - 75% width */}
-          <div className="flex-1 lg:w-3/4 p-6 overflow-y-auto relative">
+          {/* Left Sidebar - Properties Filter (20% width) - Only show in portfolio mode with properties */}
+          {isSessionMode && sessionData?.propertyProfiles && sessionData.propertyProfiles.length > 0 && (
+            <div className="lg:w-1/5 lg:border-r border-border p-4 bg-muted/5 overflow-y-auto">
+              <div className="sticky top-0">
+                <PropertyFilterSidebar
+                  availableProperties={sessionData.propertyProfiles}
+                  selectedProperties={filters.selectedProperties}
+                  onPropertySelectionChange={handlePropertySelectionChange}
+                  isLoadingProperties={isLoadingSession}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Main Analysis Area - 55% width (or wider if no left sidebar) */}
+          <div className={`flex-1 ${isSessionMode && sessionData?.propertyProfiles && sessionData.propertyProfiles.length > 0 ? 'lg:w-11/20' : 'lg:w-3/4'} p-6 overflow-y-auto relative`}>
             {/* Debouncing Indicator */}
             <AnimatePresence>
               {isDebouncing && (
@@ -407,8 +429,6 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
                 isLoadingRelationships={isLoadingRelationships}
                 hasCompetitiveRelationships={hasCompetitiveRelationships}
                 relationshipsError={hasLoadingError ? new Error('Failed to load relationships') : null}
-                availableProperties={sessionData?.propertyProfiles || []}
-                isLoadingProperties={isLoadingSession}
               />
             </div>
           </div>
