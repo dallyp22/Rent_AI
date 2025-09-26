@@ -416,7 +416,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
                       placeholder="0"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
-                      value={field.value || 0}
+                      value={field.value === 0 ? '' : field.value || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        if (e.target.value === '') {
+                          field.onChange(0);
+                        }
+                      }}
                       data-testid="input-studio-units"
                     />
                   </FormControl>
@@ -438,7 +444,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
                       placeholder="0"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
-                      value={field.value || 0}
+                      value={field.value === 0 ? '' : field.value || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        if (e.target.value === '') {
+                          field.onChange(0);
+                        }
+                      }}
                       data-testid="input-one-bedroom-units"
                     />
                   </FormControl>
@@ -460,7 +472,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
                       placeholder="0"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
-                      value={field.value || 0}
+                      value={field.value === 0 ? '' : field.value || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        if (e.target.value === '') {
+                          field.onChange(0);
+                        }
+                      }}
                       data-testid="input-two-bedroom-units"
                     />
                   </FormControl>
@@ -482,7 +500,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
                       placeholder="0"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
-                      value={field.value || 0}
+                      value={field.value === 0 ? '' : field.value || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        if (e.target.value === '') {
+                          field.onChange(0);
+                        }
+                      }}
                       data-testid="input-three-bedroom-units"
                     />
                   </FormControl>
@@ -504,7 +528,13 @@ const PropertyProfileForm = forwardRef<PropertyProfileFormRef, PropertyProfileFo
                       placeholder="0"
                       {...field}
                       onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : 0)}
-                      value={field.value || 0}
+                      value={field.value === 0 ? '' : field.value || ''}
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        if (e.target.value === '') {
+                          field.onChange(0);
+                        }
+                      }}
                       data-testid="input-four-plus-bedroom-units"
                     />
                   </FormControl>

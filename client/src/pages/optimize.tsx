@@ -39,7 +39,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const { toast } = useToast();
   // Determine session mode and ID based on URL pattern
   const isSessionMode = !!params.sessionId;
-  const sessionId = params.sessionId || params.id;
+  const sessionId = params.sessionId || params.id || '';
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
   
   const [goal, setGoal] = useState("maximize-revenue");
@@ -147,11 +147,45 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
 
   const optimizeMutation = useMutation({
     mutationFn: async (data: { goal: string; targetOccupancy: number; riskTolerance: number }): Promise<OptimizationData> => {
+      // Validate parameters before API call
+      if (!data.goal) {
+        throw new Error('Please select an optimization goal');
+      }
+      if (!data.targetOccupancy || data.targetOccupancy < 1 || data.targetOccupancy > 100) {
+        throw new Error('Please provide a valid target occupancy rate (1-100%)');
+      }
+      if (!data.riskTolerance || data.riskTolerance < 1 || data.riskTolerance > 3) {
+        throw new Error('Please select a valid risk tolerance level');
+      }
+
       const endpoint = isSessionMode 
-        ? `/api/sessions/${sessionId}/optimize`
+        ? `/api/analysis-sessions/${sessionId}/optimize`
         : `/api/properties/${params.id}/optimize`;
-      const res = await apiRequest("POST", endpoint, data);
-      return res.json();
+      
+      // Add retry logic for API failures
+      const maxRetries = 3;
+      let attempt = 0;
+      
+      while (attempt < maxRetries) {
+        try {
+          const res = await apiRequest("POST", endpoint, data);
+          return res.json();
+        } catch (error) {
+          attempt++;
+          console.error(`Optimization attempt ${attempt} failed:`, error);
+          
+          if (attempt === maxRetries) {
+            // Extract meaningful error message from response
+            if (error instanceof Error) {
+              throw error;
+            }
+            throw new Error('Network error - please check your connection and try again');
+          }
+          
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+        }
+      }
     },
     onSuccess: (data) => {
       const queryKey = isSessionMode 
@@ -169,10 +203,13 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           : `Generated recommendations for ${unitCount} units.`,
       });
     },
-    onError: () => {
+    onError: (error: any) => {
+      console.error('Optimization generation failed:', error);
+      const errorMessage = error.message || 'Failed to generate recommendations. Please try again.';
+      
       toast({
         title: "Optimization Failed",
-        description: "Failed to generate recommendations. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -204,12 +241,34 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   });
 
   const generateRecommendations = () => {
+    // Pre-validation before API calls
+    if (!goal) {
+      toast({
+        title: "Validation Error",
+        description: "Please select an optimization goal before generating recommendations.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const targetOcc = targetOccupancy[0];
+    const riskTol = riskTolerance[0];
+    
+    if (!targetOcc || targetOcc < 1 || targetOcc > 100) {
+      toast({
+        title: "Validation Error", 
+        description: "Please set a valid target occupancy rate (1-100%).",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // For session mode, skip unit creation and directly trigger optimization
     if (isSessionMode) {
       optimizeMutation.mutate({ 
         goal, 
-        targetOccupancy: targetOccupancy[0], 
-        riskTolerance: riskTolerance[0] 
+        targetOccupancy: targetOcc, 
+        riskTolerance: riskTol 
       });
     } else {
       // For single property mode, first create units if they don't exist, then optimize
@@ -218,16 +277,24 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           onSuccess: () => {
             optimizeMutation.mutate({ 
               goal, 
-              targetOccupancy: targetOccupancy[0], 
-              riskTolerance: riskTolerance[0] 
+              targetOccupancy: targetOcc, 
+              riskTolerance: riskTol 
+            });
+          },
+          onError: (error) => {
+            console.error('Failed to create units:', error);
+            toast({
+              title: "Unit Creation Failed",
+              description: "Could not prepare property data for optimization. Please try again.",
+              variant: "destructive",
             });
           }
         });
       } else {
         optimizeMutation.mutate({ 
           goal, 
-          targetOccupancy: targetOccupancy[0], 
-          riskTolerance: riskTolerance[0] 
+          targetOccupancy: targetOcc, 
+          riskTolerance: riskTol 
         });
       }
     }

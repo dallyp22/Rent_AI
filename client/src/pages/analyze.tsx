@@ -43,7 +43,7 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Determine session mode and ID based on URL pattern
   const isSessionMode = !!params.sessionId;
-  const sessionId = params.sessionId || params.id;
+  const sessionId = params.sessionId || params.id || '';
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
   
   // Query for session data when in session mode

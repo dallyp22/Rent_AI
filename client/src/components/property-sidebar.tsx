@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,8 +43,8 @@ export default function PropertySidebar({
 
   const isLoading = isLoadingSubjects || isLoadingCompetitors;
 
-  // Calculate selection counts
-  const getSelectionCounts = (): PropertySelectionCounts => {
+  // Calculate selection counts with memoization to prevent infinite re-renders
+  const counts = useMemo((): PropertySelectionCounts => {
     const selectedSubjects = subjectProperties.filter(p => selectedPropertyIds.includes(p.id)).length;
     const selectedCompetitors = competitorProperties.filter(p => selectedPropertyIds.includes(p.id)).length;
     
@@ -53,16 +53,14 @@ export default function PropertySidebar({
       competitors: selectedCompetitors,
       total: selectedSubjects + selectedCompetitors
     };
-  };
-
-  const counts = getSelectionCounts();
+  }, [subjectProperties, competitorProperties, selectedPropertyIds]);
 
   // Notify parent of count changes
   useEffect(() => {
     if (onSelectionCountsChange) {
       onSelectionCountsChange(counts);
     }
-  }, [counts.subjects, counts.competitors, counts.total, onSelectionCountsChange]);
+  }, [counts, onSelectionCountsChange]);
 
   // Select/deselect all properties of a type
   const handleSelectAllType = (type: 'subject' | 'competitor', selectAll: boolean) => {

@@ -1,0 +1,467 @@
+Bug Fixes and Feature Implementation Guide
+1. Fix Unit Mix Breakdown Calculator 🔧
+Issue: The "0" placeholder doesn't clear on focus, and the total is not calculating correctly.
+Implementation Steps:
+typescript
+// components/PropertyProfileForm/UnitMixInput.tsx
+
+const UnitMixInput = ({ value, onChange, label }) => {
+  const [isFocused, setIsFocused] = useState(false);
+  
+  return (
+    <Input
+      type="number"
+      label={label}
+      // Fix 1: Handle placeholder and zero clearing
+      placeholder="0"
+      value={isFocused && value === 0 ? '' : value}
+      onFocus={(e) => {
+        setIsFocused(true);
+        // Select all text on focus for easy replacement
+        e.target.select();
+      }}
+      onBlur={(e) => {
+        setIsFocused(false);
+        // If empty, set to 0
+        if (e.target.value === '') {
+          onChange(0);
+        }
+      }}
+      onChange={(e) => {
+        const val = parseInt(e.target.value) || 0;
+        onChange(val);
+      }}
+    />
+  );
+};
+
+// Fix 2: Calculate total correctly
+const calculateTotalUnits = (unitMix) => {
+  return (
+    (parseInt(unitMix.studio) || 0) +
+    (parseInt(unitMix.oneBed) || 0) +
+    (parseInt(unitMix.twoBed) || 0) +
+    (parseInt(unitMix.threeBed) || 0) +
+    (parseInt(unitMix.fourBed) || 0)
+  );
+};
+
+// Update the total display with proper reactivity
+const PropertyProfileForm = () => {
+  const [unitMix, setUnitMix] = useState({
+    studio: 0,
+    oneBed: 0,
+    twoBed: 0,
+    threeBed: 0,
+    fourBed: 0
+  });
+  
+  // Recalculate total on any unit mix change
+  const totalUnits = useMemo(() => calculateTotalUnits(unitMix), [unitMix]);
+  
+  return (
+    <div>
+      {/* Unit inputs */}
+      <div className="mt-4">
+        <span className="text-sm text-gray-600">Total Units from Mix: </span>
+        <span className="text-lg font-bold text-blue-600">{totalUnits}</span>
+      </div>
+    </div>
+  );
+};
+2. Fix Generate Optimization Button ⚠️
+Issue: "Generate Optimization Recommendations" button is failing with an error.
+Implementation Steps:
+typescript
+// api/optimization.ts
+
+// Add proper error handling and retry logic
+export async function generateOptimizationRecommendations(sessionId: string, params: OptimizationParams) {
+  try {
+    // 1. Validate that scraped data exists
+    const scrapedUnits = await getScrapedUnits(sessionId);
+    if (!scrapedUnits || scrapedUnits.length === 0) {
+      throw new Error('No scraped data available. Please complete data scraping first.');
+    }
+    
+    // 2. Validate optimization parameters
+    if (!params.optimizationGoal) {
+      throw new Error('Please select an optimization goal');
+    }
+    
+    // 3. Add retry logic for OpenAI API calls
+    const maxRetries = 3;
+    let attempt = 0;
+    
+    while (attempt < maxRetries) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o-2024-08-06",
+          response_format: { type: "json_object" },
+          messages: [
+            {
+              role: "system",
+              content: "Generate portfolio optimization recommendations based on the provided data..."
+            },
+            {
+              role: "user",
+              content: JSON.stringify({
+                sessionData: scrapedUnits,
+                optimizationParams: params
+              })
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 4000
+        });
+        
+        return response.choices[0].message.content;
+      } catch (error) {
+        attempt++;
+        if (attempt === maxRetries) throw error;
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+      }
+    }
+  } catch (error) {
+    console.error('Optimization generation failed:', error);
+    throw new Error(`Optimization failed: ${error.message}`);
+  }
+}
+
+// components/OptimizationTab.tsx
+const OptimizationTab = () => {
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [error, setError] = useState(null);
+  
+  const handleGenerateOptimization = async () => {
+    setIsGenerating(true);
+    setError(null);
+    
+    try {
+      // Validate form before submission
+      if (!optimizationGoal) {
+        throw new Error('Please select an optimization goal');
+      }
+      
+      const recommendations = await generateOptimizationRecommendations(
+        sessionId,
+        {
+          optimizationGoal,
+          targetOccupancy,
+          riskTolerance
+        }
+      );
+      
+      // Store recommendations
+      setOptimizationData(recommendations);
+    } catch (err) {
+      setError(err.message);
+      // Show user-friendly error message
+      toast.error(`Failed to generate optimization: ${err.message}`);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
+  return (
+    <Button 
+      onClick={handleGenerateOptimization}
+      disabled={isGenerating || !optimizationGoal}
+    >
+      {isGenerating ? 'Generating...' : 'Generate Optimization Recommendations'}
+    </Button>
+  );
+};
+3. Remove Duplicate Property Display 🗑️
+Issue: The Properties all appear twice on the Summarize page Remove the Bottom one.
+Implementation Steps:
+typescript
+// components/SummarizeTab.tsx
+
+const SummarizeTab = ({ sessionId }) => {
+  const { data: scrapedUnits } = useScrapedUnits(sessionId);
+  
+  // Fix: Remove duplicates and consolidate by unique property ID
+  const consolidatedProperties = useMemo(() => {
+    if (!scrapedUnits) return [];
+    
+    // Group by unique property identifier (not just name)
+    const propertyMap = new Map();
+    
+    scrapedUnits.forEach(unit => {
+      const key = unit.propertyProfileId; // Use ID instead of name
+      
+      if (!propertyMap.has(key)) {
+        propertyMap.set(key, {
+          propertyId: unit.propertyProfileId,
+          propertyName: unit.propertyName,
+          address: unit.address,
+          role: unit.role,
+          unitsByBedroom: {
+            '1BR': [],
+            '2BR': [],
+            '3BR': []
+          }
+        });
+      }
+      
+      const property = propertyMap.get(key);
+      const bedroomKey = `${unit.bedrooms}BR`;
+      if (property.unitsByBedroom[bedroomKey]) {
+        property.unitsByBedroom[bedroomKey].push(unit);
+      }
+    });
+    
+    return Array.from(propertyMap.values());
+  }, [scrapedUnits]);
+  
+  return (
+    <div className="space-y-6">
+      {consolidatedProperties.map(property => (
+        <PropertyCard key={property.propertyId} property={property} />
+      ))}
+    </div>
+  );
+};
+4. Fix Competitive Set Filter Functionality 🎯
+Issue: Competitive Set filter appears but may not be properly connected to the data filtering.
+Implementation Steps:
+typescript
+// hooks/useCompetitiveSetFilter.ts
+
+export const useCompetitiveSetFilter = (sessionId: string) => {
+  const [filterType, setFilterType] = useState('all');
+  const { data: relationships } = useCompetitiveRelationships(sessionId);
+  const { data: allProperties } = usePropertyProfiles(sessionId);
+  
+  const filteredProperties = useMemo(() => {
+    if (!allProperties || !relationships) return [];
+    
+    switch (filterType) {
+      case 'all':
+        // Return all competitor properties
+        return allProperties.filter(p => p.role === 'competitor');
+        
+      case 'internal':
+        // Return only internal competitors based on relationships
+        const internalIds = relationships
+          .filter(r => r.relationshipType === 'internal' && r.isActive)
+          .map(r => r.propertyBId);
+        return allProperties.filter(p => internalIds.includes(p.id));
+        
+      case 'external':
+        // Return only external competitors
+        const externalIds = relationships
+          .filter(r => r.relationshipType === 'external' && r.isActive)
+          .map(r => r.propertyBId);
+        return allProperties.filter(p => externalIds.includes(p.id));
+        
+      case 'subject':
+        // Return only subject properties
+        return allProperties.filter(p => p.role === 'subject');
+        
+      default:
+        return allProperties;
+    }
+  }, [filterType, relationships, allProperties]);
+  
+  return {
+    filterType,
+    setFilterType,
+    filteredProperties,
+    isFilterActive: filterType !== 'all'
+  };
+};
+
+// components/CompetitiveSetFilter.tsx
+const CompetitiveSetFilter = ({ onFilterChange }) => {
+  const { filterType, setFilterType, filteredProperties } = useCompetitiveSetFilter(sessionId);
+  
+  useEffect(() => {
+    // Notify parent component of filter changes
+    onFilterChange(filteredProperties);
+  }, [filteredProperties]);
+  
+  return (
+    <RadioGroup value={filterType} onValueChange={setFilterType}>
+      <div className="space-y-2">
+        <Radio value="all" disabled={!hasRelationships}>
+          <div>
+            <div className="font-medium">All Competitors</div>
+            <div className="text-sm text-gray-500">Show all scraped competitors</div>
+          </div>
+        </Radio>
+        
+        <Radio value="internal" disabled={!hasInternalRelationships}>
+          <div>
+            <div className="font-medium">Internal Competition Only</div>
+            <div className="text-sm text-gray-500">
+              Show only properties marked as internal competitors
+            </div>
+          </div>
+        </Radio>
+        
+        <Radio value="external" disabled={!hasExternalRelationships}>
+          <div>
+            <div className="font-medium">External Competitors Only</div>
+            <div className="text-sm text-gray-500">
+              Show only properties marked as external competitors
+            </div>
+          </div>
+        </Radio>
+        
+        <Radio value="subject">
+          <div>
+            <div className="font-medium">Subject Properties Only</div>
+            <div className="text-sm text-gray-500">
+              Show only the user's portfolio properties
+            </div>
+          </div>
+        </Radio>
+      </div>
+    </RadioGroup>
+  );
+};
+5. Add Interactive Property Filter List to Analyze Page 📊
+Issue: Need a property list in the left margin of the Analyze page for filtering properties on/off in the visualization.
+Implementation Steps:
+typescript
+// components/AnalyzePage/PropertyFilterSidebar.tsx
+
+interface PropertyFilterSidebarProps {
+  properties: PropertyProfile[];
+  onPropertyToggle: (propertyId: string, visible: boolean) => void;
+  visibleProperties: Set<string>;
+}
+
+export const PropertyFilterSidebar = ({ 
+  properties, 
+  onPropertyToggle, 
+  visibleProperties 
+}: PropertyFilterSidebarProps) => {
+  const subjectProperties = properties.filter(p => p.role === 'subject');
+  const competitorProperties = properties.filter(p => p.role === 'competitor');
+  
+  const [selectAll, setSelectAll] = useState(true);
+  
+  const handleSelectAll = () => {
+    const newState = !selectAll;
+    setSelectAll(newState);
+    properties.forEach(p => onPropertyToggle(p.id, newState));
+  };
+  
+  return (
+    <div className="w-64 bg-white border-r border-gray-200 p-4 h-full overflow-y-auto">
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <h3 className="font-semibold text-sm">Property Filter</h3>
+          <Button 
+            size="sm" 
+            variant="ghost"
+            onClick={handleSelectAll}
+          >
+            {selectAll ? 'Deselect All' : 'Select All'}
+          </Button>
+        </div>
+        
+        {/* Subject Properties Section */}
+        <div>
+          <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
+            Your Properties
+          </h4>
+          <div className="space-y-1">
+            {subjectProperties.map(property => (
+              <PropertyFilterItem
+                key={property.id}
+                property={property}
+                isVisible={visibleProperties.has(property.id)}
+                onToggle={(visible) => onPropertyToggle(property.id, visible)}
+                color="blue"
+              />
+            ))}
+          </div>
+        </div>
+        
+        {/* Competitor Properties Section */}
+        <div>
+          <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">
+            Competitors
+          </h4>
+          <div className="space-y-1">
+            {competitorProperties.map(property => (
+              <PropertyFilterItem
+                key={property.id}
+                property={property}
+                isVisible={visibleProperties.has(property.id)}
+                onToggle={(visible) => onPropertyToggle(property.id, visible)}
+                color="gray"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const PropertyFilterItem = ({ property, isVisible, onToggle, color }) => {
+  return (
+    <label className="flex items-center p-2 hover:bg-gray-50 rounded cursor-pointer">
+      <input
+        type="checkbox"
+        checked={isVisible}
+        onChange={(e) => onToggle(e.target.checked)}
+        className="mr-2"
+      />
+      <div className="flex items-center flex-1">
+        <div className={`w-2 h-2 rounded-full bg-${color}-500 mr-2`} />
+        <span className="text-sm truncate">{property.name}</span>
+      </div>
+    </label>
+  );
+};
+
+// components/AnalyzePage/index.tsx
+const AnalyzePage = () => {
+  const [visibleProperties, setVisibleProperties] = useState(new Set());
+  
+  const handlePropertyToggle = (propertyId: string, visible: boolean) => {
+    const newSet = new Set(visibleProperties);
+    if (visible) {
+      newSet.add(propertyId);
+    } else {
+      newSet.delete(propertyId);
+    }
+    setVisibleProperties(newSet);
+  };
+  
+  // Filter chart data based on visible properties
+  const filteredChartData = useMemo(() => {
+    return chartData.filter(d => visibleProperties.has(d.propertyId));
+  }, [chartData, visibleProperties]);
+  
+  return (
+    <div className="flex h-full">
+      <PropertyFilterSidebar
+        properties={properties}
+        onPropertyToggle={handlePropertyToggle}
+        visibleProperties={visibleProperties}
+      />
+      <div className="flex-1 p-6">
+        <ScatterChart data={filteredChartData} />
+      </div>
+    </div>
+  );
+};
+Testing Checklist ✅
+Unit Mix Calculator: Verify zeros clear on focus and totals update in real-time
+Optimization Generation: Test with various parameter combinations and error states
+Duplicate Removal: Confirm each property appears only once in Summarize view, remove bottom one
+Competitive Set Filter: Verify filtering correctly updates displayed data
+Property Filter Sidebar: Test select all/none, individual toggles, and chart updates
+Performance Considerations 🚀
+Debounce unit mix calculations (300ms)
+Memoize filtered property lists
+Use virtual scrolling if property list exceeds 50 items
+Cache optimization results for 30 minutes
+These fixes will resolve all the identified issues and improve the overall user experience of the Property Analytics Pro application.
