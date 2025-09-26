@@ -53,7 +53,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
-    queryKey: ['/api/sessions', sessionId],
+    queryKey: ['/api/analysis-sessions', sessionId],
     enabled: isSessionMode,
     staleTime: 30000
   });
