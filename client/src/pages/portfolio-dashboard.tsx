@@ -23,6 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatCurrency, formatLargeCurrency } from "@/utils/formatters";
 import { useToast } from "@/hooks/use-toast";
 import { exportPortfolioToExcel } from "@/lib/portfolio-excel-export";
 import { 
@@ -293,7 +294,7 @@ export default function PortfolioDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600" data-testid="metric-monthly-revenue">
-              ${(portfolioMetrics?.totalMonthlyRevenue || 0).toLocaleString()}
+              {formatLargeCurrency(portfolioMetrics?.totalMonthlyRevenue || 0)}
             </div>
             <p className="text-xs text-green-600 flex items-center">
               <ArrowUpRight className="h-3 w-3 mr-1" />
@@ -322,7 +323,7 @@ export default function PortfolioDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600" data-testid="metric-optimization-potential">
-              ${(portfolioMetrics?.totalOptimizationPotential || 0).toLocaleString()}
+              {formatLargeCurrency(portfolioMetrics?.totalOptimizationPotential || 0)}
             </div>
             <p className="text-xs text-muted-foreground">
               Annual revenue potential

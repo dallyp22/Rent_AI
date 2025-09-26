@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { formatCurrency } from '@/utils/formatters';
 
 export interface ExcelExportData {
   propertyInfo: {
@@ -188,7 +189,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   summaryHeaderRow.getCell(1).font = { size: 14, bold: true, color: { argb: 'FF059669' } };
   
   const summaryData = [
-    ['Total Annual Revenue Increase:', `$${data.summary.totalIncrease.toLocaleString()}`],
+    ['Total Annual Revenue Increase:', formatCurrency(data.summary.totalIncrease)],
     ['Units Affected:', data.summary.affectedUnits],
     ['Average Rent Increase:', `${data.summary.avgIncrease}%`],
     ['Risk Level:', data.summary.riskLevel]

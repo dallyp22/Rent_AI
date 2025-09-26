@@ -2,6 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Building2, Home, Bed, Bath, Square, DollarSign, Calendar } from "lucide-react";
+import { formatCurrencyWithFallback } from "@/utils/formatters";
 
 interface Unit {
   unitNumber: string;
@@ -54,11 +55,7 @@ export default function UnitListingsTable({
 
   // Helper function to format rent
   const formatRent = (rent: string | number) => {
-    const rentValue = typeof rent === 'string' ? parseFloat(rent) : rent;
-    if (isNaN(rentValue) || rentValue === 0) {
-      return 'Contact for pricing';
-    }
-    return `$${rentValue.toLocaleString()}`;
+    return formatCurrencyWithFallback(rent, 'Contact for pricing');
   };
 
   // Helper function to format square footage

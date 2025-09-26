@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign } from "lucide-react";
+import { formatCurrency, formatCurrencyChange } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
 interface OptimizationTableProps {
@@ -201,18 +202,18 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
       return (
         <span className="flex items-center text-green-600">
           <TrendingUp className="w-4 h-4 mr-1" />
-          +${Math.abs(change)}
+          {formatCurrencyChange(change)}
         </span>
       );
     } else if (change < 0) {
       return (
         <span className="flex items-center text-red-600">
           <TrendingDown className="w-4 h-4 mr-1" />
-          -${Math.abs(change)}
+          {formatCurrencyChange(change)}
         </span>
       );
     }
-    return <span className="text-gray-500">$0</span>;
+    return <span className="text-gray-500">{formatCurrency(0)}</span>;
   };
 
   return (
@@ -373,7 +374,7 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
         <Card className={impact.totalMonthlyIncrease > 0 ? "border-green-200 bg-green-50" : impact.totalMonthlyIncrease < 0 ? "border-red-200 bg-red-50" : ""}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold" data-testid="monthly-impact">
-              {impact.totalMonthlyIncrease >= 0 ? "+" : ""}${Math.abs(impact.totalMonthlyIncrease).toLocaleString()}
+              {formatCurrencyChange(impact.totalMonthlyIncrease)}
             </div>
             <div className="text-sm text-muted-foreground">Monthly Impact</div>
           </CardContent>
@@ -381,7 +382,7 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
         <Card className={impact.totalAnnualIncrease > 0 ? "border-green-200 bg-green-50" : impact.totalAnnualIncrease < 0 ? "border-red-200 bg-red-50" : ""}>
           <CardContent className="p-4">
             <div className="text-2xl font-bold" data-testid="annual-impact">
-              {impact.totalAnnualIncrease >= 0 ? "+" : ""}${Math.abs(impact.totalAnnualIncrease).toLocaleString()}
+              {formatCurrencyChange(impact.totalAnnualIncrease)}
             </div>
             <div className="text-sm text-muted-foreground">Annual Impact</div>
           </CardContent>
@@ -518,7 +519,7 @@ export default function OptimizationTable({ units, report, onApplyChanges }: Opt
                         annualImpact < 0 ? "text-red-600 font-medium" : 
                         "text-gray-600"
                       }>
-                        {annualImpact > 0 ? "+" : ""}${Math.abs(annualImpact).toLocaleString()}/year
+                        {formatCurrencyChange(annualImpact, true)}/year
                       </span>
                     </td>
                     <td className="px-4 py-3" data-testid={`confidence-${unit.unitNumber}`}>

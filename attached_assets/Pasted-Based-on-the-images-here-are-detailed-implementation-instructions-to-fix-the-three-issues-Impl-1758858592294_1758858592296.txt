@@ -1,0 +1,475 @@
+Based on the images, here are detailed implementation instructions to fix the three issues:
+
+## Implementation Guide for Optimization Page Fixes
+
+### 1. **Auto-Adjust Sliders Based on Optimization Goal Selection** 🎯
+
+When users select different optimization goals, the sliders should automatically adjust to optimal values for that strategy.
+
+#### Implementation:
+```typescript
+// components/OptimizationTab/OptimizationControls.tsx
+
+import { useState, useEffect } from 'react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Slider } from '@/components/ui/slider';
+
+// Preset configurations for each optimization goal
+const OPTIMIZATION_PRESETS = {
+  'Maximize Revenue': {
+    targetOccupancy: 85,  // Lower occupancy acceptable for higher rates
+    riskTolerance: 'High' // Willing to take risks for revenue
+  },
+  'Maximize Occupancy': {
+    targetOccupancy: 98,  // Target near-full occupancy
+    riskTolerance: 'Low'  // Conservative approach to ensure occupancy
+  },
+  'Balanced': {
+    targetOccupancy: 92,  // Balance between revenue and occupancy
+    riskTolerance: 'Medium' // Moderate risk approach
+  },
+  'Custom': {
+    targetOccupancy: null, // Keep current values
+    riskTolerance: null    // Keep current values
+  }
+};
+
+const OptimizationControls = ({ onParametersChange }) => {
+  const [optimizationGoal, setOptimizationGoal] = useState('Maximize Revenue');
+  const [targetOccupancy, setTargetOccupancy] = useState(95);
+  const [riskTolerance, setRiskTolerance] = useState('Medium');
+  
+  // Auto-adjust sliders when optimization goal changes
+  useEffect(() => {
+    const preset = OPTIMIZATION_PRESETS[optimizationGoal];
+    
+    if (preset && optimizationGoal !== 'Custom') {
+      // Animate the slider transitions
+      if (preset.targetOccupancy !== null) {
+        animateSliderValue(
+          targetOccupancy,
+          preset.targetOccupancy,
+          (value) => setTargetOccupancy(value)
+        );
+      }
+      
+      if (preset.riskTolerance !== null) {
+        setRiskTolerance(preset.riskTolerance);
+      }
+      
+      // Notify parent component
+      onParametersChange({
+        optimizationGoal,
+        targetOccupancy: preset.targetOccupancy || targetOccupancy,
+        riskTolerance: preset.riskTolerance || riskTolerance
+      });
+    }
+  }, [optimizationGoal]);
+  
+  // Smooth animation for slider transitions
+  const animateSliderValue = (from, to, setter) => {
+    const duration = 500; // ms
+    const steps = 20;
+    const stepDuration = duration / steps;
+    const stepSize = (to - from) / steps;
+    
+    let currentStep = 0;
+    const interval = setInterval(() => {
+      currentStep++;
+      const newValue = from + (stepSize * currentStep);
+      setter(Math.round(newValue));
+      
+      if (currentStep >= steps) {
+        clearInterval(interval);
+        setter(to); // Ensure exact final value
+      }
+    }, stepDuration);
+  };
+  
+  const getRiskToleranceValue = (tolerance) => {
+    const map = { 'Low': 33, 'Medium': 66, 'High': 100 };
+    return map[tolerance];
+  };
+  
+  const getRiskToleranceLabel = (value) => {
+    if (value <= 33) return 'Low';
+    if (value <= 66) return 'Medium';
+    return 'High';
+  };
+  
+  return (
+    <div className="space-y-8">
+      {/* Optimization Goal Selection */}
+      <div>
+        <h3 className="text-sm font-medium mb-4">Optimization Goal</h3>
+        <RadioGroup
+          value={optimizationGoal}
+          onValueChange={setOptimizationGoal}
+        >
+          <div className="space-y-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="Maximize Revenue" />
+              <span>Maximize Revenue</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="Maximize Occupancy" />
+              <span>Maximize Occupancy</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="Balanced" />
+              <span>Balanced</span>
+            </label>
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <RadioGroupItem value="Custom" />
+              <span>Custom</span>
+            </label>
+          </div>
+        </RadioGroup>
+      </div>
+      
+      {/* Target Occupancy Slider */}
+      <div>
+        <h3 className="text-sm font-medium mb-2">Target Occupancy</h3>
+        <div className="px-2">
+          <Slider
+            value={[targetOccupancy]}
+            onValueChange={([value]) => setTargetOccupancy(value)}
+            min={85}
+            max={100}
+            step={1}
+            disabled={optimizationGoal !== 'Custom'}
+            className={optimizationGoal !== 'Custom' ? 'opacity-75' : ''}
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-2">
+            <span>85%</span>
+            <span className="font-medium text-blue-600">{targetOccupancy}%</span>
+            <span>100%</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Risk Tolerance Slider */}
+      <div>
+        <h3 className="text-sm font-medium mb-2">Risk Tolerance</h3>
+        <div className="px-2">
+          <Slider
+            value={[getRiskToleranceValue(riskTolerance)]}
+            onValueChange={([value]) => {
+              setRiskTolerance(getRiskToleranceLabel(value));
+            }}
+            min={0}
+            max={100}
+            step={33}
+            disabled={optimizationGoal !== 'Custom'}
+            className={optimizationGoal !== 'Custom' ? 'opacity-75' : ''}
+          />
+          <div className="flex justify-between text-xs text-gray-500 mt-2">
+            <span>Low</span>
+            <span className="font-medium text-blue-600">{riskTolerance}</span>
+            <span>High</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Visual indicator when not in custom mode */}
+      {optimizationGoal !== 'Custom' && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <p className="text-sm text-blue-700">
+            Sliders are automatically configured for "{optimizationGoal}" strategy. 
+            Select "Custom" to manually adjust values.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+```
+
+### 2. **Fix Dollar Amount Formatting (Round to 2 Decimal Places)** 💵
+
+The Market Avg column shows values like `$990.15000000000001` which need to be properly formatted.
+
+#### Implementation:
+```typescript
+// utils/formatters.ts
+
+/**
+ * Format currency values to 2 decimal places
+ * Handles floating point precision issues
+ */
+export const formatCurrency = (value: number | string): string => {
+  if (value === null || value === undefined) return '$0.00';
+  
+  // Convert to number if string
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  // Handle NaN
+  if (isNaN(numValue)) return '$0.00';
+  
+  // Use toFixed(2) and ensure proper rounding
+  return `$${numValue.toFixed(2)}`;
+};
+
+/**
+ * Format large currency values with commas
+ */
+export const formatLargeCurrency = (value: number | string): string => {
+  if (value === null || value === undefined) return '$0.00';
+  
+  const numValue = typeof value === 'string' ? parseFloat(value) : value;
+  
+  if (isNaN(numValue)) return '$0.00';
+  
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(numValue);
+};
+
+// components/BulkAdjustmentsTable.tsx
+
+import { formatCurrency, formatLargeCurrency } from '@/utils/formatters';
+
+const BulkAdjustmentsTable = ({ units, recommendations }) => {
+  // Calculate properly formatted values
+  const formatUnitData = (unit) => {
+    return {
+      ...unit,
+      current: formatCurrency(unit.currentRent),
+      aiRec: formatCurrency(unit.aiRecommendation),
+      marketAvg: formatCurrency(unit.marketAverage),
+      newPrice: formatCurrency(unit.newPrice),
+      change: formatCurrency(unit.priceChange),
+      annual: formatLargeCurrency(unit.annualImpact)
+    };
+  };
+  
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Unit
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Type
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Current
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              AI Rec.
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Market Avg
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              New Price
+            </th>
+            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Quick Adjust
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Change
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Annual
+            </th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Status
+            </th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {units.map((unit) => {
+            const formattedUnit = formatUnitData(unit);
+            return (
+              <tr key={unit.id} className="hover:bg-gray-50">
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  {unit.unitNumber}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                  {unit.type}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formattedUnit.current}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-blue-600">
+                  {formattedUnit.aiRec}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">
+                  {formattedUnit.marketAvg}
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap">
+                  <input
+                    type="text"
+                    value={formattedUnit.newPrice}
+                    onChange={(e) => handlePriceChange(unit.id, e.target.value)}
+                    className="w-24 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-center">
+                  <div className="flex justify-center space-x-1">
+                    <button className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                      -$10
+                    </button>
+                    <button className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                      -$5
+                    </button>
+                    <button className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                      +$5
+                    </button>
+                    <button className="px-2 py-1 text-xs bg-gray-100 rounded hover:bg-gray-200">
+                      +$10
+                    </button>
+                  </div>
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm">
+                  <span className={`font-medium ${unit.priceChange > 0 ? 'text-green-600' : 'text-gray-900'}`}>
+                    {unit.priceChange > 0 ? '↑' : ''} {formattedUnit.change}
+                  </span>
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap text-sm text-green-600 font-medium">
+                  {formattedUnit.annual}/year
+                </td>
+                <td className="px-4 py-4 whitespace-nowrap">
+                  <span className="px-2 py-1 text-xs font-medium bg-green-100 text-green-800 rounded-full">
+                    {unit.status}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+```
+
+### 3. **Remove the Confidence Column** 🗑️
+
+Remove the "Confidence" column from the Bulk Adjustments table.
+
+#### Implementation:
+```typescript
+// components/BulkAdjustmentsTable.tsx
+
+// REMOVE the Confidence column from both header and body
+
+const BulkAdjustmentsTable = ({ units, recommendations }) => {
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th>Unit</th>
+            <th>Type</th>
+            <th>Current</th>
+            <th>AI Rec.</th>
+            <th>Market Avg</th>
+            <th>New Price</th>
+            <th>Quick Adjust</th>
+            <th>Change</th>
+            <th>Annual</th>
+            {/* REMOVED: <th>Confidence</th> */}
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody className="bg-white divide-y divide-gray-200">
+          {units.map((unit) => (
+            <tr key={unit.id}>
+              <td>{unit.unitNumber}</td>
+              <td>{unit.type}</td>
+              <td>{formatCurrency(unit.current)}</td>
+              <td>{formatCurrency(unit.aiRec)}</td>
+              <td>{formatCurrency(unit.marketAvg)}</td>
+              <td>{formatCurrency(unit.newPrice)}</td>
+              <td>{/* Quick adjust buttons */}</td>
+              <td>{formatCurrency(unit.change)}</td>
+              <td>{formatLargeCurrency(unit.annual)}/year</td>
+              {/* REMOVED: <td className="text-red-600">Low</td> */}
+              <td>{unit.status}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// Also update the data structure to remove confidence field
+interface BulkAdjustmentUnit {
+  id: string;
+  unitNumber: string;
+  type: string;
+  currentRent: number;
+  aiRecommendation: number;
+  marketAverage: number;
+  newPrice: number;
+  priceChange: number;
+  annualImpact: number;
+  // REMOVED: confidence: 'Low' | 'Medium' | 'High';
+  status: 'available' | 'occupied';
+}
+```
+
+### Summary Statistics Update
+```typescript
+// components/BulkAdjustmentsSummary.tsx
+
+const BulkAdjustmentsSummary = ({ units }) => {
+  const monthlyImpact = units.reduce((sum, unit) => sum + unit.priceChange, 0);
+  const annualImpact = monthlyImpact * 12;
+  const unitsIncreased = units.filter(u => u.priceChange > 0).length;
+  const unitsDecreased = units.filter(u => u.priceChange < 0).length;
+  const totalUnitsChanged = units.filter(u => u.priceChange !== 0).length;
+  
+  return (
+    <div className="grid grid-cols-5 gap-4 mb-6">
+      <div className="bg-green-50 rounded-lg p-4">
+        <div className="text-2xl font-bold text-green-700">
+          {formatLargeCurrency(monthlyImpact)}
+        </div>
+        <div className="text-sm text-gray-600">Monthly Impact</div>
+      </div>
+      
+      <div className="bg-green-50 rounded-lg p-4">
+        <div className="text-2xl font-bold text-green-700">
+          {formatLargeCurrency(annualImpact)}
+        </div>
+        <div className="text-sm text-gray-600">Annual Impact</div>
+      </div>
+      
+      <div className="bg-white border rounded-lg p-4">
+        <div className="text-2xl font-bold">{totalUnitsChanged}</div>
+        <div className="text-sm text-gray-600">Units Changed</div>
+      </div>
+      
+      <div className="bg-white border rounded-lg p-4">
+        <div className="text-2xl font-bold text-green-600">
+          ↑ {unitsIncreased}
+        </div>
+        <div className="text-sm text-gray-600">Increased</div>
+      </div>
+      
+      <div className="bg-white border rounded-lg p-4">
+        <div className="text-2xl font-bold text-red-600">
+          ↓ {unitsDecreased}
+        </div>
+        <div className="text-sm text-gray-600">Decreased</div>
+      </div>
+    </div>
+  );
+};
+```
+
+### Testing Checklist ✅
+1. **Optimization Goal Auto-Adjust**: Test each option triggers appropriate slider values
+2. **Currency Formatting**: Verify all dollar amounts display with exactly 2 decimal places
+3. **Column Removal**: Confirm Confidence column is completely removed from table
+
+These implementations will resolve all three issues identified in the screenshots.
