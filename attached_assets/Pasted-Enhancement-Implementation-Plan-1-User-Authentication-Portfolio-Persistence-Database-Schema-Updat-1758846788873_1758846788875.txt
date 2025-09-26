@@ -1,0 +1,519 @@
+Enhancement Implementation Plan
+1. User Authentication & Portfolio Persistence
+Database Schema Updates
+sql-- User accounts table
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash VARCHAR(255) NOT NULL,
+  name VARCHAR(255),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Saved portfolios table
+CREATE TABLE saved_portfolios (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  last_accessed_at TIMESTAMP
+);
+
+-- Link analysis sessions to users and portfolios
+ALTER TABLE analysis_sessions ADD COLUMN user_id UUID REFERENCES users(id);
+ALTER TABLE analysis_sessions ADD COLUMN portfolio_id UUID REFERENCES saved_portfolios(id);
+
+-- Saved property profiles for reuse
+CREATE TABLE saved_property_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portfolio_id UUID REFERENCES saved_portfolios(id) ON DELETE CASCADE,
+  name VARCHAR(255) NOT NULL,
+  url TEXT NOT NULL,
+  role VARCHAR(20) CHECK (role IN ('subject', 'competitor')),
+  address TEXT,
+  unit_mix JSONB, -- Stores bedroom counts: {"1BR": 50, "2BR": 30, "3BR": 20, "4BR": 5}
+  created_at TIMESTAMP DEFAULT NOW()
+);
+Authentication Implementation
+typescript// auth.service.ts
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+
+export class AuthService {
+  async register(email: string, password: string, name?: string) {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const user = await db.insert(users).values({
+      email,
+      password_hash: hashedPassword,
+      name
+    }).returning();
+    
+    return this.generateToken(user[0]);
+  }
+  
+  async login(email: string, password: string) {
+    const user = await db.select().from(users).where(eq(users.email, email));
+    if (!user || !await bcrypt.compare(password, user.password_hash)) {
+      throw new Error('Invalid credentials');
+    }
+    return this.generateToken(user);
+  }
+  
+  generateToken(user: User) {
+    return jwt.sign(
+      { id: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+  }
+}
+
+// Middleware for protected routes
+export const requireAuth = async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
+2. Enhanced Property Profiles with Unit Mix
+Updated Property Profile Schema
+typescript// types.ts
+interface PropertyProfile {
+  id: string;
+  name: string;
+  url: string;
+  role: 'subject' | 'competitor';
+  address?: string;
+  unitMix: {
+    studio?: number;
+    oneBed: number;
+    twoBed: number;
+    threeBed: number;
+    fourBed?: number;
+  };
+  totalUnits: number; // Calculated from unit mix
+}
+
+// PropertyProfileForm.tsx
+export function PropertyProfileForm({ onSubmit }) {
+  const [profile, setProfile] = useState<PropertyProfile>({
+    name: '',
+    url: '',
+    role: 'subject',
+    unitMix: {
+      studio: 0,
+      oneBed: 0,
+      twoBed: 0,
+      threeBed: 0,
+      fourBed: 0
+    }
+  });
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <Input 
+        label="Property Name"
+        value={profile.name}
+        onChange={(e) => setProfile({...profile, name: e.target.value})}
+      />
+      
+      <Input 
+        label="Property URL"
+        value={profile.url}
+        onChange={(e) => setProfile({...profile, url: e.target.value})}
+      />
+      
+      <RadioGroup
+        label="Property Type"
+        value={profile.role}
+        onChange={(role) => setProfile({...profile, role})}
+      >
+        <Radio value="subject">Subject Property</Radio>
+        <Radio value="competitor">Competitor</Radio>
+      </RadioGroup>
+      
+      <div className="unit-mix-section">
+        <h3>Unit Mix</h3>
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            type="number"
+            label="Studio Units"
+            value={profile.unitMix.studio}
+            onChange={(e) => updateUnitMix('studio', e.target.value)}
+          />
+          <Input
+            type="number"
+            label="1 Bedroom"
+            value={profile.unitMix.oneBed}
+            onChange={(e) => updateUnitMix('oneBed', e.target.value)}
+          />
+          <Input
+            type="number"
+            label="2 Bedroom"
+            value={profile.unitMix.twoBed}
+            onChange={(e) => updateUnitMix('twoBed', e.target.value)}
+          />
+          <Input
+            type="number"
+            label="3 Bedroom"
+            value={profile.unitMix.threeBed}
+            onChange={(e) => updateUnitMix('threeBed', e.target.value)}
+          />
+          <Input
+            type="number"
+            label="4+ Bedroom"
+            value={profile.unitMix.fourBed}
+            onChange={(e) => updateUnitMix('fourBed', e.target.value)}
+          />
+        </div>
+        <div className="mt-4">
+          Total Units: {calculateTotalUnits(profile.unitMix)}
+        </div>
+      </div>
+      
+      <Button type="submit">Add Property</Button>
+    </form>
+  );
+}
+3. Improved Data Organization by Bedroom Count
+Enhanced Summarize View
+typescript// SummarizeTab.tsx
+interface GroupedUnit {
+  propertyName: string;
+  propertyId: string;
+  role: 'subject' | 'competitor';
+  unitsByBedroom: {
+    studio?: UnitData[];
+    oneBed: UnitData[];
+    twoBed: UnitData[];
+    threeBed: UnitData[];
+    fourBed?: UnitData[];
+  };
+  metrics: {
+    byBedroom: Map<string, {
+      avgRent: number;
+      avgSqFt: number;
+      minRent: number;
+      maxRent: number;
+      count: number;
+      vacancyRate: number;
+    }>;
+    overall: {
+      totalUnits: number;
+      avgRent: number;
+      vacancyRate: number;
+    };
+  };
+}
+
+export function SummarizeTab({ sessionId }) {
+  const { data: units } = useScrapedUnits(sessionId);
+  
+  const groupedData = useMemo(() => {
+    if (!units) return [];
+    
+    return units.reduce((acc, unit) => {
+      const property = acc.find(p => p.propertyId === unit.propertyId);
+      const bedroomKey = getBedroomKey(unit.bedrooms); // Convert 0→studio, 1→oneBed, etc.
+      
+      if (!property) {
+        acc.push(createNewPropertyGroup(unit));
+      } else {
+        property.unitsByBedroom[bedroomKey].push(unit);
+        updateMetrics(property, unit, bedroomKey);
+      }
+      
+      return acc;
+    }, [] as GroupedUnit[]);
+  }, [units]);
+  
+  return (
+    <div className="space-y-6">
+      {groupedData.map(property => (
+        <Card key={property.propertyId}>
+          <CardHeader>
+            <h3 className="text-lg font-semibold">
+              {property.propertyName}
+              <Badge className="ml-2">
+                {property.role === 'subject' ? 'Subject' : 'Competitor'}
+              </Badge>
+            </h3>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="studio">
+              <TabsList>
+                {Object.keys(property.unitsByBedroom).map(bedroom => (
+                  <TabsTrigger key={bedroom} value={bedroom}>
+                    {formatBedroomLabel(bedroom)} ({property.unitsByBedroom[bedroom].length})
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              
+              {Object.entries(property.unitsByBedroom).map(([bedroom, units]) => (
+                <TabsContent key={bedroom} value={bedroom}>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <MetricCard
+                      label="Avg Rent"
+                      value={`$${property.metrics.byBedroom.get(bedroom).avgRent}`}
+                    />
+                    <MetricCard
+                      label="Avg Sq Ft"
+                      value={property.metrics.byBedroom.get(bedroom).avgSqFt}
+                    />
+                    <MetricCard
+                      label="Vacancy Rate"
+                      value={`${property.metrics.byBedroom.get(bedroom).vacancyRate}%`}
+                    />
+                  </div>
+                  
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Unit</TableHead>
+                        <TableHead>Rent</TableHead>
+                        <TableHead>Sq Ft</TableHead>
+                        <TableHead>$/Sq Ft</TableHead>
+                        <TableHead>Available</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {units.map(unit => (
+                        <TableRow key={unit.id}>
+                          <TableCell>{unit.unitNumber}</TableCell>
+                          <TableCell>${unit.rent}</TableCell>
+                          <TableCell>{unit.squareFootage}</TableCell>
+                          <TableCell>${(unit.rent / unit.squareFootage).toFixed(2)}</TableCell>
+                          <TableCell>{unit.availableDate || 'Now'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TabsContent>
+              ))}
+            </Tabs>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+4. Competitive Set Matrix Implementation
+Database Schema for Competition Relationships
+sql-- Store competitive relationships
+CREATE TABLE competitive_relationships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  portfolio_id UUID REFERENCES saved_portfolios(id) ON DELETE CASCADE,
+  property_a_id UUID REFERENCES saved_property_profiles(id),
+  property_b_id UUID REFERENCES saved_property_profiles(id),
+  relationship_type VARCHAR(20) CHECK (relationship_type IN ('external', 'internal')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(portfolio_id, property_a_id, property_b_id)
+);
+
+-- Index for fast lookups
+CREATE INDEX idx_competitive_relationships_portfolio 
+  ON competitive_relationships(portfolio_id, is_active);
+Competitive Set Matrix Component
+typescript// CompetitiveSetMatrix.tsx
+export function CompetitiveSetMatrix({ portfolioId, properties }) {
+  const [relationships, setRelationships] = useState<Map<string, Set<string>>>();
+  const [matrixType, setMatrixType] = useState<'external' | 'internal'>('external');
+  const { mutate: updateRelationship } = useUpdateCompetitiveRelationship();
+  
+  // Load existing relationships
+  useEffect(() => {
+    loadRelationships(portfolioId, matrixType);
+  }, [portfolioId, matrixType]);
+  
+  const toggleRelationship = (propertyA: string, propertyB: string) => {
+    const key = `${propertyA}-${propertyB}`;
+    const isActive = relationships.get(propertyA)?.has(propertyB);
+    
+    updateRelationship({
+      portfolioId,
+      propertyAId: propertyA,
+      propertyBId: propertyB,
+      relationshipType: matrixType,
+      isActive: !isActive
+    }, {
+      onSuccess: () => {
+        // Update local state optimistically
+        const newRelationships = new Map(relationships);
+        if (!isActive) {
+          if (!newRelationships.has(propertyA)) {
+            newRelationships.set(propertyA, new Set());
+          }
+          newRelationships.get(propertyA).add(propertyB);
+        } else {
+          newRelationships.get(propertyA)?.delete(propertyB);
+        }
+        setRelationships(newRelationships);
+      }
+    });
+  };
+  
+  // Separate internal properties (subject) from external (competitors)
+  const subjectProperties = properties.filter(p => p.role === 'subject');
+  const competitorProperties = properties.filter(p => p.role === 'competitor');
+  
+  return (
+    <div className="competitive-matrix-container">
+      <div className="flex justify-between mb-4">
+        <h2 className="text-xl font-bold">Competitive Set Matrix</h2>
+        <ToggleGroup value={matrixType} onValueChange={setMatrixType}>
+          <ToggleGroupItem value="external">External Competitors</ToggleGroupItem>
+          <ToggleGroupItem value="internal">Internal Competition</ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+      
+      {matrixType === 'internal' && (
+        <Alert className="mb-4">
+          <AlertDescription>
+            Internal competitors are properties close enough in vicinity with the 
+            chance of cannibalizing business from one another.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      <div className="overflow-auto">
+        <table className="competitive-matrix">
+          <thead>
+            <tr>
+              <th className="sticky left-0 bg-white"></th>
+              {competitorProperties.map(prop => (
+                <th key={prop.id} className="rotate-45 text-sm">
+                  {prop.name}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {subjectProperties.map(subject => (
+              <tr key={subject.id}>
+                <td className="sticky left-0 bg-white font-medium">
+                  {subject.name}
+                </td>
+                {competitorProperties.map(competitor => (
+                  <td key={competitor.id} className="text-center">
+                    <button
+                      className={cn(
+                        "w-8 h-8 rounded transition-all",
+                        relationships?.get(subject.id)?.has(competitor.id)
+                          ? "bg-blue-500 text-white"
+                          : "bg-gray-100 hover:bg-gray-200"
+                      )}
+                      onClick={() => toggleRelationship(subject.id, competitor.id)}
+                    >
+                      {relationships?.get(subject.id)?.has(competitor.id) ? 'X' : ''}
+                    </button>
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      
+      {/* Filtered Analysis View */}
+      <div className="mt-6">
+        <Button onClick={() => analyzeWithMatrix()}>
+          Analyze with {matrixType} Competitive Set
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// Enhanced analysis with competitive set filtering
+export function useFilteredAnalysisWithCompSet(sessionId: string, compSetType: string) {
+  const { data: relationships } = useCompetitiveRelationships(sessionId, compSetType);
+  
+  return useMutation({
+    mutationFn: async (filters) => {
+      // Get active competitive relationships
+      const activeCompetitors = relationships
+        .filter(r => r.isActive)
+        .map(r => r.propertyBId);
+      
+      // Apply competitive set filter to analysis
+      return api.post(`/api/analysis-sessions/${sessionId}/filtered-analysis`, {
+        ...filters,
+        competitorIds: activeCompetitors,
+        analysisType: compSetType // 'external' or 'internal'
+      });
+    }
+  });
+}
+API Endpoints
+typescript// competitive-relationships.routes.ts
+router.get('/api/portfolios/:portfolioId/competitive-relationships', async (req, res) => {
+  const { portfolioId } = req.params;
+  const { type } = req.query; // 'external' or 'internal'
+  
+  const relationships = await db.select()
+    .from(competitiveRelationships)
+    .where(and(
+      eq(competitiveRelationships.portfolioId, portfolioId),
+      type ? eq(competitiveRelationships.relationshipType, type) : undefined
+    ));
+  
+  res.json(relationships);
+});
+
+router.post('/api/portfolios/:portfolioId/competitive-relationships', async (req, res) => {
+  const { portfolioId } = req.params;
+  const { propertyAId, propertyBId, relationshipType, isActive } = req.body;
+  
+  const relationship = await db.insert(competitiveRelationships)
+    .values({
+      portfolioId,
+      propertyAId,
+      propertyBId,
+      relationshipType,
+      isActive
+    })
+    .onConflictDoUpdate({
+      target: [portfolioId, propertyAId, propertyBId],
+      set: { isActive, updatedAt: new Date() }
+    })
+    .returning();
+  
+  res.json(relationship[0]);
+});
+
+// Import competitive set from CSV
+router.post('/api/portfolios/:portfolioId/import-competitive-matrix', upload.single('file'), async (req, res) => {
+  const csvData = await parseCSV(req.file);
+  const relationships = parseCompetitiveMatrix(csvData);
+  
+  // Bulk insert relationships
+  await db.insert(competitiveRelationships)
+    .values(relationships.map(r => ({
+      portfolioId: req.params.portfolioId,
+      ...r
+    })))
+    .onConflictDoNothing();
+  
+  res.json({ imported: relationships.length });
+});
+Summary of Key Features
+
+User Accounts: Complete authentication system with JWT tokens
+Portfolio Persistence: Save and reload property configurations
+Enhanced Property Profiles: Track unit mix by bedroom type
+Improved Data Organization: Hierarchical grouping by property then bedroom
+Competitive Set Matrix: Visual matrix for managing internal/external competitors
+Matrix Import: CSV upload support for bulk relationship configuration
+Filtered Analysis: Apply competitive set filters to AI analysis
+
+These enhancements will significantly improve the platform's usability and analytical capabilities, making it a more powerful tool for property portfolio management.RetryClaude can make mistakes. Please double-check responses.

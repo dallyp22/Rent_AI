@@ -50,15 +50,11 @@ externalPort = 5000
 localPort = 40763
 externalPort = 3002
 
-[[ports]]
-localPort = 40913
-externalPort = 6800
-
 [env]
 PORT = "5000"
 
 [agent]
-integrations = ["javascript_openai:1.0.0", "javascript_mem_db:1.0.0"]
+integrations = ["javascript_openai:1.0.0", "javascript_mem_db:1.0.0", "javascript_log_in_with_replit:1.0.0"]
 
 [workflows]
 runButton = "Project"

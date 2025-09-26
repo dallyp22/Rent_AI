@@ -26,7 +26,10 @@ import {
   type FilterCriteria,
   type FilteredAnalysis,
   type UnitComparison,
-  type CompetitiveEdges
+  type CompetitiveEdges,
+  // User authentication types
+  type User,
+  type UpsertUser
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 
@@ -134,6 +137,10 @@ export interface IStorage {
   getScrapingJobsByProfile(propertyProfileId: string): Promise<ScrapingJob[]>;
   getScrapingJobsBySession(sessionId: string): Promise<ScrapingJob[]>;
   getAllOptimizationReports(): Promise<OptimizationReport[]>;
+  
+  // User authentication operations - MANDATORY for Replit Auth
+  getUser(id: string): Promise<User | undefined>;
+  upsertUser(user: UpsertUser): Promise<User>;
 }
 
 export class MemStorage implements IStorage {
@@ -152,6 +159,9 @@ export class MemStorage implements IStorage {
   private scrapedProperties: Map<string, ScrapedProperty>;
   private scrapedUnits: Map<string, ScrapedUnit>;
   private workflowStates: Map<string, WorkflowState>;
+  
+  // User authentication
+  private users: Map<string, User>;
 
   constructor() {
     // Initialize new property profiles system
@@ -169,6 +179,9 @@ export class MemStorage implements IStorage {
     this.scrapedProperties = new Map();
     this.scrapedUnits = new Map();
     this.workflowStates = new Map();
+    
+    // Initialize user authentication
+    this.users = new Map();
     // Removed seedData() - only use real data from Scrapezy
   }
 
@@ -1407,6 +1420,27 @@ export class MemStorage implements IStorage {
       totalOptimizationPotential: propertyPerformance.reduce((sum, p) => sum + p.optimizationPotential, 0),
       propertyPerformance
     };
+  }
+
+  // USER AUTHENTICATION OPERATIONS - MANDATORY for Replit Auth
+  
+  async getUser(id: string): Promise<User | undefined> {
+    return this.users.get(id);
+  }
+
+  async upsertUser(userData: UpsertUser): Promise<User> {
+    const user: User = {
+      ...userData,
+      id: userData.id || randomUUID(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      email: userData.email ?? null,
+      firstName: userData.firstName ?? null,
+      lastName: userData.lastName ?? null,
+      profileImageUrl: userData.profileImageUrl ?? null
+    };
+    this.users.set(user.id, user);
+    return user;
   }
 }
 

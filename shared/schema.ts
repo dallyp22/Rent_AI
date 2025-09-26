@@ -191,6 +191,28 @@ export const scrapedUnits = pgTable("scraped_units", {
   createdAt: timestamp("created_at").defaultNow()
 });
 
+// Session storage table - MANDATORY for Replit Auth
+export const sessions = pgTable(
+  "sessions",
+  {
+    sid: varchar("sid").primaryKey(),
+    sess: json("sess").notNull(),
+    expire: timestamp("expire").notNull(),
+  },
+  (table) => [index("IDX_session_expire").on(table.expire)],
+);
+
+// User storage table - MANDATORY for Replit Auth  
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: varchar("email").unique(),
+  firstName: varchar("first_name"),
+  lastName: varchar("last_name"),
+  profileImageUrl: varchar("profile_image_url"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Insert schemas for new property profiles system
 // Custom schema to handle decimal fields properly (they can be strings or numbers)
 export const insertPropertyProfileSchema = createInsertSchema(propertyProfiles)
@@ -213,6 +235,9 @@ export const insertOptimizationReportSchema = createInsertSchema(optimizationRep
 export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({ id: true, createdAt: true, completedAt: true });
 export const insertScrapedPropertySchema = createInsertSchema(scrapedProperties).omit({ id: true, createdAt: true });
 export const insertScrapedUnitSchema = createInsertSchema(scrapedUnits).omit({ id: true, createdAt: true });
+
+// User authentication schemas
+export const insertUserSchema = createInsertSchema(users).omit({ createdAt: true, updatedAt: true });
 
 // New property profiles system types
 export type PropertyProfile = typeof propertyProfiles.$inferSelect;
@@ -322,3 +347,7 @@ export type FilterCriteria = z.infer<typeof filterCriteriaSchema>;
 export type UnitComparison = z.infer<typeof unitComparisonSchema>;
 export type CompetitiveEdges = z.infer<typeof competitiveEdgesSchema>;
 export type FilteredAnalysis = z.infer<typeof filteredAnalysisSchema>;
+
+// User authentication types
+export type User = typeof users.$inferSelect;
+export type UpsertUser = z.infer<typeof insertUserSchema>;

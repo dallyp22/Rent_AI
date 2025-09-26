@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
+import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 
@@ -907,6 +908,20 @@ function parseNumber(value: any): number | undefined {
 
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Auth middleware - MUST be first
+  await setupAuth(app);
+
+  // Auth routes
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const user = await storage.getUser(userId);
+      res.json(user);
+    } catch (error) {
+      console.error("Error fetching user:", error);
+      res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
   
   // Create property and get initial AI analysis
   app.post("/api/properties", async (req, res) => {
@@ -5156,7 +5171,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
         propertyDiagnostic.dataIntegrity.hasScrapedData = propertyDiagnostic.scrapedProperties.length > 0;
         propertyDiagnostic.dataIntegrity.scrapedUnitsCount = propertyDiagnostic.scrapedUnits.length;
-        propertyDiagnostic.dataIntegrity.validUnitsCount = propertyDiagnostic.scrapedUnits.filter(unit => {
+        propertyDiagnostic.dataIntegrity.validUnitsCount = propertyDiagnostic.scrapedUnits.filter((unit: ScrapedUnit) => {
           return normalizeRent(unit.rent) && unit.unitType && unit.unitType.trim();
         }).length;
 
