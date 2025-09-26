@@ -16,13 +16,12 @@ interface OptimizationTableProps {
 }
 
 interface UnitWithDetails extends PropertyUnit {
-  confidenceLevel?: string;
   reasoning?: string;
   marketAverage?: string;
 }
 
 // Memoized table row component for better performance
-const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getConfidenceBadge, getStatusBadge, formatCurrency, formatCurrencyChange }: any) => {
+const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getStatusBadge, formatCurrency, formatCurrencyChange }: any) => {
   const unitWithDetails = unit as UnitWithDetails;
   const currentRent = parseFloat(unit.currentRent);
   const recommendedRent = unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent;
@@ -115,9 +114,6 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
         }>
           {formatCurrencyChange(annualImpact, true)}/year
         </span>
-      </td>
-      <td className="px-4 py-3" data-testid={`confidence-${unit.unitNumber}`}>
-        {getConfidenceBadge(unitWithDetails.confidenceLevel)}
       </td>
       <td className="px-4 py-3" data-testid={`status-${unit.unitNumber}`}>
         {getStatusBadge(unit.status)}
@@ -318,16 +314,6 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     }
   };
 
-  const getConfidenceBadge = (level: string = "Medium") => {
-    switch (level) {
-      case "High":
-        return <Badge className="bg-green-100 text-green-800">High</Badge>;
-      case "Low":
-        return <Badge className="bg-red-100 text-red-800">Low</Badge>;
-      default:
-        return <Badge className="bg-yellow-100 text-yellow-800">Medium</Badge>;
-    }
-  };
 
   const getChangeIndicator = (currentRent: number, newRent: number) => {
     const change = newRent - currentRent;
@@ -561,7 +547,6 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
                 <th className="px-4 py-3 text-left font-semibold">Quick Adjust</th>
                 <th className="px-4 py-3 text-left font-semibold">Change</th>
                 <th className="px-4 py-3 text-left font-semibold">Annual</th>
-                <th className="px-4 py-3 text-left font-semibold">Confidence</th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
               </tr>
             </thead>
@@ -574,7 +559,6 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
                   handlePriceChange={handlePriceChange}
                   handleQuickAdjust={handleQuickAdjust}
                   getChangeIndicator={getChangeIndicator}
-                  getConfidenceBadge={getConfidenceBadge}
                   getStatusBadge={getStatusBadge}
                   formatCurrency={formatCurrency}
                   formatCurrencyChange={formatCurrencyChange}

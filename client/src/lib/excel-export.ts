@@ -16,7 +16,6 @@ export interface ExcelExportData {
     change: number;
     annualImpact: number;
     status: string;
-    confidenceLevel?: string;
     reasoning?: string;
   }>;
   summary: {
@@ -56,7 +55,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'Monthly Change', key: 'change', width: 15 },
     { header: 'Annual Impact', key: 'annualImpact', width: 15 },
     { header: 'Status', key: 'status', width: 12 },
-    { header: 'Confidence', key: 'confidence', width: 12 },
     { header: 'Notes', key: 'notes', width: 40 }
   ];
   
@@ -92,7 +90,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'Monthly Change',
     'Annual Impact',
     'Status',
-    'Confidence',
     'Notes'
   ]);
   
@@ -123,7 +120,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.change,
       unit.annualImpact,
       unit.status,
-      unit.confidenceLevel || 'N/A',
       unit.reasoning || 'No additional notes'
     ]);
     

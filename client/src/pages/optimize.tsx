@@ -368,7 +368,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
             annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
             status: unit.status,
-            confidenceLevel: 'Medium',
             reasoning: 'AI-generated portfolio optimization recommendation'
           })),
           summary: {
@@ -406,7 +405,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
             annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
             status: unit.status,
-            confidenceLevel: 'Medium',
             reasoning: 'AI-generated pricing recommendation'
           })),
           summary: {
