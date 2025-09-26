@@ -407,6 +407,8 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
                 isLoadingRelationships={isLoadingRelationships}
                 hasCompetitiveRelationships={hasCompetitiveRelationships}
                 relationshipsError={hasLoadingError ? new Error('Failed to load relationships') : null}
+                availableProperties={sessionData?.propertyProfiles || []}
+                isLoadingProperties={isLoadingSession}
               />
             </div>
           </div>

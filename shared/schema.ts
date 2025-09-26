@@ -375,6 +375,8 @@ export const filterCriteriaSchema = z.object({
   leaseTerms: z.array(z.enum(["6_month", "12_month", "month_to_month"])).optional(),
   floorLevel: z.enum(["ground", "mid", "top"]).optional(),
   renovationStatus: z.enum(["newly_renovated", "updated", "original"]).optional(),
+  // Property filtering
+  selectedProperties: z.array(z.string()).optional(), // Array of property profile IDs
   // Competitive set filters
   competitiveSet: z.enum(["all_competitors", "internal_competitors_only", "external_competitors_only", "subject_properties_only"]).default("all_competitors").optional()
 });

@@ -1122,6 +1122,37 @@ export class MemStorage implements IStorage {
     
     console.log('[FILTER] After availability filter:', units.length, 'units (filtered out', beforeAvailabilityCount - units.length, ')');
 
+    // Filter by selected properties - only include units from specific properties
+    if (criteria.selectedProperties && criteria.selectedProperties.length > 0) {
+      const beforePropertyCount = units.length;
+      console.log('[FILTER] Applying property filter for', criteria.selectedProperties.length, 'selected properties');
+      
+      // Get the scraped properties that correspond to the selected property profiles
+      const selectedScrapedPropertyIds = new Set<string>();
+      
+      for (const propertyProfileId of criteria.selectedProperties) {
+        // Find scraping jobs for this property profile
+        const scrapingJobs = await this.getScrapingJobsByProfile(propertyProfileId);
+        for (const job of scrapingJobs) {
+          if (job.status === 'completed') {
+            const scrapedProps = await this.getScrapedPropertiesByJob(job.id);
+            for (const scrapedProp of scrapedProps) {
+              selectedScrapedPropertyIds.add(scrapedProp.id);
+            }
+          }
+        }
+      }
+      
+      console.log('[FILTER] Found', selectedScrapedPropertyIds.size, 'scraped properties for selected profiles');
+      
+      if (selectedScrapedPropertyIds.size > 0) {
+        units = units.filter(unit => selectedScrapedPropertyIds.has(unit.propertyId));
+        console.log('[FILTER] After property selection filter:', units.length, 'units (filtered out', beforePropertyCount - units.length, ')');
+      } else {
+        console.warn('[FILTER] No scraped properties found for selected property profiles - keeping all units');
+      }
+    }
+
     // Advanced filters (simplified implementation since scraped data may not have all details)
     
     // Filter by amenities - would need property-level amenities data

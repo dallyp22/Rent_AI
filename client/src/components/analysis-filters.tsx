@@ -21,9 +21,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ChevronRight, Sparkles, DollarSign, Clock, RotateCcw, AlertCircle, Loader2 } from "lucide-react";
+import { ChevronRight, Sparkles, DollarSign, Clock, RotateCcw, AlertCircle, Loader2, Building2, Home } from "lucide-react";
 import { motion } from "framer-motion";
-import type { FilterCriteria } from "@shared/schema";
+import type { FilterCriteria, PropertyProfile } from "@shared/schema";
 
 interface AnalysisFiltersProps {
   filters: FilterCriteria;
@@ -33,6 +33,9 @@ interface AnalysisFiltersProps {
   isLoadingRelationships?: boolean;
   hasCompetitiveRelationships?: boolean;
   relationshipsError?: Error | null;
+  // Property filtering props
+  availableProperties?: PropertyProfile[];
+  isLoadingProperties?: boolean;
 }
 
 const bedroomTypes = ["Studio", "1BR", "2BR", "3BR"] as const;
@@ -81,7 +84,9 @@ const AnalysisFilters = memo(({
   isPortfolioMode = false,
   isLoadingRelationships = false,
   hasCompetitiveRelationships = false,
-  relationshipsError = null
+  relationshipsError = null,
+  availableProperties = [],
+  isLoadingProperties = false
 }: AnalysisFiltersProps) => {
   // Memoize advanced filters count
   const advancedFiltersCount = useMemo(() => 
@@ -89,8 +94,9 @@ const AnalysisFilters = memo(({
     (filters.leaseTerms?.length || 0) +
     (filters.floorLevel ? 1 : 0) +
     (filters.renovationStatus ? 1 : 0) +
-    ((filters.competitiveSet && filters.competitiveSet !== "all_competitors") ? 1 : 0),
-    [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus, filters.competitiveSet]
+    ((filters.competitiveSet && filters.competitiveSet !== "all_competitors") ? 1 : 0) +
+    (filters.selectedProperties?.length || 0),
+    [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus, filters.competitiveSet, filters.selectedProperties]
   );
 
   const handleBedroomChange = useCallback((bedroom: string, checked: boolean) => {
@@ -167,6 +173,34 @@ const AnalysisFilters = memo(({
     onFiltersChange({
       ...filters,
       competitiveSet: value as any
+    });
+  }, [filters, onFiltersChange]);
+
+  // Property filtering handlers
+  const handlePropertyChange = useCallback((propertyId: string, checked: boolean) => {
+    const currentProperties = filters.selectedProperties || [];
+    const newProperties = checked
+      ? [...currentProperties, propertyId]
+      : currentProperties.filter(id => id !== propertyId);
+    
+    onFiltersChange({
+      ...filters,
+      selectedProperties: newProperties.length > 0 ? newProperties : undefined
+    });
+  }, [filters, onFiltersChange]);
+
+  const handleSelectAllProperties = useCallback(() => {
+    const allPropertyIds = availableProperties.map(p => p.id);
+    onFiltersChange({
+      ...filters,
+      selectedProperties: allPropertyIds.length > 0 ? allPropertyIds : undefined
+    });
+  }, [filters, onFiltersChange, availableProperties]);
+
+  const handleDeselectAllProperties = useCallback(() => {
+    onFiltersChange({
+      ...filters,
+      selectedProperties: undefined
     });
   }, [filters, onFiltersChange]);
 
@@ -580,6 +614,109 @@ const AnalysisFilters = memo(({
                 </div>
 
                 <Separator />
+
+                {/* Properties Filter - only show in session/portfolio mode */}
+                {isPortfolioMode && availableProperties.length > 0 && (
+                  <>
+                    <div className="space-y-3" data-testid="property-filters">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium flex items-center">
+                          <Building2 className="h-4 w-4 mr-1.5" />
+                          Properties
+                          {filters.selectedProperties?.length && (
+                            <Badge variant="outline" className="ml-2 text-xs">
+                              {filters.selectedProperties.length} selected
+                            </Badge>
+                          )}
+                        </Label>
+                        <div className="flex gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleSelectAllProperties}
+                            className="text-xs h-7 px-2"
+                            data-testid="button-select-all-properties"
+                            disabled={isLoadingProperties}
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={handleDeselectAllProperties}
+                            className="text-xs h-7 px-2"
+                            data-testid="button-deselect-all-properties"
+                            disabled={isLoadingProperties || !filters.selectedProperties?.length}
+                          >
+                            Deselect All
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {isLoadingProperties ? (
+                        <div className="space-y-2">
+                          {[...Array(3)].map((_, i) => (
+                            <div key={i} className="flex items-center space-x-2">
+                              <Skeleton className="h-4 w-4" />
+                              <Skeleton className="h-4 flex-1" />
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                          {availableProperties.map((property) => {
+                            const isSelected = filters.selectedProperties?.includes(property.id) || false;
+                            const isSubject = property.profileType === 'subject';
+                            
+                            return (
+                              <div 
+                                key={property.id} 
+                                className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted/50" 
+                                data-testid={`property-${property.id}`}
+                              >
+                                <Checkbox
+                                  id={`property-${property.id}`}
+                                  checked={isSelected}
+                                  onCheckedChange={(checked) => handlePropertyChange(property.id, checked as boolean)}
+                                  data-testid={`checkbox-property-${property.id}`}
+                                />
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2">
+                                    {isSubject ? (
+                                      <Home className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                                    ) : (
+                                      <Building2 className="h-3 w-3 text-orange-500 flex-shrink-0" />
+                                    )}
+                                    <Label 
+                                      htmlFor={`property-${property.id}`} 
+                                      className="text-sm cursor-pointer font-medium truncate"
+                                      data-testid={`label-property-${property.id}`}
+                                    >
+                                      {property.name}
+                                    </Label>
+                                    <Badge 
+                                      variant={isSubject ? "default" : "secondary"} 
+                                      className="text-xs flex-shrink-0"
+                                    >
+                                      {isSubject ? "Subject" : "Competitor"}
+                                    </Badge>
+                                  </div>
+                                  {property.address && (
+                                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                      {property.address}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <Separator />
+                  </>
+                )}
 
                 {/* Lease Terms */}
                 <div className="space-y-3" data-testid="lease-term-filters">
