@@ -49,6 +49,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [showApplyDialog, setShowApplyDialog] = useState(false);
   const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
   const [hasInitialized, setHasInitialized] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
@@ -315,56 +316,125 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   };
 
   const handleExportToExcel = async () => {
-    const property = propertyQuery.data?.property;
     const optimization = optimizationQuery.data;
     
-    if (!property || !optimization) {
+    // Check if optimization data exists
+    if (!optimization) {
       toast({
         title: "Export Failed",
-        description: "No optimization data available to export.",
+        description: "Please generate optimization recommendations first, then try exporting again.",
         variant: "destructive",
       });
       return;
     }
 
-    const exportData: ExcelExportData = {
-      propertyInfo: {
-        address: property.address,
-        type: property.propertyType || 'Unknown',
-        units: property.totalUnits || 0,
-        builtYear: property.builtYear || 0,
-      },
-      units: optimization.units.map(unit => ({
-        unitNumber: unit.unitNumber,
-        unitType: unit.unitType,
-        currentRent: parseFloat(unit.currentRent),
-        recommendedRent: unit.recommendedRent ? parseFloat(unit.recommendedRent) : undefined,
-        change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
-        annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
-        status: unit.status,
-        confidenceLevel: 'Medium', // Default confidence level
-        reasoning: 'AI-generated pricing recommendation' // Default reasoning
-      })),
-      summary: {
-        totalIncrease: parseFloat(optimization.report.totalIncrease),
-        affectedUnits: optimization.report.affectedUnits,
-        avgIncrease: parseFloat(optimization.report.avgIncrease),
-        riskLevel: optimization.report.riskLevel,
-      }
-    };
+    setIsExporting(true);
 
     try {
+      let exportData: ExcelExportData;
+
+      if (isSessionMode) {
+        // Session mode - portfolio export
+        const sessionData = sessionQuery.data;
+        const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
+        
+        if (subjectProperties.length === 0) {
+          toast({
+            title: "Export Failed",
+            description: "No subject properties found in portfolio. Please ensure you have properties marked as 'subject' in your session.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // For portfolio mode, create a combined export
+        const totalUnits = subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0);
+        const portfolioAddress = subjectProperties.length === 1 
+          ? subjectProperties[0].address 
+          : `Portfolio (${subjectProperties.length} properties)`;
+        
+        exportData = {
+          propertyInfo: {
+            address: portfolioAddress,
+            type: 'Portfolio',
+            units: totalUnits,
+            builtYear: Math.min(...subjectProperties.map(p => p.builtYear || new Date().getFullYear())),
+          },
+          units: optimization.units.map(unit => ({
+            unitNumber: unit.unitNumber,
+            unitType: unit.unitType,
+            currentRent: parseFloat(unit.currentRent),
+            recommendedRent: unit.recommendedRent ? parseFloat(unit.recommendedRent) : undefined,
+            change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
+            annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
+            status: unit.status,
+            confidenceLevel: 'Medium',
+            reasoning: 'AI-generated portfolio optimization recommendation'
+          })),
+          summary: {
+            totalIncrease: parseFloat(optimization.report.totalIncrease),
+            affectedUnits: optimization.report.affectedUnits,
+            avgIncrease: parseFloat(optimization.report.avgIncrease),
+            riskLevel: optimization.report.riskLevel,
+          }
+        };
+      } else {
+        // Single property mode
+        const property = propertyQuery.data?.property;
+        
+        if (!property) {
+          toast({
+            title: "Export Failed",
+            description: "Property data not available. Please refresh the page and try again.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        exportData = {
+          propertyInfo: {
+            address: property.address,
+            type: property.propertyType || 'Unknown',
+            units: property.totalUnits || 0,
+            builtYear: property.builtYear || 0,
+          },
+          units: optimization.units.map(unit => ({
+            unitNumber: unit.unitNumber,
+            unitType: unit.unitType,
+            currentRent: parseFloat(unit.currentRent),
+            recommendedRent: unit.recommendedRent ? parseFloat(unit.recommendedRent) : undefined,
+            change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
+            annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
+            status: unit.status,
+            confidenceLevel: 'Medium',
+            reasoning: 'AI-generated pricing recommendation'
+          })),
+          summary: {
+            totalIncrease: parseFloat(optimization.report.totalIncrease),
+            affectedUnits: optimization.report.affectedUnits,
+            avgIncrease: parseFloat(optimization.report.avgIncrease),
+            riskLevel: optimization.report.riskLevel,
+          }
+        };
+      }
+
       await exportToExcel(exportData);
+      
       toast({
         title: "Export Successful",
-        description: "Optimization report has been downloaded as Excel file.",
+        description: isSessionMode 
+          ? `Portfolio optimization report downloaded (${optimization.units.length} units across ${sessionQuery.data?.propertyProfiles?.filter(p => p.profileType === 'subject').length || 0} properties).`
+          : `Property optimization report downloaded (${optimization.units.length} units).`,
       });
     } catch (error) {
+      console.error('Excel export failed:', error);
       toast({
         title: "Export Failed",
-        description: "Failed to generate Excel file. Please try again.",
+        description: "Failed to generate Excel file. Please try again or check your browser's download settings.",
         variant: "destructive",
       });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -467,12 +537,12 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           </h3>
           <Button 
             onClick={handleExportToExcel}
-            disabled={!optimizationQuery.data}
-            className="bg-green-600 hover:bg-green-700"
+            disabled={!optimizationQuery.data || isExporting}
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="button-export-excel"
           >
             <FileSpreadsheet className="mr-2 h-4 w-4" />
-            Export to Excel
+            {isExporting ? 'Exporting...' : 'Export to Excel'}
           </Button>
         </div>
 
