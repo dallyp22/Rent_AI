@@ -223,7 +223,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const applyPricingMutation = useMutation({
     mutationFn: async (unitPrices: Record<string, number>) => {
       const endpoint = isSessionMode 
-        ? `/api/sessions/${sessionId}/apply-pricing`
+        ? `/api/analysis-sessions/${sessionId}/apply-pricing`
         : `/api/properties/${params.id}/apply-pricing`;
       const res = await apiRequest("POST", endpoint, { unitPrices });
       return res.json();

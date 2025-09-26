@@ -16,7 +16,7 @@ export function useWorkflowState(workflowId: string, isSessionMode?: boolean) {
 
   // Determine the appropriate endpoint based on session mode
   const getEndpointPrefix = () => {
-    return isSessionMode ? `/api/sessions/${workflowId}/workflow` : `/api/workflow/${workflowId}`;
+    return isSessionMode ? `/api/analysis-sessions/${workflowId}/workflow` : `/api/workflow/${workflowId}`;
   };
 
   const loadState = async (): Promise<WorkflowState | null> => {

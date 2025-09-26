@@ -1,0 +1,168 @@
+19The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+value @ js.stripe.com/acacia/stripe.js:1Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+Nc @ www.googletagmanager…=AW-11411994397:136Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+Nc @ www.googletagmanager…=AW-11411994397:136Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+q @ www.googletagmanager…=AW-11411994397:506Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:237Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:718Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:718Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+value @ js.stripe.com/acacia/stripe.js:1Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+e @ framework-40dca79c99de8d9b.js:1Understand this error
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+value @ js.stripe.com/acacia/stripe.js:1Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:237Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+Nc @ www.googletagmanager…=AW-11411994397:136Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+Nc @ www.googletagmanager…=AW-11411994397:136Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+q @ www.googletagmanager…=AW-11411994397:506Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:718Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+(anonymous) @ recaptcha__en.js:718Understand this error
+ The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.
+value @ js.stripe.com/acacia/stripe.js:1Understand this error
+The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+19The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+19The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+PropertyPilotV2:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+PropertyPilotV2:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+PropertyPilotV2:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+ 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+ [LaunchDarkly] LaunchDarkly client initialized
+ Deprecated API for given entry type.
+(anonymous) @ analytics.tiktok.com…MWQ4YTc2MGFlMQ.js:1Understand this warning
+sw_iframe.html?origi…A%2F%2Freplit.com:7 Uncaught SyntaxError: Identifier 'r' has already been declaredUnderstand this error
+ task queue exceeded allotted deadline by 35ms
+(anonymous) @ _app-1545256dae4bda17.js:34Understand this warning
+PropertyPilotV2:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+70Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.Understand this error
+ Unrecognized feature: 'ambient-light-sensor'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'battery'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'execution-while-not-rendered'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'execution-while-out-of-viewport'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'layout-animations'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'legacy-image-formats'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'navigation-override'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'oversized-images'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'publickey-credentials'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'speaker-selection'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'unoptimized-images'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'unsized-media'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'pointer-lock'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Allow attribute will take precedence over 'allowfullscreen'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Allow attribute will take precedence over 'allowpaymentrequest'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'ambient-light-sensor'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'battery'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'execution-while-not-rendered'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'layout-animations'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'legacy-image-formats'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'navigation-override'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'oversized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'publickey-credentials'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'speaker-selection'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'unoptimized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Unrecognized feature: 'unsized-media'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Allow attribute will take precedence over 'allowfullscreen'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar4h%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+ Deprecated API for given entry type.
+(anonymous) @ analytics.tiktok.com…MWQ4YTc2MGFlMQ.js:1Understand this warning
+[Violation] Potential permissions policy violation: payment is not allowed in this document.Understand this error
+web-client-content-script.js:2 Uncaught TypeError: Failed to execute 'observe' on 'MutationObserver': parameter 1 is not of type 'Node'.
+    at HTMLIFrameElement.<anonymous> (web-client-content-script.js:2:535495)Understand this error
+[Violation] Potential permissions policy violation: payment is not allowed in this document.Understand this error
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://www.google.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://www.youtube.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://m.youtube.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+Console.js:61 [SUMMARIZE] Mode detected: Session-based multi-property
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+Console.js:61 [SESSION_SCRAPING] Auto-triggering scraping for session: 7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 [SESSION_SCRAPING] Found 2 properties to scrape
+Console.js:61 [SESSION_SCRAPING] Session scraping initiated successfully: Object
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+    at async initializeState (summarize.tsx:508:27)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+Console.js:61 [SUMMARIZE] Navigation params.sessionId: 7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 [SUMMARIZE] Navigation currentId: 7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 [SUMMARIZE] Navigating to: /session/analyze/7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 [ANALYZE] Mode: Session-based portfolio analysis
+Console.js:61 [ANALYZE] Session/Property ID: 7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+    at async initializeState (analyze.tsx:126:27)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+8Console.js:61 [ANALYZE] Analysis completed successfully
+Console.js:61 [OPTIMIZE] Mode: Session-based portfolio analysis
+Console.js:61 [OPTIMIZE] Session/Property ID: 7003d840-f9ea-4338-9c6f-5a40c0fa821b
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+    at async initializeOptimization (optimize.tsx:104:27)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
+3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev/api/analysis-sessions/7003d840-f9ea-4338-9c6f-5a40c0fa821b/optimization:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+Console.js:61 [OPTIMIZE] Unit deduplication check:
+Console.js:61   Original units count: 0
+Console.js:61   Unique unit IDs count: 0
+Console.js:61 [OPTIMIZE] Final deduplicated units count: 0
+Console.js:61 [SUMMARIZE] Mode detected: Session-based multi-property
+Console.js:61 [SESSION_SCRAPING] Auto-triggering scraping for session: 97398ae7-8f7b-4766-9017-744d87639f2d
+Console.js:61 [SESSION_SCRAPING] Found 2 properties to scrape
+Console.js:61 Error loading workflow state: SyntaxError: Failed to execute 'json' on 'Response': Unexpected token '<', "<!DOCTYPE "... is not valid JSON
+    at loadState (use-workflow-state.ts:28:37)
+Mt.forEach.n.<computed> @ Console.js:61Understand this error
