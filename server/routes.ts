@@ -4252,26 +4252,63 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
 
       console.log('[SESSION_OPTIMIZE] Optimizing', subjectProfiles.length, 'subject properties');
 
-      // Collect all units from all subject properties
+      // Get deduplicated scraped units for the session (using the same logic as other endpoints)
+      console.log('[SESSION_OPTIMIZE] Getting deduplicated scraped units for session:', sessionId);
+      const scrapedUnits = await storage.getScrapedUnitsForSession(sessionId);
+      console.log('[SESSION_OPTIMIZE] Found', scrapedUnits.length, 'deduplicated scraped units');
+      
+      // Transform scraped units to match the expected format and filter for subject properties only
       const allUnits = [];
       const propertyUnitMap = new Map();
 
-      for (const profile of subjectProfiles) {
-        const units = await storage.getPropertyUnitsByProfile(profile.id);
-        console.log(`[SESSION_OPTIMIZE] Property ${profile.name}: ${units.length} units`);
+      // Get property ID mapping from scraped properties to profiles
+      const scrapedPropertiesData = await Promise.all(
+        scrapedUnits.map(async (unit) => {
+          const scrapedProperty = await storage.getScrapedProperty(unit.propertyId);
+          return { unit, scrapedProperty };
+        })
+      );
+
+      // Group scraped units by property and only include subject properties
+      const unitsByPropertyName = new Map();
+      for (const { unit, scrapedProperty } of scrapedPropertiesData) {
+        if (!scrapedProperty) continue;
         
-        for (const unit of units) {
-          allUnits.push({
-            ...unit,
-            propertyProfileId: profile.id,
-            propertyName: profile.name,
-            propertyAddress: profile.address
-          });
+        const propertyName = scrapedProperty.name;
+        if (!unitsByPropertyName.has(propertyName)) {
+          unitsByPropertyName.set(propertyName, []);
         }
+        unitsByPropertyName.get(propertyName).push(unit);
+      }
+
+      for (const profile of subjectProfiles) {
+        // Find matching scraped units for this subject property by name
+        const propertyScrapedUnits = unitsByPropertyName.get(profile.name) || [];
+        
+        console.log(`[SESSION_OPTIMIZE] Subject property ${profile.name}: found ${propertyScrapedUnits.length} scraped units`);
+        
+        // Transform scraped units to match property unit format
+        const transformedUnits = propertyScrapedUnits.map(unit => ({
+          id: unit.id,
+          propertyProfileId: profile.id, // Map to the profile
+          propertyId: profile.id, // For compatibility
+          unitNumber: unit.unitNumber || `Unit-${unit.id}`,
+          unitType: unit.unitType,
+          currentRent: unit.rent?.toString() || '0',
+          recommendedRent: null, // Will be set by optimization
+          status: unit.status || 'available',
+          bedrooms: unit.bedrooms || 0,
+          bathrooms: unit.bathrooms?.toString() || '0',
+          squareFootage: unit.squareFootage || 0,
+          propertyName: profile.name,
+          propertyAddress: profile.address
+        }));
+        
+        allUnits.push(...transformedUnits);
         
         propertyUnitMap.set(profile.id, {
           profile,
-          units: units
+          units: transformedUnits
         });
       }
 
