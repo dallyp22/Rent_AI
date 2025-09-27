@@ -268,8 +268,21 @@ export class DrizzleStorage implements IStorage {
 
   async deletePropertyProfile(id: string): Promise<boolean> {
     try {
+      console.log('[DRIZZLE_STORAGE] Deleting property profile and its references:', id);
+      
+      // First, remove all references from session_property_profiles table
+      const sessionRefsResult = await db.delete(sessionPropertyProfiles)
+        .where(eq(sessionPropertyProfiles.propertyProfileId, id));
+      
+      console.log('[DRIZZLE_STORAGE] Removed', sessionRefsResult.rowCount || 0, 'session references for property profile:', id);
+      
+      // Then delete the property profile itself
       const result = await db.delete(propertyProfiles).where(eq(propertyProfiles.id, id));
-      return result.rowCount > 0;
+      
+      const deleted = result.rowCount > 0;
+      console.log('[DRIZZLE_STORAGE] Property profile deletion result:', deleted);
+      
+      return deleted;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error deleting property profile:', error);
       throw new Error(`Failed to delete property profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1085,24 +1098,27 @@ export class DrizzleStorage implements IStorage {
     try {
       console.log('[DRIZZLE_STORAGE] Replacing scraped units for property:', propertyId, 'with', units.length, 'new units');
       
-      // Use transaction to ensure atomicity
-      return await db.transaction(async (tx) => {
-        // First, clear existing units for this property
-        await tx.delete(scrapedUnits).where(eq(scrapedUnits.propertyId, propertyId));
-        
-        // Then insert new units
-        if (units.length === 0) {
-          console.log('[DRIZZLE_STORAGE] No new units to insert for property:', propertyId);
-          return [];
-        }
-        
-        const createdUnits = await tx.insert(scrapedUnits).values(units).returning();
-        console.log('[DRIZZLE_STORAGE] Successfully replaced', createdUnits.length, 'scraped units for property:', propertyId);
-        
-        return createdUnits;
-      });
+      // First, clear existing units for this property (use existing method)
+      await this.clearScrapedUnitsForProperty(propertyId);
+      console.log('[DRIZZLE_STORAGE] Cleared existing units for property:', propertyId);
+      
+      // Then insert new units (if any)
+      if (units.length === 0) {
+        console.log('[DRIZZLE_STORAGE] No new units to insert for property:', propertyId);
+        return [];
+      }
+      
+      // Insert all new units in a single bulk operation
+      const createdUnits = await db.insert(scrapedUnits).values(units).returning();
+      console.log('[DRIZZLE_STORAGE] Successfully replaced', createdUnits.length, 'scraped units for property:', propertyId);
+      
+      return createdUnits;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error replacing scraped units for property:', error);
+      // If insertion failed after deletion, log this critical situation
+      if (error instanceof Error && error.message.includes('insert')) {
+        console.error('[DRIZZLE_STORAGE] CRITICAL: Units were cleared but insertion failed. Property has no units now.');
+      }
       throw new Error(`Failed to replace scraped units for property: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
