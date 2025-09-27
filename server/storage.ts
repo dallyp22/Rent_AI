@@ -432,6 +432,7 @@ export class DrizzleStorage implements IStorage {
     try {
       const result = await db.select({
         id: propertyProfiles.id,
+        userId: propertyProfiles.userId,
         name: propertyProfiles.name,
         address: propertyProfiles.address,
         url: propertyProfiles.url,
@@ -1807,6 +1808,7 @@ export class MemStorageLegacy implements IStorage {
     const profile: PropertyProfile = {
       ...insertProfile,
       id,
+      userId: insertProfile.userId ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
       city: insertProfile.city ?? null,
@@ -1838,6 +1840,18 @@ export class MemStorageLegacy implements IStorage {
   async getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
     return Array.from(this.propertyProfiles.values()).filter(
       profile => profile.profileType === profileType
+    );
+  }
+
+  async getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]> {
+    return Array.from(this.propertyProfiles.values()).filter(
+      profile => profile.userId === userId
+    );
+  }
+
+  async getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
+    return Array.from(this.propertyProfiles.values()).filter(
+      profile => profile.userId === userId && profile.profileType === profileType
     );
   }
 
@@ -1894,6 +1908,12 @@ export class MemStorageLegacy implements IStorage {
 
   async getAllAnalysisSessions(): Promise<AnalysisSession[]> {
     return Array.from(this.analysisSessions.values());
+  }
+
+  async getAnalysisSessionsByUser(userId: string): Promise<AnalysisSession[]> {
+    return Array.from(this.analysisSessions.values()).filter(
+      session => session.userId === userId
+    );
   }
 
   async updateAnalysisSession(id: string, updates: Partial<AnalysisSession>): Promise<AnalysisSession | undefined> {
