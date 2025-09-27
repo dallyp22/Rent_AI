@@ -126,6 +126,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [currentModifiedPrices, setCurrentModifiedPrices] = useState<Record<string, number>>({});
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
@@ -475,22 +476,57 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units: totalUnits,
             builtYear: Math.min(...subjectProperties.map(p => p.builtYear || new Date().getFullYear())),
           },
-          units: optimization.units.map(unit => ({
-            unitNumber: unit.unitNumber,
-            unitType: unit.unitType,
-            currentRent: parseFloat(unit.currentRent),
-            recommendedRent: unit.recommendedRent ? parseFloat(unit.recommendedRent) : undefined,
-            change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
-            annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
-            status: unit.status,
-            reasoning: 'AI-generated portfolio optimization recommendation'
-          })),
-          summary: {
-            totalIncrease: parseFloat(optimization.report.totalIncrease),
-            affectedUnits: optimization.report.affectedUnits,
-            avgIncrease: parseFloat(optimization.report.avgIncrease),
-            riskLevel: optimization.report.riskLevel,
-          }
+          units: optimization.units.map(unit => {
+            // Use modified price if available, otherwise use recommended rent
+            const adjustedPrice = currentModifiedPrices[unit.id] || 
+              (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
+            const currentRent = parseFloat(unit.currentRent);
+            const change = adjustedPrice - currentRent;
+            
+            return {
+              unitNumber: unit.unitNumber,
+              unitType: unit.unitType,
+              currentRent: currentRent,
+              recommendedRent: adjustedPrice,
+              change: change,
+              annualImpact: change * 12,
+              status: unit.status,
+              reasoning: currentModifiedPrices[unit.id] 
+                ? 'User-adjusted pricing recommendation' 
+                : 'AI-generated portfolio optimization recommendation'
+            };
+          }),
+          summary: (() => {
+            // Recalculate summary based on adjusted prices
+            let totalIncrease = 0;
+            let affectedUnits = 0;
+            let totalCurrentRent = 0;
+            
+            optimization.units.forEach(unit => {
+              const currentRent = parseFloat(unit.currentRent);
+              totalCurrentRent += currentRent;
+              
+              const adjustedPrice = currentModifiedPrices[unit.id] || 
+                (unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent);
+              const change = adjustedPrice - currentRent;
+              
+              if (change !== 0) {
+                affectedUnits++;
+                totalIncrease += change * 12; // Annual increase
+              }
+            });
+            
+            const avgIncrease = totalCurrentRent > 0 
+              ? ((totalIncrease / 12) / totalCurrentRent * 100).toFixed(2)
+              : '0';
+            
+            return {
+              totalIncrease: totalIncrease,
+              affectedUnits: affectedUnits,
+              avgIncrease: parseFloat(avgIncrease),
+              riskLevel: optimization.report.riskLevel,
+            };
+          })()
         };
       } else {
         // Single property mode
@@ -512,22 +548,57 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units: property.totalUnits || 0,
             builtYear: property.builtYear || 0,
           },
-          units: optimization.units.map(unit => ({
-            unitNumber: unit.unitNumber,
-            unitType: unit.unitType,
-            currentRent: parseFloat(unit.currentRent),
-            recommendedRent: unit.recommendedRent ? parseFloat(unit.recommendedRent) : undefined,
-            change: unit.recommendedRent ? parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent) : 0,
-            annualImpact: unit.recommendedRent ? (parseFloat(unit.recommendedRent) - parseFloat(unit.currentRent)) * 12 : 0,
-            status: unit.status,
-            reasoning: 'AI-generated pricing recommendation'
-          })),
-          summary: {
-            totalIncrease: parseFloat(optimization.report.totalIncrease),
-            affectedUnits: optimization.report.affectedUnits,
-            avgIncrease: parseFloat(optimization.report.avgIncrease),
-            riskLevel: optimization.report.riskLevel,
-          }
+          units: optimization.units.map(unit => {
+            // Use modified price if available, otherwise use recommended rent
+            const adjustedPrice = currentModifiedPrices[unit.id] || 
+              (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
+            const currentRent = parseFloat(unit.currentRent);
+            const change = adjustedPrice - currentRent;
+            
+            return {
+              unitNumber: unit.unitNumber,
+              unitType: unit.unitType,
+              currentRent: currentRent,
+              recommendedRent: adjustedPrice,
+              change: change,
+              annualImpact: change * 12,
+              status: unit.status,
+              reasoning: currentModifiedPrices[unit.id] 
+                ? 'User-adjusted pricing recommendation' 
+                : 'AI-generated pricing recommendation'
+            };
+          }),
+          summary: (() => {
+            // Recalculate summary based on adjusted prices
+            let totalIncrease = 0;
+            let affectedUnits = 0;
+            let totalCurrentRent = 0;
+            
+            optimization.units.forEach(unit => {
+              const currentRent = parseFloat(unit.currentRent);
+              totalCurrentRent += currentRent;
+              
+              const adjustedPrice = currentModifiedPrices[unit.id] || 
+                (unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent);
+              const change = adjustedPrice - currentRent;
+              
+              if (change !== 0) {
+                affectedUnits++;
+                totalIncrease += change * 12; // Annual increase
+              }
+            });
+            
+            const avgIncrease = totalCurrentRent > 0 
+              ? ((totalIncrease / 12) / totalCurrentRent * 100).toFixed(2)
+              : '0';
+            
+            return {
+              totalIncrease: totalIncrease,
+              affectedUnits: affectedUnits,
+              avgIncrease: parseFloat(avgIncrease),
+              riskLevel: optimization.report.riskLevel,
+            };
+          })()
         };
       }
 
@@ -783,6 +854,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units={deduplicatedUnits}
             report={optimizationQuery.data.report}
             onApplyChanges={handleApplyChanges}
+            onPricesChange={setCurrentModifiedPrices}
           />
         ) : (
           <div className="text-center py-8" data-testid="no-data-state">

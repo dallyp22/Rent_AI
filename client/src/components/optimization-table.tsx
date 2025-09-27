@@ -13,6 +13,7 @@ interface OptimizationTableProps {
   units: PropertyUnit[];
   report: OptimizationReport;
   onApplyChanges?: (unitPrices: Record<string, number>) => void;
+  onPricesChange?: (unitPrices: Record<string, number>) => void;
 }
 
 interface UnitWithDetails extends PropertyUnit {
@@ -124,7 +125,7 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
 
 TableRow.displayName = 'TableRow';
 
-function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableProps) {
+function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: OptimizationTableProps) {
   const [modifiedPrices, setModifiedPrices] = useState<Record<string, number>>({});
   const [selectedUnitType, setSelectedUnitType] = useState<string>("all");
   const [bulkFixedAmount, setBulkFixedAmount] = useState<string>("");
@@ -142,7 +143,11 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     setModifiedPrices(initialPrices);
     setHistory([initialPrices]);
     setHistoryIndex(0);
-  }, [units]);
+    // Report initial prices to parent
+    if (onPricesChange) {
+      onPricesChange(initialPrices);
+    }
+  }, [units, onPricesChange]);
 
   // Get unique unit types for filtering
   const unitTypes = useMemo(() => {
@@ -194,13 +199,18 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     // Immediately update the price for responsive UI
     const updated = { ...modifiedPrices, [unitId]: newPrice };
     setModifiedPrices(updated);
+    
+    // Report change to parent immediately
+    if (onPricesChange) {
+      onPricesChange(updated);
+    }
 
     // Debounce the history update to avoid excessive history entries during rapid changes
     const timeout = setTimeout(() => {
       addToHistory(updated);
     }, 300);
     setDebounceTimeout(timeout);
-  }, [modifiedPrices, debounceTimeout]);
+  }, [modifiedPrices, debounceTimeout, onPricesChange]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -218,7 +228,12 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     const updated = { ...modifiedPrices, [unitId]: newPrice };
     setModifiedPrices(updated);
     addToHistory(updated);
-  }, [modifiedPrices]);
+    
+    // Report change to parent
+    if (onPricesChange) {
+      onPricesChange(updated);
+    }
+  }, [modifiedPrices, onPricesChange]);
 
   const applyBulkPercentage = (percentage: number) => {
     const updated: Record<string, number> = {};
@@ -234,6 +249,11 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     const newPrices = { ...modifiedPrices, ...updated };
     setModifiedPrices(newPrices);
     addToHistory(newPrices);
+    
+    // Report bulk changes to parent
+    if (onPricesChange) {
+      onPricesChange(newPrices);
+    }
   };
 
   const applyBulkFixed = (amount: number, operation: 'add' | 'subtract') => {
@@ -251,6 +271,11 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     const newPrices = { ...modifiedPrices, ...updated };
     setModifiedPrices(newPrices);
     addToHistory(newPrices);
+    
+    // Report bulk changes to parent
+    if (onPricesChange) {
+      onPricesChange(newPrices);
+    }
   };
 
   const setToMarket = (multiplier: number = 1) => {
@@ -268,6 +293,11 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     const newPrices = { ...modifiedPrices, ...updated };
     setModifiedPrices(newPrices);
     addToHistory(newPrices);
+    
+    // Report bulk changes to parent
+    if (onPricesChange) {
+      onPricesChange(newPrices);
+    }
   };
 
   const resetToRecommendations = () => {
@@ -278,6 +308,11 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
     });
     setModifiedPrices(updated);
     addToHistory(updated);
+    
+    // Report reset to parent
+    if (onPricesChange) {
+      onPricesChange(updated);
+    }
   };
 
   const addToHistory = (prices: Record<string, number>) => {
@@ -290,14 +325,24 @@ function OptimizationTable({ units, report, onApplyChanges }: OptimizationTableP
   const undo = () => {
     if (historyIndex > 0) {
       setHistoryIndex(historyIndex - 1);
-      setModifiedPrices(history[historyIndex - 1]);
+      const previousPrices = history[historyIndex - 1];
+      setModifiedPrices(previousPrices);
+      // Report undo to parent
+      if (onPricesChange) {
+        onPricesChange(previousPrices);
+      }
     }
   };
 
   const redo = () => {
     if (historyIndex < history.length - 1) {
       setHistoryIndex(historyIndex + 1);
-      setModifiedPrices(history[historyIndex + 1]);
+      const nextPrices = history[historyIndex + 1];
+      setModifiedPrices(nextPrices);
+      // Report redo to parent
+      if (onPricesChange) {
+        onPricesChange(nextPrices);
+      }
     }
   };
 
