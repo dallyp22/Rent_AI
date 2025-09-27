@@ -1476,8 +1476,15 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         // If metadata wasn't provided but competitive filtering is requested, fetch it server-side
         if (!effectiveCompetitiveRelationships && session.portfolioId) {
           try {
-            effectiveCompetitiveRelationships = await storage.getCompetitiveRelationshipsByPortfolio(session.portfolioId);
-            console.log('[SESSION_FILTERED_ANALYSIS] Fetched competitive relationships server-side:', effectiveCompetitiveRelationships.length);
+            const dbRelationships = await storage.getCompetitiveRelationshipsByPortfolio(session.portfolioId);
+            // Convert database types to expected API types
+            effectiveCompetitiveRelationships = dbRelationships.map(rel => ({
+              ...rel,
+              createdAt: rel.createdAt ? rel.createdAt.toISOString() : new Date().toISOString(),
+              isActive: rel.isActive ?? true,
+              relationshipType: rel.relationshipType as "direct_competitor" | "indirect_competitor" | "market_leader" | "market_follower"
+            }));
+            console.log('[SESSION_FILTERED_ANALYSIS] Fetched competitive relationships server-side:', effectiveCompetitiveRelationships?.length || 0);
           } catch (fetchError) {
             console.warn('[SESSION_FILTERED_ANALYSIS] Failed to fetch competitive relationships server-side:', fetchError);
           }
@@ -1485,8 +1492,15 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         
         if (!effectivePropertyProfiles) {
           try {
-            effectivePropertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
-            console.log('[SESSION_FILTERED_ANALYSIS] Fetched property profiles server-side:', effectivePropertyProfiles.length);
+            const dbPropertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+            // Convert database types to expected API types
+            effectivePropertyProfiles = dbPropertyProfiles.map(profile => ({
+              ...profile,
+              amenities: profile.amenities || [],
+              createdAt: profile.createdAt ? profile.createdAt.toISOString() : undefined,
+              updatedAt: profile.updatedAt ? profile.updatedAt.toISOString() : undefined
+            }));
+            console.log('[SESSION_FILTERED_ANALYSIS] Fetched property profiles server-side:', effectivePropertyProfiles?.length || 0);
           } catch (fetchError) {
             console.warn('[SESSION_FILTERED_ANALYSIS] Failed to fetch property profiles server-side:', fetchError);
           }
