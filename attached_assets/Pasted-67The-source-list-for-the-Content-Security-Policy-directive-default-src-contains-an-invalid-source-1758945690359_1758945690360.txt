@@ -1,0 +1,159 @@
+67The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+67The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+67The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+PropertyPilotV2:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+PropertyPilotV2:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+PropertyPilotV2:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+ 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+ [LaunchDarkly] LaunchDarkly client initialized
+ Deprecated API for given entry type.
+(anonymous) @ analytics.tiktok.com…MWQ4YTc2MGFlMQ.js:1Understand this warning
+sw_iframe.html?origi…A%2F%2Freplit.com:7 Uncaught SyntaxError: Identifier 'r' has already been declaredUnderstand this error
+ task queue exceeded allotted deadline by 35ms
+(anonymous) @ _app-1545256dae4bda17.js:34Understand this warning
+PropertyPilotV2:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+48Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.Understand this error
+ Unrecognized feature: 'ambient-light-sensor'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'battery'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'execution-while-not-rendered'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'execution-while-out-of-viewport'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'layout-animations'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'legacy-image-formats'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'navigation-override'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'oversized-images'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'publickey-credentials'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'speaker-selection'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'unoptimized-images'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'unsized-media'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Unrecognized feature: 'pointer-lock'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Allow attribute will take precedence over 'allowfullscreen'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+ Allow attribute will take precedence over 'allowpaymentrequest'.
+_ @ framework-40dca79c99de8d9b.js:1Understand this warning
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The source list for the Content Security Policy directive 'default-src' contains an invalid source: ''unsafe-dynamic''. It will be ignored.Understand this error
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The Content-Security-Policy directive 'default-src' contains 'report-uri' as a source expression. Did you want to add it as a directive and forget a semicolon?Understand this error
+/oidc-login-consent/8d9csTzkN6UMGgYpb-Wfa:1 The source list for Content Security Policy directive 'default-src' contains a source with an invalid path: '/api/4509669501698048/security/?sentry_key=7eb3d90eb4660416caf507087367e67e'. The query component, including the '?', will be ignored.Understand this error
+ Deprecated API for given entry type.
+(anonymous) @ analytics.tiktok.com…MWQ4YTc2MGFlMQ.js:1Understand this warning
+[Violation] Potential permissions policy violation: payment is not allowed in this document.Understand this error
+[Violation] Potential permissions policy violation: payment is not allowed in this document.Understand this error
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://www.google.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://www.youtube.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+ Failed to execute 'postMessage' on 'DOMWindow': The target origin provided ('https://m.youtube.com') does not match the recipient window's origin ('https://replit.com').
+Au @ www.googletagmanager…=AW-11411994397:465Understand this warning
+graphql:1  Failed to load resource: net::ERR_SOCKET_NOT_CONNECTEDUnderstand this error
+t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev/&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://t3.gstatic.com&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://t2.gstatic.com/&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://t3.gstatic.com/&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://t2.gstatic.com&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev/&size=32:1  Failed to load resource: the server responded with a status of 404 ()Understand this error
+ Invalid href 'https://3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev//session/optimize/68eca8e6-52e5-4904-be7b-c66a9d136a52' passed to next/router in page: '/replEnvironmentDesktop'. Repeated forward-slashes (//) or backslashes \ are not valid in the href.
+(anonymous) @ _app-1545256dae4bda17.js:34Understand this error
+stallwart.build.js:1 stallwart: failed ping 1
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'ambient-light-sensor'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'battery'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'execution-while-not-rendered'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'execution-while-out-of-viewport'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'layout-animations'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'legacy-image-formats'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'navigation-override'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'oversized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'publickey-credentials'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'speaker-selection'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'unoptimized-images'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Unrecognized feature: 'unsized-media'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Allow attribute will take precedence over 'allowfullscreen'.Understand this warning
+workspace_iframe.html?initialPath=%2F&id=%3Ar3ka%3A:32 Allow attribute will take precedence over 'allowpaymentrequest'.Understand this warning
+Console.js:61 [SUMMARIZE] Mode detected: Session-based multi-property
+Console.js:61 [SESSION_SCRAPING] Auto-triggering scraping for session: 91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [SESSION_SCRAPING] Found 2 properties to scrape
+Console.js:61 [SESSION_SCRAPING] Session scraping initiated successfully: Object
+Console.js:61 [SUMMARIZE] Navigation params.sessionId: 91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [SUMMARIZE] Navigation currentId: 91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [SUMMARIZE] Navigating to: /session/analyze/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [ANALYZE] Mode: Session-based portfolio analysis
+Console.js:61 [ANALYZE] Session/Property ID: 91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [ANALYZE] Analysis completed successfully
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+Console.js:61 [OPTIMIZE_DEBUG] No optimization data available
+Console.js:61 [OPTIMIZE] === ENHANCED SESSION MODE DETECTION SUMMARY ===
+Console.js:61 [OPTIMIZE] URL Location: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE] URL Params: Object
+Console.js:61 [OPTIMIZE] Detected Mode: Session-based portfolio analysis
+Console.js:61 [OPTIMIZE] Session/Property ID: 91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE] Detection Confidence: high
+Console.js:61 [OPTIMIZE] Expected API Endpoints:
+Console.js:61 [OPTIMIZE]   - Session Query: /api/analysis-sessions/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE]   - Optimization: /api/analysis-sessions/91fd5554-7758-4f39-85ba-94e1c0198f10/optimization
+Console.js:61 [OPTIMIZE]   - Optimize: /api/analysis-sessions/91fd5554-7758-4f39-85ba-94e1c0198f10/optimize
+Console.js:61 [OPTIMIZE] ================================================
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
+3829ff13-8c9b-4348-85d8-b2b96f6512fb-00-3fr945czayglo.worf.replit.dev/api/analysis-sessions/91fd5554-7758-4f39-85ba-94e1c0198f10/optimization:1  Failed to load resource: the server responded with a status of 404 (Not Found)Understand this error
+Console.js:61 [OPTIMIZE_MUTATION] Using endpoint: /api/analysis-sessions/91fd5554-7758-4f39-85ba-94e1c0198f10/optimize
+Console.js:61 [OPTIMIZE_MUTATION] Mode: session
+Console.js:61 [OPTIMIZE_MUTATION] Data: Object
+Console.js:61 [OPTIMIZE_DETECTION] Starting session mode detection...
+Console.js:61 [OPTIMIZE_DETECTION] Params: Object
+Console.js:61 [OPTIMIZE_DETECTION] Current URL: /session/optimize/91fd5554-7758-4f39-85ba-94e1c0198f10
+Console.js:61 [OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found
+Console.js:61 [OPTIMIZE_DETECTION] Final detection result: Object
