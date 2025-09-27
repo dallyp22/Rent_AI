@@ -2,6 +2,32 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
+// Process-level error handlers for deployment stability
+process.on('uncaughtException', (error: Error) => {
+  console.error('[CRITICAL] Uncaught Exception:', error);
+  console.error(error.stack);
+  // Give the process time to write logs before exiting
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
+});
+
+process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  console.error('[CRITICAL] Unhandled Promise Rejection at:', promise, 'reason:', reason);
+  console.error(reason?.stack || reason);
+});
+
+// Graceful shutdown handlers
+process.on('SIGTERM', () => {
+  console.log('[INFO] SIGTERM signal received: closing HTTP server');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[INFO] SIGINT signal received: closing HTTP server');
+  process.exit(0);
+});
+
 const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
@@ -39,12 +65,22 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
+  // Global error handler with improved logging for deployment
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
+    // Log error details for debugging deployment issues
+    console.error('[ERROR] Request failed:', {
+      status,
+      message,
+      stack: err.stack,
+      path: _req.path,
+      method: _req.method
+    });
+
+    // Send response but don't re-throw (prevents crashes)
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
@@ -61,11 +97,31 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+  
+  // Add error handling for server startup
   server.listen({
     port,
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
+    console.log(`[DEPLOYMENT] Server successfully started`);
+    console.log(`[DEPLOYMENT] Listening on 0.0.0.0:${port}`);
+    console.log(`[DEPLOYMENT] Environment: ${app.get("env")}`);
     log(`serving on port ${port}`);
   });
-})();
+
+  // Handle server errors
+  server.on('error', (error: any) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`[DEPLOYMENT ERROR] Port ${port} is already in use`);
+    } else if (error.code === 'EACCES') {
+      console.error(`[DEPLOYMENT ERROR] Insufficient permissions to bind to port ${port}`);
+    } else {
+      console.error('[DEPLOYMENT ERROR] Server error:', error);
+    }
+    process.exit(1);
+  });
+})().catch((error) => {
+  console.error('[DEPLOYMENT ERROR] Failed to start server:', error);
+  process.exit(1);
+});
