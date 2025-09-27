@@ -276,6 +276,12 @@ export class DrizzleStorage implements IStorage {
       
       console.log('[DRIZZLE_STORAGE] Removed', sessionRefsResult.rowCount || 0, 'session references for property profile:', id);
       
+      // Second, delete all scraping_jobs that reference this property profile
+      const scrapingJobsResult = await db.delete(scrapingJobs)
+        .where(eq(scrapingJobs.propertyProfileId, id));
+      
+      console.log('[DRIZZLE_STORAGE] Removed', scrapingJobsResult.rowCount || 0, 'scraping jobs for property profile:', id);
+      
       // Then delete the property profile itself
       const result = await db.delete(propertyProfiles).where(eq(propertyProfiles.id, id));
       
