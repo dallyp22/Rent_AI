@@ -119,7 +119,9 @@ export interface IStorage {
   createPropertyUnit(unit: InsertPropertyUnit): Promise<PropertyUnit>;
   getPropertyUnits(propertyId: string): Promise<PropertyUnit[]>;
   updatePropertyUnit(id: string, updates: Partial<PropertyUnit>): Promise<PropertyUnit | undefined>;
-  clearPropertyUnits(propertyId: string): Promise<void>;
+  clearPropertyUnits(propertyId: string): Promise<void>;  // Legacy - uses propertyId
+  clearPropertyUnitsByProfile(propertyProfileId: string): Promise<void>;  // New - uses propertyProfileId
+  replacePropertyUnitsByProfile(propertyProfileId: string, units: InsertPropertyUnit[]): Promise<PropertyUnit[]>;
   
   // Optimization Reports
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
@@ -877,11 +879,62 @@ export class DrizzleStorage implements IStorage {
   }
 
   async clearPropertyUnits(propertyId: string): Promise<void> {
+    // Legacy method for backward compatibility - uses propertyId
     try {
+      const existingUnits = await db.select().from(propertyUnits)
+        .where(eq(propertyUnits.propertyId, propertyId));
+      console.log(`[DRIZZLE_STORAGE] Clearing ${existingUnits.length} existing units for legacy property ${propertyId}`);
+      
       await db.delete(propertyUnits).where(eq(propertyUnits.propertyId, propertyId));
+      console.log(`[DRIZZLE_STORAGE] Successfully cleared units for legacy property ${propertyId}`);
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error clearing property units:', error);
       throw new Error(`Failed to clear property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async clearPropertyUnitsByProfile(propertyProfileId: string): Promise<void> {
+    // New method for property profiles - uses propertyProfileId
+    try {
+      const existingUnits = await db.select().from(propertyUnits)
+        .where(eq(propertyUnits.propertyProfileId, propertyProfileId));
+      console.log(`[DRIZZLE_STORAGE] Clearing ${existingUnits.length} existing units for profile ${propertyProfileId}`);
+      
+      await db.delete(propertyUnits).where(eq(propertyUnits.propertyProfileId, propertyProfileId));
+      console.log(`[DRIZZLE_STORAGE] Successfully cleared units for profile ${propertyProfileId}`);
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error clearing property units by profile:', error);
+      throw new Error(`Failed to clear property units by profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async replacePropertyUnitsByProfile(propertyProfileId: string, units: InsertPropertyUnit[]): Promise<PropertyUnit[]> {
+    try {
+      // Get existing units count for logging
+      const existingUnits = await db.select().from(propertyUnits)
+        .where(eq(propertyUnits.propertyProfileId, propertyProfileId));
+      console.log(`[DRIZZLE_STORAGE] Replacing ${existingUnits.length} existing units with ${units.length} new units for profile ${propertyProfileId}`);
+      
+      // Perform atomic replacement: delete old, insert new
+      const insertedUnits = await db.transaction(async (tx) => {
+        // Delete existing units
+        await tx.delete(propertyUnits).where(eq(propertyUnits.propertyProfileId, propertyProfileId));
+        console.log(`[DRIZZLE_STORAGE] Deleted ${existingUnits.length} old units for profile ${propertyProfileId}`);
+        
+        // Insert new units if any
+        if (units.length > 0) {
+          const inserted = await tx.insert(propertyUnits).values(units).returning();
+          console.log(`[DRIZZLE_STORAGE] Inserted ${inserted.length} new units for profile ${propertyProfileId}`);
+          return inserted;
+        }
+        return [];
+      });
+      
+      console.log(`[DRIZZLE_STORAGE] Replacement complete: ${insertedUnits.length} units now exist for profile ${propertyProfileId}`);
+      return insertedUnits;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error replacing property units:', error);
+      throw new Error(`Failed to replace property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -2101,12 +2154,48 @@ export class MemStorageLegacy implements IStorage {
   }
 
   async clearPropertyUnits(propertyId: string): Promise<void> {
+    // Legacy method for backward compatibility - uses propertyId
     const unitsToDelete = Array.from(this.propertyUnits.keys()).filter(id => {
       const unit = this.propertyUnits.get(id);
       return unit && unit.propertyId === propertyId;
     });
     
+    console.log(`[MEM_STORAGE] Clearing ${unitsToDelete.length} existing units for legacy property ${propertyId}`);
     unitsToDelete.forEach(id => this.propertyUnits.delete(id));
+    console.log(`[MEM_STORAGE] Successfully cleared units for legacy property ${propertyId}`);
+  }
+
+  async clearPropertyUnitsByProfile(propertyProfileId: string): Promise<void> {
+    // New method for property profiles - uses propertyProfileId
+    const unitsToDelete = Array.from(this.propertyUnits.keys()).filter(id => {
+      const unit = this.propertyUnits.get(id);
+      return unit && unit.propertyProfileId === propertyProfileId;
+    });
+    
+    console.log(`[MEM_STORAGE] Clearing ${unitsToDelete.length} existing units for profile ${propertyProfileId}`);
+    unitsToDelete.forEach(id => this.propertyUnits.delete(id));
+    console.log(`[MEM_STORAGE] Successfully cleared units for profile ${propertyProfileId}`);
+  }
+
+  async replacePropertyUnitsByProfile(propertyProfileId: string, units: InsertPropertyUnit[]): Promise<PropertyUnit[]> {
+    // Get existing units count for logging
+    const existingUnits = Array.from(this.propertyUnits.values()).filter(
+      unit => unit.propertyProfileId === propertyProfileId
+    );
+    console.log(`[MEM_STORAGE] Replacing ${existingUnits.length} existing units with ${units.length} new units for profile ${propertyProfileId}`);
+    
+    // Delete existing units
+    await this.clearPropertyUnitsByProfile(propertyProfileId);
+    
+    // Insert new units
+    const insertedUnits: PropertyUnit[] = [];
+    for (const unit of units) {
+      const newUnit = await this.createPropertyUnit(unit);
+      insertedUnits.push(newUnit);
+    }
+    
+    console.log(`[MEM_STORAGE] Replacement complete: ${insertedUnits.length} units now exist for profile ${propertyProfileId}`);
+    return insertedUnits;
   }
 
   async createOptimizationReport(insertReport: InsertOptimizationReport): Promise<OptimizationReport> {

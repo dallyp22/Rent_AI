@@ -77,20 +77,23 @@ class ScrapingJobProcessor {
           totalUnits: parsedData.property.totalUnits || propertyProfile.totalUnits
         });
         
-        // Clear existing units for this property profile and create new ones
-        await storage.clearPropertyUnits(job.propertyProfileId!);
+        // Prepare units array for atomic replacement
+        const unitsToReplace = parsedData.units
+          .filter(unitData => unitData.unitType)
+          .map(unitData => ({
+            propertyProfileId: job.propertyProfileId!,
+            unitNumber: unitData.unitNumber || `${unitData.unitType}-${Math.random().toString(36).substr(2, 9)}`,
+            unitType: unitData.unitType,
+            currentRent: unitData.rent ? unitData.rent.toString() : "0",
+            status: "available" as const
+          }));
         
-        for (const unitData of parsedData.units) {
-          if (unitData.unitType) {
-            await storage.createPropertyUnit({
-              propertyProfileId: job.propertyProfileId!,
-              unitNumber: unitData.unitNumber || `${unitData.unitType}-${Math.random().toString(36).substr(2, 9)}`,
-              unitType: unitData.unitType,
-              currentRent: unitData.rent ? unitData.rent.toString() : "0",
-              status: "available"
-            });
-          }
-        }
+        console.log(`[JOB_PROCESSOR] Replacing units for property profile ${job.propertyProfileId} with ${unitsToReplace.length} new units`);
+        
+        // Atomically replace all units for this property profile
+        const replacedUnits = await storage.replacePropertyUnitsByProfile(job.propertyProfileId!, unitsToReplace);
+        
+        console.log(`[JOB_PROCESSOR] Successfully replaced units for property profile ${job.propertyProfileId}, now has ${replacedUnits.length} units`);
         
         // Create scraped property record
         const scrapedProperty = await storage.createScrapedProperty({
