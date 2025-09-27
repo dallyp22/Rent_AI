@@ -17,6 +17,7 @@ Preferred communication style: Simple, everyday language.
 - **UI Framework**: shadcn/ui components built on Radix UI primitives with Tailwind CSS
 - **Form Handling**: React Hook Form with Zod validation for type-safe form management
 - **Styling**: Tailwind CSS with CSS custom properties for theming support
+- **Navigation**: Hierarchical sidebar with collapsible sections - Property Profiles, Portfolio Dashboard, and Selection Matrix are nested under Property Input for cleaner organization
 
 ### Backend Architecture
 - **Runtime**: Node.js with Express.js framework
