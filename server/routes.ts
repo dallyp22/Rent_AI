@@ -4526,28 +4526,40 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       const sessionReport = sessionReports[0];
       console.log('[GET_SESSION_OPTIMIZATION] Using optimization report:', sessionReport.id, 'created at:', sessionReport.createdAt);
 
-      // Get property profiles in the session
-      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
-      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+      // Get scraped units for this session (the actual units from web scraping)
+      console.log('[GET_SESSION_OPTIMIZATION] Retrieving scraped units for session:', sessionId);
+      const scrapedUnits = await storage.getScrapedUnitsForSession(sessionId);
+      console.log('[GET_SESSION_OPTIMIZATION] Found', scrapedUnits.length, 'scraped units for session', sessionId);
 
-      // Collect ALL units from all subject properties (not just optimized ones)
-      const allUnits = [];
-      for (const profile of subjectProfiles) {
-        const units = await storage.getPropertyUnitsByProfile(profile.id);
-        
-        for (const unit of units) {
-          allUnits.push({
-            ...unit,
-            propertyProfileId: profile.id,
-            propertyName: profile.name,
-            propertyAddress: profile.address
-          });
-        }
-      }
+      // Transform scraped units to include property information for the frontend
+      const allUnits = scrapedUnits.map(unit => {
+        console.log('[GET_SESSION_OPTIMIZATION] Processing scraped unit:', unit.unitNumber, 'from property ID:', unit.propertyId);
+        return {
+          ...unit,
+          // Keep the original scraped unit structure but ensure all expected fields are present
+          id: unit.id,
+          propertyId: unit.propertyId,
+          unitNumber: unit.unitNumber || `Unit-${unit.id}`,
+          unitType: unit.unitType || 'Unknown',
+          currentRent: unit.rent || '0',
+          bedrooms: unit.bedrooms || 0,
+          bathrooms: unit.bathrooms || '0',
+          squareFootage: unit.squareFootage || 0,
+          status: 'available', // Scraped units are typically available units
+          availabilityDate: unit.availabilityDate
+        };
+      });
 
       const response = {
+        sessionId: sessionId,
+        sessionName: session.name,
         report: sessionReport,
         units: allUnits,
+        portfolioSummary: {
+          totalUnits: allUnits.length,
+          sessionId: sessionId,
+          reportId: sessionReport.id
+        },
         portfolio: {
           [sessionId]: {
             units: allUnits,
@@ -4555,6 +4567,13 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
           }
         }
       };
+
+      console.log('[GET_SESSION_OPTIMIZATION] Final response structure:');
+      console.log('[GET_SESSION_OPTIMIZATION] - SessionId:', response.sessionId);
+      console.log('[GET_SESSION_OPTIMIZATION] - SessionName:', response.sessionName);
+      console.log('[GET_SESSION_OPTIMIZATION] - Units count:', response.units.length);
+      console.log('[GET_SESSION_OPTIMIZATION] - Portfolio summary:', JSON.stringify(response.portfolioSummary, null, 2));
+      console.log('[GET_SESSION_OPTIMIZATION] Response ready to send with', response.units.length, 'units');
 
       res.json(response);
     } catch (error) {
