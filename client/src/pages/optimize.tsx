@@ -175,7 +175,9 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     queryKey: isSessionMode 
       ? ['/api/analysis-sessions', sessionId, 'optimization']
       : ['/api/properties', params.id, 'optimization'],
-    enabled: hasInitialized
+    enabled: hasInitialized,
+    staleTime: 0, // Override global staleTime to ensure fresh data
+    refetchOnMount: true // Always refetch when component mounts
   });
 
   const syncUnitsMutation = useMutation({
