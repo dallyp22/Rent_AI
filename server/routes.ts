@@ -6,6 +6,7 @@ import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated } from "./replitAuth";
 import OpenAI from "openai";
 import { z } from "zod";
+import crypto from "crypto";
 
 // Using GPT-4o as the latest available model
 const openai = new OpenAI({ 
@@ -4410,6 +4411,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
             const marketAdjustment = Math.floor(Math.random() * 100) + 50; // Conservative $50-150 increase
             const recommendedRent = currentRent + marketAdjustment;
             return {
+              id: crypto.randomUUID(), // Add unique ID for fallback recommendations
               propertyName: unit.propertyName,
               propertyProfileId: unit.propertyProfileId,
               unitNumber: unit.unitNumber,
@@ -4446,18 +4448,49 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
 
       // Build optimized units directly from recommendations without database updates
       const updatedUnits = [];
-      for (const recommendation of optimizationData.portfolioRecommendations || []) {
-        const unit = allUnits.find(u => 
+      
+      // Create a map for faster lookups by property ID
+      const unitsByProperty = new Map();
+      for (const unit of allUnits) {
+        if (!unitsByProperty.has(unit.propertyProfileId)) {
+          unitsByProperty.set(unit.propertyProfileId, []);
+        }
+        unitsByProperty.get(unit.propertyProfileId).push(unit);
+      }
+      
+      // Process recommendations and match them to actual units
+      for (let i = 0; i < optimizationData.portfolioRecommendations?.length || 0; i++) {
+        const recommendation = optimizationData.portfolioRecommendations[i];
+        
+        // Try to find matching unit by exact unit number first
+        let unit = allUnits.find(u => 
           u.propertyProfileId === recommendation.propertyProfileId && 
           u.unitNumber === recommendation.unitNumber
         );
         
+        // If no exact match, try to match by index within the property
+        if (!unit) {
+          const propertyUnits = unitsByProperty.get(recommendation.propertyProfileId) || [];
+          // Match by relative position within property's units
+          const propertyRecommendations = optimizationData.portfolioRecommendations.filter((r: any) => 
+            r.propertyProfileId === recommendation.propertyProfileId
+          );
+          const indexWithinProperty = propertyRecommendations.indexOf(recommendation);
+          
+          if (indexWithinProperty >= 0 && indexWithinProperty < propertyUnits.length) {
+            unit = propertyUnits[indexWithinProperty];
+            console.log(`[SESSION_OPTIMIZE] Matched recommendation by index: AI unit ${recommendation.unitNumber} -> actual unit ${unit.unitNumber}`);
+          }
+        }
+        
         if (unit) {
-          // Create the optimized unit response directly without database update
+          // Create the optimized unit response with unique ID and correct unit number
           updatedUnits.push({
+            id: crypto.randomUUID(), // Add unique ID for each unit
             ...unit,
-            propertyName: recommendation.propertyName,
+            propertyName: recommendation.propertyName || unit.propertyName,
             propertyProfileId: recommendation.propertyProfileId,
+            unitNumber: unit.unitNumber, // Use actual unit number from scraped data
             currentRent: recommendation.currentRent?.toString() || unit.currentRent,
             recommendedRent: recommendation.recommendedRent?.toString(),
             marketAverage: recommendation.marketAverage,
@@ -4467,29 +4500,56 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
             reasoning: recommendation.reasoning,
             // Include additional unit fields for frontend display
             unitType: unit.unitType,
-            unitNumber: unit.unitNumber,
             bedrooms: unit.bedrooms,
             bathrooms: unit.bathrooms,
             squareFootage: unit.squareFootage,
             status: unit.status
           });
         } else {
-          // Include recommendations even if no matching unit found (AI generated recommendations)
-          console.log(`[SESSION_OPTIMIZE] Including AI recommendation without unit match: ${recommendation.unitNumber}`);
-          updatedUnits.push({
-            propertyName: recommendation.propertyName,
-            propertyProfileId: recommendation.propertyProfileId,
-            unitNumber: recommendation.unitNumber,
-            unitType: recommendation.unitType || 'Unknown',
-            currentRent: recommendation.currentRent?.toString() || '0',
-            recommendedRent: recommendation.recommendedRent?.toString(),
-            marketAverage: recommendation.marketAverage,
-            change: recommendation.change,
-            annualImpact: recommendation.annualImpact,
-            confidenceLevel: recommendation.confidenceLevel,
-            reasoning: recommendation.reasoning,
-            status: 'available'
-          });
+          // If no matching unit found, try to use the first available unit from the property as template
+          const propertyUnits = unitsByProperty.get(recommendation.propertyProfileId) || [];
+          const templateUnit = propertyUnits[0];
+          
+          console.log(`[SESSION_OPTIMIZE] No matching unit found for recommendation: ${recommendation.unitNumber}`);
+          
+          if (templateUnit) {
+            // Use template unit to maintain consistency with actual data
+            updatedUnits.push({
+              id: crypto.randomUUID(), // Add unique ID for each unit
+              propertyName: recommendation.propertyName,
+              propertyProfileId: recommendation.propertyProfileId,
+              unitNumber: templateUnit.unitNumber, // Use a real unit number from the property
+              unitType: templateUnit.unitType || recommendation.unitType || 'Unknown',
+              currentRent: recommendation.currentRent?.toString() || '0',
+              recommendedRent: recommendation.recommendedRent?.toString(),
+              marketAverage: recommendation.marketAverage,
+              change: recommendation.change,
+              annualImpact: recommendation.annualImpact,
+              confidenceLevel: recommendation.confidenceLevel,
+              reasoning: recommendation.reasoning,
+              bedrooms: templateUnit.bedrooms || 0,
+              bathrooms: templateUnit.bathrooms || '0',
+              squareFootage: templateUnit.squareFootage || 0,
+              status: 'available'
+            });
+          } else {
+            // Fallback: create unit with unique ID even if no template available
+            updatedUnits.push({
+              id: crypto.randomUUID(), // Add unique ID for each unit
+              propertyName: recommendation.propertyName,
+              propertyProfileId: recommendation.propertyProfileId,
+              unitNumber: `Unit-${i + 1}`, // Generate a sequential unit number
+              unitType: recommendation.unitType || 'Unknown',
+              currentRent: recommendation.currentRent?.toString() || '0',
+              recommendedRent: recommendation.recommendedRent?.toString(),
+              marketAverage: recommendation.marketAverage,
+              change: recommendation.change,
+              annualImpact: recommendation.annualImpact,
+              confidenceLevel: recommendation.confidenceLevel,
+              reasoning: recommendation.reasoning,
+              status: 'available'
+            });
+          }
         }
       }
       
