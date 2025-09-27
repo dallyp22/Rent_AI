@@ -140,6 +140,8 @@ export interface IStorage {
   
   createScrapedUnit(unit: InsertScrapedUnit): Promise<ScrapedUnit>;
   getScrapedUnitsByProperty(propertyId: string): Promise<ScrapedUnit[]>;
+  clearScrapedUnitsForProperty(propertyId: string): Promise<void>;
+  replaceScrapedUnitsForProperty(propertyId: string, units: InsertScrapedUnit[]): Promise<ScrapedUnit[]>;
   
   // Get subject property (marked as isSubjectProperty: true)
   getSubjectScrapedProperty(): Promise<ScrapedProperty | null>;
@@ -635,18 +637,50 @@ export class DrizzleStorage implements IStorage {
 
   async getScrapedUnitsForSession(sessionId: string): Promise<ScrapedUnit[]> {
     try {
-      // Get all scraping jobs for this session and then get their scraped units
+      console.log('[DRIZZLE_STORAGE] Getting scraped units for session with deduplication:', sessionId);
+      
+      // Get all scraping jobs for this session, ordered by creation date (newest first)
       const jobs = await this.getScrapingJobsBySession(sessionId);
-      const allUnits: ScrapedUnit[] = [];
+      console.log('[DRIZZLE_STORAGE] Found', jobs.length, 'scraping jobs for session:', sessionId);
+      
+      // Group jobs by property URL to find the latest job per property
+      const latestJobsByProperty = new Map<string, ScrapingJob>();
       
       for (const job of jobs) {
-        const properties = await this.getScrapedPropertiesByJob(job.id);
+        // Get the property profiles for this job to determine the property URL
+        const propertyProfile = job.propertyProfileId ? await this.getPropertyProfile(job.propertyProfileId) : null;
+        const propertyUrl = propertyProfile?.url; // Remove cityUrl fallback per architect recommendation
+        
+        if (propertyUrl) {
+          const existingJob = latestJobsByProperty.get(propertyUrl);
+          // Handle null createdAt dates properly
+          const jobCreatedAt = job.createdAt ? new Date(job.createdAt) : new Date(0);
+          const existingJobCreatedAt = existingJob?.createdAt ? new Date(existingJob.createdAt) : new Date(0);
+          
+          if (!existingJob || jobCreatedAt > existingJobCreatedAt) {
+            latestJobsByProperty.set(propertyUrl, job);
+          }
+        }
+      }
+      
+      console.log('[DRIZZLE_STORAGE] Found', latestJobsByProperty.size, 'unique properties with latest jobs');
+      
+      // Collect units only from the latest job for each property
+      const allUnits: ScrapedUnit[] = [];
+      
+      // Fix MapIterator compatibility by converting to array
+      for (const [propertyUrl, latestJob] of Array.from(latestJobsByProperty.entries())) {
+        console.log('[DRIZZLE_STORAGE] Getting units from latest job for property:', propertyUrl, 'job:', latestJob.id);
+        
+        const properties = await this.getScrapedPropertiesByJob(latestJob.id);
         for (const property of properties) {
           const units = await this.getScrapedUnitsByProperty(property.id);
+          console.log('[DRIZZLE_STORAGE] Found', units.length, 'units for property:', property.name);
           allUnits.push(...units);
         }
       }
       
+      console.log('[DRIZZLE_STORAGE] Total deduplicated units for session:', allUnits.length);
       return allUnits;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting scraped units for session:', error);
@@ -1031,6 +1065,45 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error creating scraped unit:', error);
       throw new Error(`Failed to create scraped unit: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Clear all scraped units for a specific property
+  async clearScrapedUnitsForProperty(propertyId: string): Promise<void> {
+    try {
+      console.log('[DRIZZLE_STORAGE] Clearing scraped units for property:', propertyId);
+      const result = await db.delete(scrapedUnits).where(eq(scrapedUnits.propertyId, propertyId));
+      console.log('[DRIZZLE_STORAGE] Cleared', result.rowCount, 'scraped units for property:', propertyId);
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error clearing scraped units for property:', error);
+      throw new Error(`Failed to clear scraped units for property: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Replace all scraped units for a property (clear existing + insert new)
+  async replaceScrapedUnitsForProperty(propertyId: string, units: InsertScrapedUnit[]): Promise<ScrapedUnit[]> {
+    try {
+      console.log('[DRIZZLE_STORAGE] Replacing scraped units for property:', propertyId, 'with', units.length, 'new units');
+      
+      // Use transaction to ensure atomicity
+      return await db.transaction(async (tx) => {
+        // First, clear existing units for this property
+        await tx.delete(scrapedUnits).where(eq(scrapedUnits.propertyId, propertyId));
+        
+        // Then insert new units
+        if (units.length === 0) {
+          console.log('[DRIZZLE_STORAGE] No new units to insert for property:', propertyId);
+          return [];
+        }
+        
+        const createdUnits = await tx.insert(scrapedUnits).values(units).returning();
+        console.log('[DRIZZLE_STORAGE] Successfully replaced', createdUnits.length, 'scraped units for property:', propertyId);
+        
+        return createdUnits;
+      });
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error replacing scraped units for property:', error);
+      throw new Error(`Failed to replace scraped units for property: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -2145,6 +2218,33 @@ export class MemStorageLegacy implements IStorage {
     return Array.from(this.scrapedUnits.values()).filter(
       unit => unit.propertyId === propertyId
     );
+  }
+
+  async clearScrapedUnitsForProperty(propertyId: string): Promise<void> {
+    console.log('[STORAGE] Clearing scraped units for property:', propertyId);
+    const unitsToDelete = Array.from(this.scrapedUnits.entries())
+      .filter(([_, unit]) => unit.propertyId === propertyId)
+      .map(([id, _]) => id);
+    
+    unitsToDelete.forEach(id => this.scrapedUnits.delete(id));
+    console.log('[STORAGE] Cleared', unitsToDelete.length, 'scraped units for property:', propertyId);
+  }
+
+  async replaceScrapedUnitsForProperty(propertyId: string, units: InsertScrapedUnit[]): Promise<ScrapedUnit[]> {
+    console.log('[STORAGE] Replacing scraped units for property:', propertyId, 'with', units.length, 'new units');
+    
+    // First, clear existing units for this property
+    await this.clearScrapedUnitsForProperty(propertyId);
+    
+    // Then insert new units
+    const insertedUnits: ScrapedUnit[] = [];
+    for (const insertUnit of units) {
+      const unit = await this.createScrapedUnit(insertUnit);
+      insertedUnits.push(unit);
+    }
+    
+    console.log('[STORAGE] Successfully replaced units for property:', propertyId, 'inserted:', insertedUnits.length);
+    return insertedUnits;
   }
 
   async getSubjectScrapedProperty(): Promise<ScrapedProperty | null> {

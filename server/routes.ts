@@ -101,22 +101,22 @@ class ScrapingJobProcessor {
           isSubjectProperty: propertyProfile.profileType === 'subject'
         });
         
-        // Create scraped units
-        for (const unitData of parsedData.units) {
-          if (unitData.unitType) {
-            await storage.createScrapedUnit({
-              propertyId: scrapedProperty.id,
-              unitNumber: unitData.unitNumber,
-              floorPlanName: unitData.floorPlanName,
-              unitType: unitData.unitType,
-              bedrooms: unitData.bedrooms,
-              bathrooms: unitData.bathrooms?.toString(),
-              squareFootage: unitData.squareFootage,
-              rent: unitData.rent?.toString(),
-              availabilityDate: unitData.availabilityDate
-            });
-          }
-        }
+        // Replace scraped units using write-path replacement (architect recommendation)
+        const unitsToInsert = parsedData.units
+          .filter(unitData => unitData.unitType)
+          .map(unitData => ({
+            propertyId: scrapedProperty.id,
+            unitNumber: unitData.unitNumber,
+            floorPlanName: unitData.floorPlanName,
+            unitType: unitData.unitType,
+            bedrooms: unitData.bedrooms,
+            bathrooms: unitData.bathrooms?.toString(),
+            squareFootage: unitData.squareFootage,
+            rent: unitData.rent?.toString(),
+            availabilityDate: unitData.availabilityDate
+          }));
+        
+        await storage.replaceScrapedUnitsForProperty(scrapedProperty.id, unitsToInsert);
 
         // Update job status to completed
         await storage.updateScrapingJob(jobId, {
@@ -1898,27 +1898,21 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           
           console.log(`Found ${unitData.length} units for property: ${property.name}`);
           
-          // Save scraped units to storage
-          const savedUnits = [];
-          for (const unit of unitData) {
-            try {
-              const savedUnit = await storage.createScrapedUnit({
-                propertyId: property.id,
-                unitNumber: unit.unitNumber,
-                floorPlanName: unit.floorPlanName,
-                unitType: unit.unitType,
-                bedrooms: unit.bedrooms,
-                bathrooms: unit.bathrooms?.toString() || null,
-                squareFootage: unit.squareFootage,
-                rent: unit.rent?.toString() || null,
-                availabilityDate: unit.availabilityDate,
-                status: unit.availabilityDate && unit.availabilityDate.toLowerCase().includes('available') ? 'available' : 'occupied'
-              });
-              savedUnits.push(savedUnit);
-            } catch (unitError) {
-              console.warn(`Failed to save unit for ${property.name}:`, unitError);
-            }
-          }
+          // Replace scraped units using write-path replacement (architect recommendation)
+          const unitsToInsert = unitData.map(unit => ({
+            propertyId: property.id,
+            unitNumber: unit.unitNumber,
+            floorPlanName: unit.floorPlanName,
+            unitType: unit.unitType,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms?.toString() || null,
+            squareFootage: unit.squareFootage,
+            rent: unit.rent?.toString() || null,
+            availabilityDate: unit.availabilityDate,
+            status: unit.availabilityDate && unit.availabilityDate.toLowerCase().includes('available') ? 'available' : 'occupied'
+          }));
+          
+          const savedUnits = await storage.replaceScrapedUnitsForProperty(property.id, unitsToInsert);
 
           // Update scraping job status
           await storage.updateScrapingJob(scrapingJob.id, {
@@ -5925,6 +5919,48 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // Test endpoint for matching logic - can be removed in production if desired
+
+  // API endpoint to test scraped units for session (with deduplication fix)
+  app.get("/api/scraped-units/session/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      console.log('[API] Getting scraped units for session:', sessionId);
+      
+      const units = await storage.getScrapedUnitsForSession(sessionId);
+      console.log('[API] Found', units.length, 'scraped units for session:', sessionId);
+      
+      res.json(units);
+    } catch (error) {
+      console.error("Error getting scraped units for session:", error);
+      res.status(500).json({ 
+        message: "Failed to get scraped units for session", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // API endpoint to test optimization by session  
+  app.get("/api/optimization/session/:sessionId", async (req, res) => {
+    try {
+      const { sessionId } = req.params;
+      console.log('[API] Getting optimization reports for session:', sessionId);
+      
+      const reports = await storage.getOptimizationReportsBySession(sessionId);
+      console.log('[API] Found', reports.length, 'optimization reports for session:', sessionId);
+      
+      if (reports.length > 0) {
+        console.log('[API] First report affected units:', reports[0].affectedUnits);
+      }
+      
+      res.json(reports);
+    } catch (error) {
+      console.error("Error getting optimization reports for session:", error);
+      res.status(500).json({ 
+        message: "Failed to get optimization reports for session", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;
