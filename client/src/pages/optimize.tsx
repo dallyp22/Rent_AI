@@ -574,20 +574,64 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   // Client-side deduplication of units to prevent React key warnings
   const deduplicatedUnits = useMemo(() => {
     if (!optimizationQuery.data) {
+      console.log('[OPTIMIZE_DEBUG] No optimization data available');
       return [];
     }
 
+    // Add comprehensive debugging to understand the API response structure
+    console.log('[OPTIMIZE_DEBUG] === OPTIMIZATION DATA STRUCTURE DEBUG ===');
+    console.log('[OPTIMIZE_DEBUG] Full optimizationQuery.data:', optimizationQuery.data);
+    console.log('[OPTIMIZE_DEBUG] Has portfolio property:', !!optimizationQuery.data.portfolio);
+    console.log('[OPTIMIZE_DEBUG] Has units property:', !!optimizationQuery.data.units);
+    console.log('[OPTIMIZE_DEBUG] Portfolio keys:', optimizationQuery.data.portfolio ? Object.keys(optimizationQuery.data.portfolio) : 'none');
+    console.log('[OPTIMIZE_DEBUG] Direct units count:', optimizationQuery.data.units ? optimizationQuery.data.units.length : 0);
+    console.log('[OPTIMIZE_DEBUG] Session mode:', isSessionMode);
+    
     let allUnits: PropertyUnit[] = [];
     
-    if (isSessionMode && optimizationQuery.data.portfolio) {
-      // Session mode: collect units from all properties in portfolio
-      Object.values(optimizationQuery.data.portfolio).forEach(propertyData => {
-        allUnits = allUnits.concat(propertyData.units);
-      });
+    // Enhanced logic to handle multiple response structures
+    if (isSessionMode) {
+      // First, try to get units from direct units array (new structure)
+      if (optimizationQuery.data.units && Array.isArray(optimizationQuery.data.units)) {
+        console.log('[OPTIMIZE_DEBUG] Session mode: Using direct units array');
+        allUnits = optimizationQuery.data.units;
+      }
+      // Fallback to portfolio structure if direct units array is empty or doesn't exist
+      else if (optimizationQuery.data.portfolio) {
+        console.log('[OPTIMIZE_DEBUG] Session mode: Using portfolio structure');
+        Object.values(optimizationQuery.data.portfolio).forEach(propertyData => {
+          if (propertyData.units && Array.isArray(propertyData.units)) {
+            allUnits = allUnits.concat(propertyData.units);
+          }
+        });
+      }
+      // Additional fallback: try to extract from any nested structure
+      else {
+        console.log('[OPTIMIZE_DEBUG] Session mode: Attempting deep extraction from response');
+        const extractUnitsRecursively = (obj: any): PropertyUnit[] => {
+          let units: PropertyUnit[] = [];
+          if (obj && typeof obj === 'object') {
+            if (Array.isArray(obj.units)) {
+              units = units.concat(obj.units);
+            }
+            if (typeof obj === 'object' && !Array.isArray(obj)) {
+              Object.values(obj).forEach(value => {
+                units = units.concat(extractUnitsRecursively(value));
+              });
+            }
+          }
+          return units;
+        };
+        allUnits = extractUnitsRecursively(optimizationQuery.data);
+      }
     } else {
       // Single property mode: use units directly
+      console.log('[OPTIMIZE_DEBUG] Single property mode: Using direct units');
       allUnits = optimizationQuery.data.units || [];
     }
+    
+    console.log('[OPTIMIZE_DEBUG] Extracted units count:', allUnits.length);
+    console.log('[OPTIMIZE_DEBUG] Sample unit (first 3):', allUnits.slice(0, 3));
 
     // Development logging to detect duplicates early
     if (import.meta.env.DEV) {
