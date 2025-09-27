@@ -4374,7 +4374,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       let marketContextStr = '';
       if (marketAverages.size > 0) {
         marketContextStr = 'Market Averages by Unit Type:\n';
-        for (const [unitType, stats] of marketAverages.entries()) {
+        for (const [unitType, stats] of Array.from(marketAverages.entries())) {
           marketContextStr += `- ${unitType}: $${stats.avg}/month (based on ${stats.count} competitor units)\n`;
         }
       }
@@ -4564,7 +4564,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
         riskLevel: portfolioSummary.riskLevel,
         // Store the optimized units and portfolio summary
         optimizedUnits: updatedUnits,
-        portfolioSummary: portfolioSummary
+        portfolioSummary: portfolioSummary as any
       });
 
       const response = {
