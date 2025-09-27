@@ -565,22 +565,110 @@ export class DrizzleStorage implements IStorage {
       const subjectUnits = unitsWithPropertyInfo.filter(unit => unit.isSubject);
       const competitorUnits = unitsWithPropertyInfo.filter(unit => !unit.isSubject);
       
+      // Apply filtering based on criteria
+      let filteredSubjectUnits = [...subjectUnits];
+      let filteredCompetitorUnits = [...competitorUnits];
+      
+      // Filter by bedroom types
+      if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
+        console.log('[FILTER] Applying bedroom filter:', criteria.bedroomTypes);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
+          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
+        );
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
+          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
+        );
+      }
+      
+      // Filter by price range
+      if (criteria.priceRange) {
+        console.log('[FILTER] Applying price range filter:', criteria.priceRange);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+          const rent = typeof unit.rent === 'string' ? 
+            parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent >= criteria.priceRange!.min && rent <= criteria.priceRange!.max;
+        });
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+          const rent = typeof unit.rent === 'string' ? 
+            parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent >= criteria.priceRange!.min && rent <= criteria.priceRange!.max;
+        });
+      }
+      
+      // Filter by square footage range
+      if (criteria.squareFootageRange) {
+        console.log('[FILTER] Applying square footage filter:', criteria.squareFootageRange);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
+          unit.squareFootage && 
+          unit.squareFootage >= criteria.squareFootageRange!.min && 
+          unit.squareFootage <= criteria.squareFootageRange!.max
+        );
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
+          unit.squareFootage && 
+          unit.squareFootage >= criteria.squareFootageRange!.min && 
+          unit.squareFootage <= criteria.squareFootageRange!.max
+        );
+      }
+      
+      // Filter by selected properties
+      if (criteria.selectedProperties && criteria.selectedProperties.length > 0) {
+        console.log('[FILTER] Applying property selection filter:', criteria.selectedProperties.length, 'properties');
+        // We need to get property profile IDs for the scraped properties
+        const selectedPropertyUrls = providedPropertyProfiles
+          ?.filter(p => criteria.selectedProperties!.includes(p.id))
+          .map(p => p.url) || [];
+        
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+          // For subject units, check if the property URL matches selected properties
+          return selectedPropertyUrls.some(url => unit.propertyName.includes(url.split('/').pop() || ''));
+        });
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+          // For competitor units, check if the property URL matches selected properties
+          return selectedPropertyUrls.some(url => unit.propertyName.includes(url.split('/').pop() || ''));
+        });
+      }
+      
+      // Filter by competitive set
+      if (criteria.competitiveSet && criteria.competitiveSet !== "all_competitors") {
+        console.log('[FILTER] Applying competitive set filter:', criteria.competitiveSet);
+        
+        switch (criteria.competitiveSet) {
+          case "subject_properties_only":
+            // Only keep subject units, clear competitor units
+            filteredCompetitorUnits = [];
+            break;
+            
+          case "internal_competitors_only":
+            // This would require knowledge of which competitors are "internal"
+            // For now, we'll keep all competitors (can be enhanced with relationship data)
+            break;
+            
+          case "external_competitors_only":
+            // This would require knowledge of which competitors are "external"  
+            // For now, we'll keep all competitors (can be enhanced with relationship data)
+            break;
+        }
+      }
+      
+      console.log('[FILTER] After filtering - Subject units:', filteredSubjectUnits.length, 'Competitor units:', filteredCompetitorUnits.length);
+      
       // Simplified analysis for database implementation
       const analysis: FilteredAnalysis = {
         marketPosition: "Competitive",
         pricingPowerScore: 75,
         competitiveAdvantages: ["Modern amenities", "Prime location"],
         recommendations: ["Consider rental optimization", "Enhance marketing"],
-        unitCount: unitsWithPropertyInfo.length,
-        avgRent: unitsWithPropertyInfo.length > 0 ? unitsWithPropertyInfo.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / unitsWithPropertyInfo.length : 0,
+        unitCount: filteredSubjectUnits.length + filteredCompetitorUnits.length,
+        avgRent: (filteredSubjectUnits.length + filteredCompetitorUnits.length) > 0 ? 
+          [...filteredSubjectUnits, ...filteredCompetitorUnits].reduce((sum, unit) => {
+            const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+            return sum + (isNaN(rent) ? 0 : rent);
+          }, 0) / (filteredSubjectUnits.length + filteredCompetitorUnits.length) : 0,
         percentileRank: 70,
         locationScore: 85,
         amenityScore: 80,
         pricePerSqFt: 2.5,
-        subjectUnits: subjectUnits.map(unit => ({
+        subjectUnits: filteredSubjectUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
           unitType: unit.unitType,
@@ -591,7 +679,7 @@ export class DrizzleStorage implements IStorage {
           isSubject: true,
           availabilityDate: unit.availabilityDate || undefined
         })),
-        competitorUnits: competitorUnits.map(unit => ({
+        competitorUnits: filteredCompetitorUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
           unitType: unit.unitType,
@@ -609,16 +697,16 @@ export class DrizzleStorage implements IStorage {
           amenities: { edge: 15, label: "Premium amenities", status: "advantage" }
         },
         aiInsights: ["Strong competitive position", "Excellent location advantage"],
-        subjectAvgRent: subjectUnits.length > 0 ? subjectUnits.reduce((sum, unit) => {
+        subjectAvgRent: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => {
           const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
           return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / subjectUnits.length : 0,
-        competitorAvgRent: competitorUnits.length > 0 ? competitorUnits.reduce((sum, unit) => {
+        }, 0) / filteredSubjectUnits.length : 0,
+        competitorAvgRent: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => {
           const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
           return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / competitorUnits.length : 0,
-        subjectAvgSqFt: subjectUnits.length > 0 ? subjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / subjectUnits.length : 0,
-        competitorAvgSqFt: competitorUnits.length > 0 ? competitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / competitorUnits.length : 0
+        }, 0) / filteredCompetitorUnits.length : 0,
+        subjectAvgSqFt: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredSubjectUnits.length : 0,
+        competitorAvgSqFt: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredCompetitorUnits.length : 0
       };
       
       return analysis;
@@ -1266,22 +1354,70 @@ export class DrizzleStorage implements IStorage {
       const subjectUnits = unitsWithPropertyInfo.filter(unit => unit.isSubject);
       const competitorUnits = unitsWithPropertyInfo.filter(unit => !unit.isSubject);
       
+      // Apply filtering based on criteria
+      let filteredSubjectUnits = [...subjectUnits];
+      let filteredCompetitorUnits = [...competitorUnits];
+      
+      // Filter by bedroom types (already applied in getFilteredScrapedUnits, but apply again for safety)
+      if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
+        console.log('[FILTER] Applying bedroom filter:', criteria.bedroomTypes);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
+          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
+        );
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
+          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
+        );
+      }
+      
+      // Filter by price range
+      if (criteria.priceRange) {
+        console.log('[FILTER] Applying price range filter:', criteria.priceRange);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+          const rent = typeof unit.rent === 'string' ? 
+            parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent >= criteria.priceRange!.min && rent <= criteria.priceRange!.max;
+        });
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+          const rent = typeof unit.rent === 'string' ? 
+            parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent >= criteria.priceRange!.min && rent <= criteria.priceRange!.max;
+        });
+      }
+      
+      // Filter by square footage range
+      if (criteria.squareFootageRange) {
+        console.log('[FILTER] Applying square footage filter:', criteria.squareFootageRange);
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
+          unit.squareFootage && 
+          unit.squareFootage >= criteria.squareFootageRange!.min && 
+          unit.squareFootage <= criteria.squareFootageRange!.max
+        );
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
+          unit.squareFootage && 
+          unit.squareFootage >= criteria.squareFootageRange!.min && 
+          unit.squareFootage <= criteria.squareFootageRange!.max
+        );
+      }
+      
+      console.log('[FILTER] After filtering - Subject units:', filteredSubjectUnits.length, 'Competitor units:', filteredCompetitorUnits.length);
+      
       // Generate simplified analysis
       const analysis: FilteredAnalysis = {
         marketPosition: "Competitive",
         pricingPowerScore: 75,
         competitiveAdvantages: ["Modern amenities", "Prime location"],
         recommendations: ["Consider rental optimization", "Enhance marketing"],
-        unitCount: unitsWithPropertyInfo.length,
-        avgRent: unitsWithPropertyInfo.length > 0 ? unitsWithPropertyInfo.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / unitsWithPropertyInfo.length : 0,
+        unitCount: filteredSubjectUnits.length + filteredCompetitorUnits.length,
+        avgRent: (filteredSubjectUnits.length + filteredCompetitorUnits.length) > 0 ? 
+          [...filteredSubjectUnits, ...filteredCompetitorUnits].reduce((sum, unit) => {
+            const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+            return sum + (isNaN(rent) ? 0 : rent);
+          }, 0) / (filteredSubjectUnits.length + filteredCompetitorUnits.length) : 0,
         percentileRank: 70,
         locationScore: 85,
         amenityScore: 80,
         pricePerSqFt: 2.5,
-        subjectUnits: subjectUnits.map(unit => ({
+        subjectUnits: filteredSubjectUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
           unitType: unit.unitType,
@@ -1292,7 +1428,7 @@ export class DrizzleStorage implements IStorage {
           isSubject: true,
           availabilityDate: unit.availabilityDate || undefined
         })),
-        competitorUnits: competitorUnits.map(unit => ({
+        competitorUnits: filteredCompetitorUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
           unitType: unit.unitType,
@@ -1310,14 +1446,14 @@ export class DrizzleStorage implements IStorage {
           amenities: { edge: 15, label: "Premium amenities", status: "advantage" }
         },
         aiInsights: ["Strong competitive position", "Excellent location advantage"],
-        subjectAvgRent: subjectUnits.length > 0 ? subjectUnits.reduce((sum, unit) => {
+        subjectAvgRent: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => {
           const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
           return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / subjectUnits.length : 0,
-        competitorAvgRent: competitorUnits.length > 0 ? competitorUnits.reduce((sum, unit) => {
+        }, 0) / filteredSubjectUnits.length : 0,
+        competitorAvgRent: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => {
           const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
           return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / competitorUnits.length : 0,
+        }, 0) / filteredCompetitorUnits.length : 0,
         subjectAvgSqFt: subjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (subjectUnits.length || 1),
         competitorAvgSqFt: competitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (competitorUnits.length || 1)
       };
