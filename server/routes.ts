@@ -3608,23 +3608,37 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Get all property profiles
   app.get("/api/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
+      // Comprehensive logging for debugging data isolation issue
+      console.log('[DEBUG] GET /api/property-profiles - Request started');
+      console.log('[DEBUG] req.user:', JSON.stringify(req.user, null, 2));
+      console.log('[DEBUG] req.user.claims:', JSON.stringify(req.user?.claims, null, 2));
+      
       const userId = req.user?.claims?.sub;
+      console.log('[DEBUG] Extracted userId from req.user.claims.sub:', userId);
+      
       if (!userId) {
+        console.log('[DEBUG] No userId found - returning 401');
         return res.status(401).json({ message: "User not authenticated" });
       }
       
       const { type } = req.query;
+      console.log('[DEBUG] Query type parameter:', type);
       
       let profiles;
       if (type && (type === 'subject' || type === 'competitor')) {
+        console.log(`[DEBUG] Fetching profiles for userId: ${userId} with type: ${type}`);
         profiles = await storage.getPropertyProfilesByUserAndType(userId, type as 'subject' | 'competitor');
       } else {
+        console.log(`[DEBUG] Fetching all profiles for userId: ${userId}`);
         profiles = await storage.getPropertyProfilesByUser(userId);
       }
       
+      console.log(`[DEBUG] Found ${profiles.length} profiles for user ${userId}`);
+      console.log('[DEBUG] Profile IDs returned:', profiles.map(p => ({ id: p.id, userId: p.userId, name: p.name })));
+      
       res.json(profiles);
     } catch (error) {
-      console.error("Error fetching property profiles:", error);
+      console.error("[ERROR] Error fetching property profiles:", error);
       res.status(500).json({ message: "Failed to fetch property profiles" });
     }
   });

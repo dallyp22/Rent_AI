@@ -259,27 +259,57 @@ export class DrizzleStorage implements IStorage {
 
   async getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]> {
     try {
-      return await db.select()
+      console.log('[DEBUG DRIZZLE_STORAGE] getPropertyProfilesByUser called with userId:', userId);
+      
+      // CRITICAL FIX: Only get profiles for the specific user
+      // Exclude profiles with null or empty userId
+      const query = db.select()
         .from(propertyProfiles)
-        .where(eq(propertyProfiles.userId, userId))
+        .where(and(
+          eq(propertyProfiles.userId, userId),
+          sql`${propertyProfiles.userId} IS NOT NULL`,
+          sql`${propertyProfiles.userId} != ''`
+        ))
         .orderBy(desc(propertyProfiles.createdAt));
+      
+      console.log('[DEBUG DRIZZLE_STORAGE] Executing query for userId:', userId);
+      const results = await query;
+      
+      console.log(`[DEBUG DRIZZLE_STORAGE] Query returned ${results.length} profiles for userId: ${userId}`);
+      console.log('[DEBUG DRIZZLE_STORAGE] Profile IDs returned:', results.map(p => ({ id: p.id, userId: p.userId, name: p.name })));
+      
+      return results;
     } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting property profiles by user:', error);
+      console.error('[ERROR DRIZZLE_STORAGE] Error getting property profiles by user:', error);
       throw new Error(`Failed to get property profiles by user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   async getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
     try {
-      return await db.select()
+      console.log('[DEBUG DRIZZLE_STORAGE] getPropertyProfilesByUserAndType called with userId:', userId, 'profileType:', profileType);
+      
+      // CRITICAL FIX: Only get profiles for the specific user and type
+      // Exclude profiles with null or empty userId
+      const query = db.select()
         .from(propertyProfiles)
         .where(and(
           eq(propertyProfiles.userId, userId),
-          eq(propertyProfiles.profileType, profileType)
+          eq(propertyProfiles.profileType, profileType),
+          sql`${propertyProfiles.userId} IS NOT NULL`,
+          sql`${propertyProfiles.userId} != ''`
         ))
         .orderBy(desc(propertyProfiles.createdAt));
+      
+      console.log('[DEBUG DRIZZLE_STORAGE] Executing query for userId:', userId, 'and type:', profileType);
+      const results = await query;
+      
+      console.log(`[DEBUG DRIZZLE_STORAGE] Query returned ${results.length} profiles for userId: ${userId} and type: ${profileType}`);
+      console.log('[DEBUG DRIZZLE_STORAGE] Profile IDs returned:', results.map(p => ({ id: p.id, userId: p.userId, name: p.name })));
+      
+      return results;
     } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting property profiles by user and type:', error);
+      console.error('[ERROR DRIZZLE_STORAGE] Error getting property profiles by user and type:', error);
       throw new Error(`Failed to get property profiles by user and type: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
