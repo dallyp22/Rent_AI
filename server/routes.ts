@@ -4300,24 +4300,27 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         console.log(`[SESSION_OPTIMIZE] Subject property ${profile.name}: found ${propertyScrapedUnits.length} scraped units`);
         
         // Transform scraped units to match property unit format
-        const transformedUnits = propertyScrapedUnits.map((unit: any) => ({
-          id: unit.id,
-          propertyProfileId: profile.id, // Map to the profile
-          propertyId: profile.id, // For compatibility
-          unitNumber: unit.unitNumber || `Unit-${unit.id}`,
-          unitType: unit.unitType,
-          currentRent: unit.rent?.toString() || '0',
-          recommendedRent: null, // Will be set by optimization
-          status: unit.status || 'available',
-          bedrooms: unit.bedrooms || 0,
-          bathrooms: unit.bathrooms?.toString() || '0',
-          squareFootage: unit.squareFootage || 0,
-          propertyName: profile.name,
-          propertyAddress: profile.address,
-          propertyType: profile.propertyType,
-          builtYear: profile.builtYear,
-          totalUnits: profile.totalUnits
-        }));
+        // IMPORTANT: Only include units with valid unit numbers (filter out null/undefined unit numbers)
+        const transformedUnits = propertyScrapedUnits
+          .filter((unit: any) => unit.unitNumber && unit.unitNumber !== null && unit.unitNumber !== undefined)
+          .map((unit: any) => ({
+            id: unit.id,
+            propertyProfileId: profile.id, // Map to the profile
+            propertyId: profile.id, // For compatibility
+            unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
+            unitType: unit.unitType,
+            currentRent: unit.rent?.toString() || '0',
+            recommendedRent: null, // Will be set by optimization
+            status: unit.status || 'available',
+            bedrooms: unit.bedrooms || 0,
+            bathrooms: unit.bathrooms?.toString() || '0',
+            squareFootage: unit.squareFootage || 0,
+            propertyName: profile.name,
+            propertyAddress: profile.address,
+            propertyType: profile.propertyType,
+            builtYear: profile.builtYear,
+            totalUnits: profile.totalUnits
+          }));
         
         allUnits.push(...transformedUnits);
         
@@ -4652,23 +4655,26 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
         console.log('[GET_SESSION_OPTIMIZATION] Found', scrapedUnits.length, 'scraped units for session', sessionId);
 
         // Transform scraped units to include property information for the frontend
-        allUnits = scrapedUnits.map(unit => {
-          console.log('[GET_SESSION_OPTIMIZATION] Processing scraped unit:', unit.unitNumber, 'from property ID:', unit.propertyId);
-          return {
-            ...unit,
-            // Keep the original scraped unit structure but ensure all expected fields are present
-            id: unit.id,
-            propertyId: unit.propertyId,
-            unitNumber: unit.unitNumber || `Unit-${unit.id}`,
-            unitType: unit.unitType || 'Unknown',
-            currentRent: unit.rent || '0',
-            bedrooms: unit.bedrooms || 0,
-            bathrooms: unit.bathrooms || '0',
-            squareFootage: unit.squareFootage || 0,
-            status: 'available', // Scraped units are typically available units
-            availabilityDate: unit.availabilityDate
-          };
-        });
+        // IMPORTANT: Only include units with valid unit numbers (filter out null/undefined unit numbers)
+        allUnits = scrapedUnits
+          .filter(unit => unit.unitNumber && unit.unitNumber !== null && unit.unitNumber !== undefined)
+          .map(unit => {
+            console.log('[GET_SESSION_OPTIMIZATION] Processing scraped unit:', unit.unitNumber, 'from property ID:', unit.propertyId);
+            return {
+              ...unit,
+              // Keep the original scraped unit structure but ensure all expected fields are present
+              id: unit.id,
+              propertyId: unit.propertyId,
+              unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
+              unitType: unit.unitType || 'Unknown',
+              currentRent: unit.rent || '0',
+              bedrooms: unit.bedrooms || 0,
+              bathrooms: unit.bathrooms || '0',
+              squareFootage: unit.squareFootage || 0,
+              status: 'available', // Scraped units are typically available units
+              availabilityDate: unit.availabilityDate
+            };
+          });
 
         portfolioSummary = {
           totalUnits: allUnits.length,
