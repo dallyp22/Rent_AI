@@ -182,15 +182,7 @@ export default function Sidebar() {
                 return (
                   <div key={navItem.name}>
                     <div
-                      onClick={() => {
-                        if (navItem.href) {
-                          // Navigate to the parent link
-                          window.location.href = navItem.href;
-                        } else {
-                          toggleExpanded(navItem.name);
-                        }
-                      }}
-                      className={`flex items-center px-3 py-2 rounded-md font-medium transition-colors cursor-pointer ${
+                      className={`flex items-center px-3 py-2 rounded-md font-medium transition-colors ${
                         (isActive || hasActiveChild)
                           ? "bg-primary text-primary-foreground"
                           : "hover:bg-accent text-muted-foreground hover:text-foreground"
@@ -198,14 +190,30 @@ export default function Sidebar() {
                       data-testid={`nav-link-${navItem.name.toLowerCase().replace(/\s+/g, '-')}`}
                     >
                       <ChevronRight 
-                        className={`w-4 h-4 mr-1 transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                        className={`w-4 h-4 mr-1 transition-transform cursor-pointer ${isExpanded ? 'rotate-90' : ''}`}
                         onClick={(e) => {
                           e.stopPropagation();
                           toggleExpanded(navItem.name);
                         }}
+                        data-testid={`chevron-${navItem.name.toLowerCase().replace(/\s+/g, '-')}`}
                       />
-                      <Icon className="w-5 h-5 mr-3" />
-                      {navItem.name}
+                      {navItem.href ? (
+                        <Link
+                          href={navItem.href}
+                          className="flex items-center flex-1"
+                        >
+                          <Icon className="w-5 h-5 mr-3" />
+                          {navItem.name}
+                        </Link>
+                      ) : (
+                        <div 
+                          className="flex items-center flex-1 cursor-pointer"
+                          onClick={() => toggleExpanded(navItem.name)}
+                        >
+                          <Icon className="w-5 h-5 mr-3" />
+                          {navItem.name}
+                        </div>
+                      )}
                     </div>
                     {isExpanded && (
                       <div className="mt-1 space-y-1">
