@@ -78,6 +78,8 @@ export interface IStorage {
   getPropertyProfile(id: string): Promise<PropertyProfile | undefined>;
   getAllPropertyProfiles(): Promise<PropertyProfile[]>;
   getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
+  getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]>;
+  getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
   updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined>;
   deletePropertyProfile(id: string): Promise<boolean>;
   
@@ -85,6 +87,7 @@ export interface IStorage {
   createAnalysisSession(session: InsertAnalysisSession): Promise<AnalysisSession>;
   getAnalysisSession(id: string): Promise<AnalysisSession | undefined>;
   getAllAnalysisSessions(): Promise<AnalysisSession[]>;
+  getAnalysisSessionsByUser(userId: string): Promise<AnalysisSession[]>;
   updateAnalysisSession(id: string, updates: Partial<AnalysisSession>): Promise<AnalysisSession | undefined>;
   deleteAnalysisSession(id: string): Promise<boolean>;
   
@@ -254,6 +257,33 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  async getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]> {
+    try {
+      return await db.select()
+        .from(propertyProfiles)
+        .where(eq(propertyProfiles.userId, userId))
+        .orderBy(desc(propertyProfiles.createdAt));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting property profiles by user:', error);
+      throw new Error(`Failed to get property profiles by user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
+    try {
+      return await db.select()
+        .from(propertyProfiles)
+        .where(and(
+          eq(propertyProfiles.userId, userId),
+          eq(propertyProfiles.profileType, profileType)
+        ))
+        .orderBy(desc(propertyProfiles.createdAt));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting property profiles by user and type:', error);
+      throw new Error(`Failed to get property profiles by user and type: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined> {
     try {
       const [updatedProfile] = await db.update(propertyProfiles)
@@ -325,6 +355,18 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting all analysis sessions:', error);
       throw new Error(`Failed to get analysis sessions: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getAnalysisSessionsByUser(userId: string): Promise<AnalysisSession[]> {
+    try {
+      return await db.select()
+        .from(analysisSessions)
+        .where(eq(analysisSessions.userId, userId))
+        .orderBy(desc(analysisSessions.createdAt));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting analysis sessions by user:', error);
+      throw new Error(`Failed to get analysis sessions by user: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

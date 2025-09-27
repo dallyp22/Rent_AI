@@ -3046,7 +3046,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based Workflow State Management
-  app.get("/api/analysis-sessions/:sessionId/workflow", async (req, res) => {
+  app.get("/api/analysis-sessions/:sessionId/workflow", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       let state = await storage.getWorkflowStateBySession(sessionId);
@@ -3069,7 +3069,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
-  app.put("/api/analysis-sessions/:sessionId/workflow", async (req, res) => {
+  app.put("/api/analysis-sessions/:sessionId/workflow", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       const state = {
@@ -3424,9 +3424,14 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Analysis Sessions endpoints
   
   // Get all analysis sessions
-  app.get("/api/analysis-sessions", async (req, res) => {
+  app.get("/api/analysis-sessions", isAuthenticated, async (req: any, res) => {
     try {
-      const sessions = await storage.getAllAnalysisSessions();
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      const sessions = await storage.getAnalysisSessionsByUser(userId);
       res.json(sessions);
     } catch (error) {
       console.error("Error fetching analysis sessions:", error);
@@ -3435,11 +3440,21 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get specific analysis session
-  app.get("/api/analysis-sessions/:sessionId", async (req, res) => {
+  app.get("/api/analysis-sessions/:sessionId", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const session = await storage.getAnalysisSession(req.params.sessionId);
       if (!session) {
         return res.status(404).json({ message: "Analysis session not found" });
+      }
+      
+      // Verify the session belongs to the user
+      if (session.userId && session.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       // Also get the property profiles in this session
@@ -3452,10 +3467,18 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Create analysis session
-  app.post("/api/analysis-sessions", async (req, res) => {
+  app.post("/api/analysis-sessions", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const sessionData = insertAnalysisSessionSchema.parse(req.body);
-      const session = await storage.createAnalysisSession(sessionData);
+      const session = await storage.createAnalysisSession({
+        ...sessionData,
+        userId
+      });
       res.json(session);
     } catch (error) {
       console.error("Error creating analysis session:", error);
@@ -3467,13 +3490,24 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Update analysis session
-  app.put("/api/analysis-sessions/:id", async (req, res) => {
+  app.put("/api/analysis-sessions/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const updateData = insertAnalysisSessionSchema.partial().parse(req.body);
-      const session = await storage.updateAnalysisSession(req.params.id, updateData);
-      if (!session) {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      // First verify the session belongs to the user
+      const existingSession = await storage.getAnalysisSession(req.params.id);
+      if (!existingSession) {
         return res.status(404).json({ message: "Analysis session not found" });
       }
+      if (existingSession.userId && existingSession.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const updateData = insertAnalysisSessionSchema.partial().parse(req.body);
+      const session = await storage.updateAnalysisSession(req.params.id, updateData);
       res.json(session);
     } catch (error) {
       console.error("Error updating analysis session:", error);
@@ -3485,12 +3519,23 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Delete analysis session
-  app.delete("/api/analysis-sessions/:id", async (req, res) => {
+  app.delete("/api/analysis-sessions/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const deleted = await storage.deleteAnalysisSession(req.params.id);
-      if (!deleted) {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      // First verify the session belongs to the user
+      const existingSession = await storage.getAnalysisSession(req.params.id);
+      if (!existingSession) {
         return res.status(404).json({ message: "Analysis session not found" });
       }
+      if (existingSession.userId && existingSession.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const deleted = await storage.deleteAnalysisSession(req.params.id);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting analysis session:", error);
@@ -3501,7 +3546,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Session Property Profiles endpoints
   
   // Add property profile to session
-  app.post("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+  app.post("/api/analysis-sessions/:sessionId/properties", isAuthenticated, async (req: any, res) => {
     try {
       const { propertyProfileId } = req.body;
       
@@ -3531,7 +3576,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Remove property profile from session
-  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", async (req, res) => {
+  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", isAuthenticated, async (req: any, res) => {
     try {
       const removed = await storage.removePropertyProfileFromSession(
         req.params.sessionId, 
@@ -3548,7 +3593,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get property profiles in session
-  app.get("/api/analysis-sessions/:sessionId/properties", async (req, res) => {
+  app.get("/api/analysis-sessions/:sessionId/properties", isAuthenticated, async (req: any, res) => {
     try {
       const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.sessionId);
       res.json(propertyProfiles);
@@ -3561,15 +3606,20 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Property Profiles CRUD Routes
   
   // Get all property profiles
-  app.get("/api/property-profiles", async (req, res) => {
+  app.get("/api/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const { type } = req.query;
       
       let profiles;
       if (type && (type === 'subject' || type === 'competitor')) {
-        profiles = await storage.getPropertyProfilesByType(type as 'subject' | 'competitor');
+        profiles = await storage.getPropertyProfilesByUserAndType(userId, type as 'subject' | 'competitor');
       } else {
-        profiles = await storage.getAllPropertyProfiles();
+        profiles = await storage.getPropertyProfilesByUser(userId);
       }
       
       res.json(profiles);
@@ -3580,12 +3630,22 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get single property profile
-  app.get("/api/property-profiles/:id", async (req, res) => {
+  app.get("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const profile = await storage.getPropertyProfile(req.params.id);
       
       if (!profile) {
         return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      // Verify the profile belongs to the user
+      if (profile.userId && profile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
       }
       
       res.json(profile);
@@ -3596,15 +3656,23 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Create property profile
-  app.post("/api/property-profiles", async (req, res) => {
+  app.post("/api/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
       const rawData = req.body;
       
       // Normalize amenities using shared helper function
       rawData.amenities = normalizeAmenities(rawData.amenities);
       
       const profileData = insertPropertyProfileSchema.parse(rawData);
-      const profile = await storage.createPropertyProfile(profileData);
+      const profile = await storage.createPropertyProfile({
+        ...profileData,
+        userId
+      });
       
       res.status(201).json(profile);
     } catch (error) {
@@ -3631,7 +3699,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Update property profile
-  app.put("/api/property-profiles/:id", async (req, res) => {
+  app.put("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
       const rawData = req.body;
       
@@ -3686,13 +3754,23 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Delete property profile
-  app.delete("/api/property-profiles/:id", async (req, res) => {
+  app.delete("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const success = await storage.deletePropertyProfile(req.params.id);
+      const userId = req.user?.claims?.sub;
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
       
-      if (!success) {
+      // First verify the profile belongs to the user
+      const profile = await storage.getPropertyProfile(req.params.id);
+      if (!profile) {
         return res.status(404).json({ message: "Property profile not found" });
       }
+      if (profile.userId && profile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      const success = await storage.deletePropertyProfile(req.params.id);
       
       res.status(204).send(); // 204 No Content is more appropriate for successful DELETE operations
     } catch (error) {
@@ -3806,7 +3884,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
   
   // Scrape all properties in an analysis session (NON-BLOCKING)
-  app.post("/api/analysis-sessions/:sessionId/scrape", async (req, res) => {
+  app.post("/api/analysis-sessions/:sessionId/scrape", isAuthenticated, async (req: any, res) => {
     try {
       // Validate request body
       const validationResult = scrapeAnalysisSessionSchema.safeParse(req.body);
@@ -3905,7 +3983,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // NEW: Get all scraped units grouped by property for a specific analysis session
-  app.get("/api/analysis-sessions/:sessionId/scraped-units", async (req, res) => {
+  app.get("/api/analysis-sessions/:sessionId/scraped-units", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_SCRAPED_UNITS] ===========================================');
       console.log('[SESSION_SCRAPED_UNITS] Starting scraped units retrieval for session');
@@ -4195,7 +4273,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   }
   
   // Session-based optimization for multi-property portfolio
-  app.post("/api/analysis-sessions/:sessionId/optimize", async (req, res) => {
+  app.post("/api/analysis-sessions/:sessionId/optimize", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_OPTIMIZE] ===========================================');
       console.log('[SESSION_OPTIMIZE] Starting session-based optimization');
@@ -4607,7 +4685,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
   });
 
   // Get session-based optimization report
-  app.get("/api/analysis-sessions/:sessionId/optimization", async (req, res) => {
+  app.get("/api/analysis-sessions/:sessionId/optimization", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       console.log('[GET_SESSION_OPTIMIZATION] Getting optimization report for session:', sessionId);
@@ -5627,7 +5705,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // GET/POST /api/portfolios (list and create portfolios for authenticated user)
   app.get("/api/portfolios", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5645,7 +5723,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.post("/api/portfolios", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5669,7 +5747,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // GET/PUT/DELETE /api/portfolios/:id (get, update, delete specific portfolio)
   app.get("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5699,7 +5777,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.put("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5733,7 +5811,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.delete("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5766,7 +5844,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // GET/POST /api/portfolios/:id/property-profiles (list and add properties to portfolio)
   app.get("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5794,7 +5872,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.post("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5828,7 +5906,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // PUT/DELETE for individual property profiles
   app.put("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5862,7 +5940,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.delete("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5895,7 +5973,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // POST /api/portfolios/:id/competitive-relationships (manage competitive relationships)
   app.post("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5928,7 +6006,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.get("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5956,7 +6034,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.put("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -5990,7 +6068,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.post("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId/toggle", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }
@@ -6023,7 +6101,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   app.delete("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user?.claims?.sub;
       if (!userId) {
         return res.status(401).json({ message: "User not authenticated" });
       }

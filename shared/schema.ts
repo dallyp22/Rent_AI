@@ -17,6 +17,7 @@ export type UnitMix = z.infer<typeof unitMixSchema>;
 // New unified property profiles table
 export const propertyProfiles = pgTable("property_profiles", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id), // User ownership
   name: text("name").notNull(),
   address: text("address").notNull(),
   url: text("url").notNull(), // Direct URL - key requirement
@@ -39,6 +40,7 @@ export const propertyProfiles = pgTable("property_profiles", {
   updatedAt: timestamp("updated_at").defaultNow()
 }, (table) => ({
   // Indexes for performance
+  userIdIdx: index("property_profiles_user_id_idx").on(table.userId),
   profileTypeIdx: index("property_profiles_profile_type_idx").on(table.profileType),
   urlIdx: index("property_profiles_url_idx").on(table.url),
   locationIdx: index("property_profiles_location_idx").on(table.city, table.state),
