@@ -4269,26 +4269,28 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         })
       );
 
-      // Group scraped units by property and only include subject properties
-      const unitsByPropertyName = new Map();
+      // Group scraped units by property URL for more reliable matching
+      const unitsByPropertyUrl = new Map();
       for (const { unit, scrapedProperty } of scrapedPropertiesData) {
         if (!scrapedProperty) continue;
         
-        const propertyName = scrapedProperty.name;
-        if (!unitsByPropertyName.has(propertyName)) {
-          unitsByPropertyName.set(propertyName, []);
+        const propertyUrl = scrapedProperty.url;
+        if (!propertyUrl) continue; // Skip if no URL
+        
+        if (!unitsByPropertyUrl.has(propertyUrl)) {
+          unitsByPropertyUrl.set(propertyUrl, []);
         }
-        unitsByPropertyName.get(propertyName).push(unit);
+        unitsByPropertyUrl.get(propertyUrl).push(unit);
       }
 
       for (const profile of subjectProfiles) {
-        // Find matching scraped units for this subject property by name
-        const propertyScrapedUnits = unitsByPropertyName.get(profile.name) || [];
+        // Find matching scraped units for this subject property by URL (more reliable than name)
+        const propertyScrapedUnits = profile.url ? unitsByPropertyUrl.get(profile.url) || [] : [];
         
         console.log(`[SESSION_OPTIMIZE] Subject property ${profile.name}: found ${propertyScrapedUnits.length} scraped units`);
         
         // Transform scraped units to match property unit format
-        const transformedUnits = propertyScrapedUnits.map(unit => ({
+        const transformedUnits = propertyScrapedUnits.map((unit: any) => ({
           id: unit.id,
           propertyProfileId: profile.id, // Map to the profile
           propertyId: profile.id, // For compatibility
