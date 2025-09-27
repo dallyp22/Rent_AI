@@ -915,20 +915,17 @@ export class DrizzleStorage implements IStorage {
         .where(eq(propertyUnits.propertyProfileId, propertyProfileId));
       console.log(`[DRIZZLE_STORAGE] Replacing ${existingUnits.length} existing units with ${units.length} new units for profile ${propertyProfileId}`);
       
-      // Perform atomic replacement: delete old, insert new
-      const insertedUnits = await db.transaction(async (tx) => {
-        // Delete existing units
-        await tx.delete(propertyUnits).where(eq(propertyUnits.propertyProfileId, propertyProfileId));
-        console.log(`[DRIZZLE_STORAGE] Deleted ${existingUnits.length} old units for profile ${propertyProfileId}`);
-        
-        // Insert new units if any
-        if (units.length > 0) {
-          const inserted = await tx.insert(propertyUnits).values(units).returning();
-          console.log(`[DRIZZLE_STORAGE] Inserted ${inserted.length} new units for profile ${propertyProfileId}`);
-          return inserted;
-        }
-        return [];
-      });
+      // Execute delete and insert operations sequentially (no transaction support in Neon)
+      // Delete existing units
+      await db.delete(propertyUnits).where(eq(propertyUnits.propertyProfileId, propertyProfileId));
+      console.log(`[DRIZZLE_STORAGE] Deleted ${existingUnits.length} old units for profile ${propertyProfileId}`);
+      
+      // Insert new units if any
+      let insertedUnits: PropertyUnit[] = [];
+      if (units.length > 0) {
+        insertedUnits = await db.insert(propertyUnits).values(units).returning();
+        console.log(`[DRIZZLE_STORAGE] Inserted ${insertedUnits.length} new units for profile ${propertyProfileId}`);
+      }
       
       console.log(`[DRIZZLE_STORAGE] Replacement complete: ${insertedUnits.length} units now exist for profile ${propertyProfileId}`);
       return insertedUnits;
