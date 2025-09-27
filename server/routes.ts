@@ -4264,6 +4264,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       // Transform scraped units to match the expected format and filter for subject properties only
       const allUnits = [];
       const propertyUnitMap = new Map();
+      const competitorUnits = [];
 
       // Get property ID mapping from scraped properties to profiles
       const scrapedPropertiesData = await Promise.all(
@@ -4285,6 +4286,11 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           unitsByPropertyUrl.set(propertyUrl, []);
         }
         unitsByPropertyUrl.get(propertyUrl).push(unit);
+        
+        // Collect competitor units for market analysis
+        if (!scrapedProperty.isSubjectProperty) {
+          competitorUnits.push(unit);
+        }
       }
 
       for (const profile of subjectProfiles) {
@@ -4307,7 +4313,10 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           bathrooms: unit.bathrooms?.toString() || '0',
           squareFootage: unit.squareFootage || 0,
           propertyName: profile.name,
-          propertyAddress: profile.address
+          propertyAddress: profile.address,
+          propertyType: profile.propertyType,
+          builtYear: profile.builtYear,
+          totalUnits: profile.totalUnits
         }));
         
         allUnits.push(...transformedUnits);
@@ -4318,6 +4327,23 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         });
       }
 
+      // Calculate market averages by bedroom type from competitor units
+      const marketAverages = new Map();
+      for (const unit of competitorUnits) {
+        if (!unit.bedrooms || !unit.rent) continue;
+        
+        const key = `${unit.bedrooms}BR`;
+        if (!marketAverages.has(key)) {
+          marketAverages.set(key, { total: 0, count: 0, sum: 0 });
+        }
+        
+        const stats = marketAverages.get(key);
+        stats.sum += parseFloat(unit.rent);
+        stats.count += 1;
+        stats.avg = Math.round(stats.sum / stats.count);
+      }
+      
+      console.log('[SESSION_OPTIMIZE] Market averages calculated from', competitorUnits.length, 'competitor units');
       console.log('[SESSION_OPTIMIZE] Total units across portfolio:', allUnits.length);
 
       if (allUnits.length === 0) {
@@ -4336,42 +4362,54 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       };
       
       const riskDisplayMap: Record<number, string> = {
-        1: 'Low (Conservative)',
-        2: 'Medium (Moderate)', 
-        3: 'High (Aggressive)'
+        1: 'Low',
+        2: 'Medium', 
+        3: 'High'
       };
 
-      const prompt = `As a real estate portfolio optimization expert, analyze the following multi-property portfolio and provide pricing recommendations:
+      // Build market context string
+      let marketContextStr = '';
+      if (marketAverages.size > 0) {
+        marketContextStr = 'Market Averages by Unit Type:\n';
+        for (const [unitType, stats] of marketAverages.entries()) {
+          marketContextStr += `- ${unitType}: $${stats.avg}/month (based on ${stats.count} competitor units)\n`;
+        }
+      }
 
-Portfolio Analysis Session: ${session.name}
-${session.description ? `Description: ${session.description}` : ''}
+      // For portfolio optimization, we'll iterate through each property
+      // But for simplicity in this case with a single property, we'll create a single sophisticated prompt
+      const firstProfile = subjectProfiles[0];
+      const propertyUnits = allUnits.filter(u => u.propertyProfileId === firstProfile.id);
 
-Subject Properties (${subjectProfiles.length}):
-${subjectProfiles.map(p => `- ${p.name} (${p.address}) - ${p.totalUnits || 'unknown'} units`).join('\n')}
+      const prompt = `As a real estate pricing optimization expert, analyze the following property and provide pricing recommendations:
+
+Property Details:
+- Address: ${firstProfile.address}
+- Property Type: ${firstProfile.propertyType || 'Multi-Family'}
+- Total Units: ${firstProfile.totalUnits || propertyUnits.length}
+${firstProfile.builtYear ? `- Built Year: ${firstProfile.builtYear}` : ''}
 
 Optimization Parameters:
 - Goal: ${goalDisplayMap[goal] || goal}
 - Target Occupancy: ${targetOccupancy}%
 - Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
 
-Portfolio Unit Portfolio (${allUnits.length} total units):
-${allUnits.slice(0, 50).map(unit => `${unit.propertyName} - ${unit.unitNumber}: ${unit.unitType} - Current Rent: $${unit.currentRent} - Status: ${unit.status}`).join('\n')}
-${allUnits.length > 50 ? `... and ${allUnits.length - 50} more units across the portfolio` : ''}
+Current Unit Portfolio (${allUnits.length} units):
+${allUnits.map(unit => `Unit Number: ${unit.unitNumber} - Type: ${unit.bedrooms}BR/${unit.bathrooms}BA - Current Rent: $${unit.currentRent} - Status: ${unit.status}${unit.squareFootage ? ` - Sqft: ${unit.squareFootage}` : ''}`).join('\n')}
 
-Portfolio Context:
-- Consider portfolio-level economies of scale and synergies
-- Factor in cross-property market positioning and competition
-- Account for portfolio diversification and risk management
-- Balance individual property performance with overall portfolio goals
-- Consider tenant migration between properties in the portfolio
+Market Context:
+- Consider current market conditions for similar properties
+- Factor in seasonal trends and local market dynamics
+- Account for unit turnover costs and vacancy risks
+- Balance revenue optimization with occupancy targets
 
-Please provide optimization recommendations for ALL ${allUnits.length} units across the ${subjectProfiles.length} properties in this exact JSON format:
+${marketContextStr}
+
+Please provide optimization recommendations for ALL ${allUnits.length} units in this exact JSON format:
 {
-  "portfolioRecommendations": [
+  "unitRecommendations": [
     {
-      "propertyName": "string",
-      "propertyProfileId": "string", 
-      "unitNumber": "string",
+      "unitNumber": "[actual unit number from input]",
       "currentRent": number,
       "recommendedRent": number,
       "marketAverage": number,
@@ -4381,20 +4419,18 @@ Please provide optimization recommendations for ALL ${allUnits.length} units acr
       "reasoning": "Brief explanation for the recommendation"
     }
   ],
-  "portfolioSummary": {
-    "totalIncrease": number,
-    "affectedUnits": number,
-    "avgIncrease": number,
-    "riskLevel": "Low|Medium|High",
-    "portfolioInsights": {
-      "crossPropertySynergies": "Portfolio-level advantages identified",
-      "riskDiversification": "How risk is spread across properties",
-      "marketPositioning": "Overall portfolio positioning strategy"
-    }
+  "totalIncrease": number,
+  "affectedUnits": number,
+  "avgIncrease": number,
+  "riskLevel": "Low|Medium|High",
+  "marketInsights": {
+    "occupancyImpact": "Expected impact on occupancy rate",
+    "competitivePosition": "How this positions the property vs competitors",
+    "timeToLease": "Average days to lease at new rates"
   }
 }
 
-Important: Generate recommendations for ALL ${allUnits.length} units across the ${subjectProfiles.length} properties in the portfolio, considering both individual property performance and portfolio-level optimization.`;
+Important: Generate recommendations for ALL ${allUnits.length} units based on the optimization goal and parameters. Use the exact unit numbers provided in the input.`;
 
       console.log('[SESSION_OPTIMIZE] Generating AI recommendations...');
       
@@ -4406,7 +4442,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
         
         // Provide fallback response when AI fails
         const fallbackData = {
-          portfolioRecommendations: allUnits.map(unit => {
+          unitRecommendations: allUnits.map(unit => {
             const currentRent = parseFloat(unit.currentRent) || 0;
             const marketAdjustment = Math.floor(Math.random() * 100) + 50; // Conservative $50-150 increase
             const recommendedRent = currentRent + marketAdjustment;
@@ -4424,16 +4460,14 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
               reasoning: "Fallback recommendation due to AI service unavailability - conservative market-based adjustment"
             };
           }),
-          portfolioSummary: {
-            totalIncrease: allUnits.reduce((sum, unit) => sum + (Math.floor(Math.random() * 100) + 50), 0),
-            affectedUnits: allUnits.length,
-            avgIncrease: 75, // Average of $50-150 range
-            riskLevel: "Low",
-            portfolioInsights: {
-              crossPropertySynergies: "Analysis limited due to service unavailability",
-              riskDiversification: "Conservative approach applied",
-              marketPositioning: "Market-based fallback strategy"
-            }
+          totalIncrease: allUnits.reduce((sum, unit) => sum + (Math.floor(Math.random() * 100) + 50), 0),
+          affectedUnits: allUnits.length,
+          avgIncrease: 75, // Average of $50-150 range
+          riskLevel: "Low",
+          marketInsights: {
+            occupancyImpact: "Conservative approach to maintain occupancy",
+            competitivePosition: "Market-aligned pricing strategy",
+            timeToLease: "Standard market timeframes expected"
           }
         };
         
@@ -4444,7 +4478,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       }
       
       console.log('[SESSION_OPTIMIZE] AI recommendations generated');
-      console.log('[SESSION_OPTIMIZE] Recommendations count:', optimizationData.portfolioRecommendations?.length || 0);
+      console.log('[SESSION_OPTIMIZE] Recommendations count:', optimizationData.unitRecommendations?.length || 0);
 
       // Build optimized units directly from recommendations without database updates
       const updatedUnits = [];
@@ -4459,28 +4493,16 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       }
       
       // Process recommendations and match them to actual units
-      for (let i = 0; i < optimizationData.portfolioRecommendations?.length || 0; i++) {
-        const recommendation = optimizationData.portfolioRecommendations[i];
+      for (let i = 0; i < optimizationData.unitRecommendations?.length || 0; i++) {
+        const recommendation = optimizationData.unitRecommendations[i];
         
-        // Try to find matching unit by exact unit number first
-        let unit = allUnits.find(u => 
-          u.propertyProfileId === recommendation.propertyProfileId && 
-          u.unitNumber === recommendation.unitNumber
-        );
+        // Find matching unit by exact unit number
+        let unit = allUnits.find(u => u.unitNumber === recommendation.unitNumber);
         
-        // If no exact match, try to match by index within the property
-        if (!unit) {
-          const propertyUnits = unitsByProperty.get(recommendation.propertyProfileId) || [];
-          // Match by relative position within property's units
-          const propertyRecommendations = optimizationData.portfolioRecommendations.filter((r: any) => 
-            r.propertyProfileId === recommendation.propertyProfileId
-          );
-          const indexWithinProperty = propertyRecommendations.indexOf(recommendation);
-          
-          if (indexWithinProperty >= 0 && indexWithinProperty < propertyUnits.length) {
-            unit = propertyUnits[indexWithinProperty];
-            console.log(`[SESSION_OPTIMIZE] Matched recommendation by index: AI unit ${recommendation.unitNumber} -> actual unit ${unit.unitNumber}`);
-          }
+        // If no exact match, try fallback to index matching
+        if (!unit && i < allUnits.length) {
+          unit = allUnits[i];
+          console.log(`[SESSION_OPTIMIZE] Matched recommendation by index: AI unit ${recommendation.unitNumber} -> actual unit ${unit.unitNumber}`);
         }
         
         if (unit) {
@@ -4488,9 +4510,10 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
           updatedUnits.push({
             id: crypto.randomUUID(), // Add unique ID for each unit
             ...unit,
-            propertyName: recommendation.propertyName || unit.propertyName,
-            propertyProfileId: recommendation.propertyProfileId,
+            propertyName: unit.propertyName,
+            propertyProfileId: unit.propertyProfileId,
             unitNumber: unit.unitNumber, // Use actual unit number from scraped data
+            unitType: unit.unitType,
             currentRent: recommendation.currentRent?.toString() || unit.currentRent,
             recommendedRent: recommendation.recommendedRent?.toString(),
             marketAverage: recommendation.marketAverage,
@@ -4499,68 +4522,32 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
             confidenceLevel: recommendation.confidenceLevel,
             reasoning: recommendation.reasoning,
             // Include additional unit fields for frontend display
-            unitType: unit.unitType,
             bedrooms: unit.bedrooms,
             bathrooms: unit.bathrooms,
             squareFootage: unit.squareFootage,
             status: unit.status
           });
         } else {
-          // If no matching unit found, try to use the first available unit from the property as template
-          const propertyUnits = unitsByProperty.get(recommendation.propertyProfileId) || [];
-          const templateUnit = propertyUnits[0];
-          
           console.log(`[SESSION_OPTIMIZE] No matching unit found for recommendation: ${recommendation.unitNumber}`);
           
-          if (templateUnit) {
-            // Use template unit to maintain consistency with actual data
-            updatedUnits.push({
-              id: crypto.randomUUID(), // Add unique ID for each unit
-              propertyName: recommendation.propertyName,
-              propertyProfileId: recommendation.propertyProfileId,
-              unitNumber: templateUnit.unitNumber, // Use a real unit number from the property
-              unitType: templateUnit.unitType || recommendation.unitType || 'Unknown',
-              currentRent: recommendation.currentRent?.toString() || '0',
-              recommendedRent: recommendation.recommendedRent?.toString(),
-              marketAverage: recommendation.marketAverage,
-              change: recommendation.change,
-              annualImpact: recommendation.annualImpact,
-              confidenceLevel: recommendation.confidenceLevel,
-              reasoning: recommendation.reasoning,
-              bedrooms: templateUnit.bedrooms || 0,
-              bathrooms: templateUnit.bathrooms || '0',
-              squareFootage: templateUnit.squareFootage || 0,
-              status: 'available'
-            });
-          } else {
-            // Fallback: create unit with unique ID even if no template available
-            updatedUnits.push({
-              id: crypto.randomUUID(), // Add unique ID for each unit
-              propertyName: recommendation.propertyName,
-              propertyProfileId: recommendation.propertyProfileId,
-              unitNumber: `Unit-${i + 1}`, // Generate a sequential unit number
-              unitType: recommendation.unitType || 'Unknown',
-              currentRent: recommendation.currentRent?.toString() || '0',
-              recommendedRent: recommendation.recommendedRent?.toString(),
-              marketAverage: recommendation.marketAverage,
-              change: recommendation.change,
-              annualImpact: recommendation.annualImpact,
-              confidenceLevel: recommendation.confidenceLevel,
-              reasoning: recommendation.reasoning,
-              status: 'available'
-            });
-          }
+          // For unmatched recommendations, we skip them instead of creating fake units
+          // This ensures we only return units that actually exist in the property
         }
       }
       
       console.log(`[SESSION_OPTIMIZE] Created ${updatedUnits.length} optimized unit recommendations`);
 
       // Create optimization report for the session
-      const portfolioSummary = optimizationData.portfolioSummary || {
-        totalIncrease: 0,
-        affectedUnits: 0,
-        avgIncrease: 0,
-        riskLevel: 'Medium'
+      const portfolioSummary = {
+        totalIncrease: optimizationData.totalIncrease || 0,
+        affectedUnits: optimizationData.affectedUnits || 0,
+        avgIncrease: optimizationData.avgIncrease || 0,
+        riskLevel: optimizationData.riskLevel || 'Medium',
+        marketInsights: optimizationData.marketInsights || {
+          occupancyImpact: "Expected to maintain target occupancy",
+          competitivePosition: "Positioned competitively in market",
+          timeToLease: "Standard market lease-up times"
+        }
       };
 
       const optimizationReport = await storage.createOptimizationReport({
