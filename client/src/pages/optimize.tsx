@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -36,11 +37,86 @@ interface PropertyWithAnalysis {
   analysis: PropertyAnalysis | null;
 }
 
+// Utility function to check if a string looks like a UUID
+const isUUID = (str: string): boolean => {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+};
+
+// Robust session mode detection function with API validation
+const detectSessionMode = (params: { id?: string, sessionId?: string }, currentLocation: string): { isSessionMode: boolean; sessionId: string; confidence: 'high' | 'medium' | 'low' } => {
+  console.log('[OPTIMIZE_DETECTION] Starting session mode detection...');
+  console.log('[OPTIMIZE_DETECTION] Params:', { id: params.id, sessionId: params.sessionId });
+  console.log('[OPTIMIZE_DETECTION] Current URL:', currentLocation);
+  
+  let isSessionMode = false;
+  let sessionId = '';
+  let confidence: 'high' | 'medium' | 'low' = 'low';
+  
+  // Method 1: Check if params.sessionId is explicitly set (highest confidence)
+  if (params.sessionId) {
+    isSessionMode = true;
+    sessionId = params.sessionId;
+    confidence = 'high';
+    console.log('[OPTIMIZE_DETECTION] Method 1: Explicit sessionId parameter found');
+  }
+  // Method 2: Check URL path pattern (high confidence)
+  else if (currentLocation.includes('/session/')) {
+    isSessionMode = true;
+    sessionId = params.id || '';
+    confidence = 'high';
+    console.log('[OPTIMIZE_DETECTION] Method 2: URL contains "/session/" pattern');
+  }
+  // Method 3: Check if params.id looks like a UUID (medium confidence)
+  else if (params.id && isUUID(params.id)) {
+    isSessionMode = true;
+    sessionId = params.id;
+    confidence = 'medium';
+    console.log('[OPTIMIZE_DETECTION] Method 3: ID appears to be a UUID (likely session ID)');
+  }
+  // Method 4: Default to single property mode (low confidence)
+  else {
+    isSessionMode = false;
+    sessionId = params.id || '';
+    confidence = 'low';
+    console.log('[OPTIMIZE_DETECTION] Method 4: Defaulting to single property mode');
+  }
+  
+  console.log('[OPTIMIZE_DETECTION] Final detection result:', { 
+    isSessionMode, 
+    sessionId, 
+    confidence,
+    detectedMode: isSessionMode ? 'Session-based portfolio analysis' : 'Single property analysis'
+  });
+  
+  // Additional validation warning for UUID IDs that might be sessions
+  if (!isSessionMode && params.id && isUUID(params.id)) {
+    console.warn('[OPTIMIZE_DETECTION] WARNING: Detected UUID in single property mode!');
+    console.warn('[OPTIMIZE_DETECTION] This might indicate a routing issue where a session ID is being passed through the wrong route.');
+    console.warn('[OPTIMIZE_DETECTION] Expected route: /session/optimize/' + params.id);
+    console.warn('[OPTIMIZE_DETECTION] Current route appears to be: /optimize/' + params.id);
+  }
+  
+  return { isSessionMode, sessionId, confidence };
+};
+
 export default function Optimize({ params }: { params: { id?: string, sessionId?: string } }) {
   const { toast } = useToast();
-  // Determine session mode and ID based on URL pattern
-  const isSessionMode = !!params.sessionId;
-  const sessionId = params.sessionId || params.id || '';
+  const [location] = useLocation();
+  
+  // Robust session mode detection with multiple validation methods
+  const { isSessionMode, sessionId, confidence } = detectSessionMode(params, location);
+  
+  // Validate detection confidence and warn if uncertain
+  useEffect(() => {
+    if (confidence === 'low') {
+      console.warn('[OPTIMIZE_DETECTION] Low confidence in session mode detection. This might indicate a routing issue.');
+    }
+    if (confidence === 'medium') {
+      console.warn('[OPTIMIZE_DETECTION] Medium confidence in session mode detection. Using UUID-based inference.');
+    }
+  }, [confidence]);
+  
   const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(sessionId, isSessionMode);
   
   const [goal, setGoal] = useState("maximize-revenue");
@@ -58,11 +134,37 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     staleTime: 30000
   });
 
-  // Session mode is determined by URL pattern - no additional detection needed
+  // Enhanced debugging for session mode detection with validation warnings
   useEffect(() => {
-    console.log('[OPTIMIZE] Mode:', isSessionMode ? 'Session-based portfolio analysis' : 'Single property analysis');
+    console.log('[OPTIMIZE] === ENHANCED SESSION MODE DETECTION SUMMARY ===');
+    console.log('[OPTIMIZE] URL Location:', location);
+    console.log('[OPTIMIZE] URL Params:', params);
+    console.log('[OPTIMIZE] Detected Mode:', isSessionMode ? 'Session-based portfolio analysis' : 'Single property analysis');
     console.log('[OPTIMIZE] Session/Property ID:', sessionId);
-  }, [isSessionMode, sessionId]);
+    console.log('[OPTIMIZE] Detection Confidence:', confidence);
+    console.log('[OPTIMIZE] Expected API Endpoints:');
+    if (isSessionMode) {
+      console.log('[OPTIMIZE]   - Session Query: /api/analysis-sessions/' + sessionId);
+      console.log('[OPTIMIZE]   - Optimization: /api/analysis-sessions/' + sessionId + '/optimization');
+      console.log('[OPTIMIZE]   - Optimize: /api/analysis-sessions/' + sessionId + '/optimize');
+    } else {
+      console.log('[OPTIMIZE]   - Property Query: /api/properties/' + params.id);
+      console.log('[OPTIMIZE]   - Optimization: /api/properties/' + params.id + '/optimization');
+      console.log('[OPTIMIZE]   - Sync Units: /api/properties/' + params.id + '/sync-units');
+      console.log('[OPTIMIZE]   - Optimize: /api/properties/' + params.id + '/optimize');
+    }
+    
+    // Validation check for potential routing issues
+    if (!isSessionMode && params.id && isUUID(params.id)) {
+      console.error('[OPTIMIZE] 🚨 POTENTIAL ROUTING ISSUE DETECTED! 🚨');
+      console.error('[OPTIMIZE] A UUID is being passed as params.id but treated as single property mode.');
+      console.error('[OPTIMIZE] This will cause API calls to fail with 404 errors.');
+      console.error('[OPTIMIZE] Expected: /session/optimize/' + params.id + ' (session mode)');
+      console.error('[OPTIMIZE] Actual: /optimize/' + params.id + ' (property mode)');
+    }
+    
+    console.log('[OPTIMIZE] ================================================');
+  }, [isSessionMode, sessionId, location, params, confidence]);
 
   const propertyQuery = useQuery<PropertyWithAnalysis>({
     queryKey: ['/api/properties', params.id],
@@ -164,6 +266,10 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         ? `/api/analysis-sessions/${sessionId}/optimize`
         : `/api/properties/${params.id}/optimize`;
       
+      console.log('[OPTIMIZE_MUTATION] Using endpoint:', endpoint);
+      console.log('[OPTIMIZE_MUTATION] Mode:', isSessionMode ? 'session' : 'property');
+      console.log('[OPTIMIZE_MUTATION] Data:', data);
+      
       // Add retry logic for API failures
       const maxRetries = 3;
       let attempt = 0;
@@ -171,10 +277,12 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
       while (attempt < maxRetries) {
         try {
           const res = await apiRequest("POST", endpoint, data);
+          console.log('[OPTIMIZE_MUTATION] API call successful on attempt:', attempt + 1);
           return res.json();
         } catch (error) {
           attempt++;
-          console.error(`Optimization attempt ${attempt} failed:`, error);
+          console.error(`[OPTIMIZE_MUTATION] Optimization attempt ${attempt} failed:`, error);
+          console.error(`[OPTIMIZE_MUTATION] Attempted endpoint:`, endpoint);
           
           if (attempt === maxRetries) {
             // Extract meaningful error message from response
@@ -225,6 +333,11 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
       const endpoint = isSessionMode 
         ? `/api/analysis-sessions/${sessionId}/apply-pricing`
         : `/api/properties/${params.id}/apply-pricing`;
+      
+      console.log('[APPLY_PRICING_MUTATION] Using endpoint:', endpoint);
+      console.log('[APPLY_PRICING_MUTATION] Mode:', isSessionMode ? 'session' : 'property');
+      console.log('[APPLY_PRICING_MUTATION] Unit prices count:', Object.keys(unitPrices).length);
+      
       const res = await apiRequest("POST", endpoint, { unitPrices });
       return res.json();
     },
