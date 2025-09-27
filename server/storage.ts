@@ -543,6 +543,36 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  // Helper method to get scraped property IDs from property profile IDs
+  private async getScrapedPropertyIdsFromProfileIds(profileIds: string[]): Promise<string[]> {
+    try {
+      if (profileIds.length === 0) return [];
+      
+      console.log('[DRIZZLE_STORAGE] Getting scraped property IDs from profile IDs:', profileIds);
+      
+      // Step 1: Get all scraping jobs for the selected property profiles
+      const jobs = await db.select().from(scrapingJobs)
+        .where(inArray(scrapingJobs.propertyProfileId, profileIds));
+      
+      console.log('[DRIZZLE_STORAGE] Found', jobs.length, 'scraping jobs for selected profiles');
+      
+      if (jobs.length === 0) return [];
+      
+      // Step 2: Get all scraped properties from those scraping jobs
+      const jobIds = jobs.map(job => job.id);
+      const scrapedProps = await db.select().from(scrapedProperties)
+        .where(inArray(scrapedProperties.scrapingJobId, jobIds));
+      
+      const propertyIds = scrapedProps.map(prop => prop.id);
+      console.log('[DRIZZLE_STORAGE] Found', propertyIds.length, 'scraped properties for selected profiles');
+      
+      return propertyIds;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting scraped property IDs from profile IDs:', error);
+      return [];
+    }
+  }
+
   // Multi-property analysis support
   async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria, competitiveRelationships?: any[], providedPropertyProfiles?: any[]): Promise<FilteredAnalysis> {
     // This is a complex method that generates analysis based on session data
@@ -611,21 +641,46 @@ export class DrizzleStorage implements IStorage {
       }
       
       // Filter by selected properties
-      if (criteria.selectedProperties && criteria.selectedProperties.length > 0) {
-        console.log('[FILTER] Applying property selection filter:', criteria.selectedProperties.length, 'properties');
-        // We need to get property profile IDs for the scraped properties
-        const selectedPropertyUrls = providedPropertyProfiles
-          ?.filter(p => criteria.selectedProperties!.includes(p.id))
-          .map(p => p.url) || [];
-        
-        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
-          // For subject units, check if the property URL matches selected properties
-          return selectedPropertyUrls.some(url => unit.propertyName.includes(url.split('/').pop() || ''));
-        });
-        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
-          // For competitor units, check if the property URL matches selected properties
-          return selectedPropertyUrls.some(url => unit.propertyName.includes(url.split('/').pop() || ''));
-        });
+      if (criteria.selectedProperties !== undefined) {
+        // If selectedProperties is defined (even if empty), apply the filter
+        if (criteria.selectedProperties.length === 0) {
+          // No properties selected - return no units
+          console.log('[FILTER] No properties selected - filtering out all units');
+          filteredSubjectUnits = [];
+          filteredCompetitorUnits = [];
+        } else {
+          // Properties are selected - filter to only those properties
+          console.log('[FILTER] Applying property selection filter:', criteria.selectedProperties.length, 'properties');
+          console.log('[FILTER] Selected property profile IDs:', criteria.selectedProperties);
+          
+          // Get scraped property IDs from the selected property profile IDs
+          const selectedScrapedPropertyIds = await this.getScrapedPropertyIdsFromProfileIds(criteria.selectedProperties);
+          console.log('[FILTER] Mapped to scraped property IDs:', selectedScrapedPropertyIds);
+          
+          if (selectedScrapedPropertyIds.length > 0) {
+            // Filter units to only include those from the selected properties
+            filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+              const isSelected = selectedScrapedPropertyIds.includes(unit.propertyId);
+              if (isSelected) {
+                console.log('[FILTER] Including subject unit from property:', unit.propertyName);
+              }
+              return isSelected;
+            });
+            
+            filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+              const isSelected = selectedScrapedPropertyIds.includes(unit.propertyId);
+              if (isSelected) {
+                console.log('[FILTER] Including competitor unit from property:', unit.propertyName);
+              }
+              return isSelected;
+            });
+          } else {
+            console.log('[FILTER] Warning: No scraped properties found for selected property profiles');
+            // No scraped properties found - filter out all units
+            filteredSubjectUnits = [];
+            filteredCompetitorUnits = [];
+          }
+        }
       }
       
       // Filter by competitive set
@@ -2665,33 +2720,42 @@ export class MemStorageLegacy implements IStorage {
     console.log('[FILTER] After availability filter:', units.length, 'units (filtered out', beforeAvailabilityCount - units.length, ')');
 
     // Filter by selected properties - only include units from specific properties
-    if (criteria.selectedProperties && criteria.selectedProperties.length > 0) {
+    if (criteria.selectedProperties !== undefined) {
       const beforePropertyCount = units.length;
-      console.log('[FILTER] Applying property filter for', criteria.selectedProperties.length, 'selected properties');
       
-      // Get the scraped properties that correspond to the selected property profiles
-      const selectedScrapedPropertyIds = new Set<string>();
-      
-      for (const propertyProfileId of criteria.selectedProperties) {
-        // Find scraping jobs for this property profile
-        const scrapingJobs = await this.getScrapingJobsByProfile(propertyProfileId);
-        for (const job of scrapingJobs) {
-          if (job.status === 'completed') {
-            const scrapedProps = await this.getScrapedPropertiesByJob(job.id);
-            for (const scrapedProp of scrapedProps) {
-              selectedScrapedPropertyIds.add(scrapedProp.id);
+      if (criteria.selectedProperties.length === 0) {
+        // No properties selected - filter out all units
+        console.log('[FILTER] No properties selected - filtering out all units');
+        units = [];
+      } else {
+        // Properties are selected - filter to only those properties
+        console.log('[FILTER] Applying property filter for', criteria.selectedProperties.length, 'selected properties');
+        
+        // Get the scraped properties that correspond to the selected property profiles
+        const selectedScrapedPropertyIds = new Set<string>();
+        
+        for (const propertyProfileId of criteria.selectedProperties) {
+          // Find scraping jobs for this property profile
+          const scrapingJobs = await this.getScrapingJobsByProfile(propertyProfileId);
+          for (const job of scrapingJobs) {
+            if (job.status === 'completed') {
+              const scrapedProps = await this.getScrapedPropertiesByJob(job.id);
+              for (const scrapedProp of scrapedProps) {
+                selectedScrapedPropertyIds.add(scrapedProp.id);
+              }
             }
           }
         }
-      }
-      
-      console.log('[FILTER] Found', selectedScrapedPropertyIds.size, 'scraped properties for selected profiles');
-      
-      if (selectedScrapedPropertyIds.size > 0) {
-        units = units.filter(unit => selectedScrapedPropertyIds.has(unit.propertyId));
-        console.log('[FILTER] After property selection filter:', units.length, 'units (filtered out', beforePropertyCount - units.length, ')');
-      } else {
-        console.warn('[FILTER] No scraped properties found for selected property profiles - keeping all units');
+        
+        console.log('[FILTER] Found', selectedScrapedPropertyIds.size, 'scraped properties for selected profiles');
+        
+        if (selectedScrapedPropertyIds.size > 0) {
+          units = units.filter(unit => selectedScrapedPropertyIds.has(unit.propertyId));
+          console.log('[FILTER] After property selection filter:', units.length, 'units (filtered out', beforePropertyCount - units.length, ')');
+        } else {
+          console.log('[FILTER] No scraped properties found for selected property profiles - filtering out all units');
+          units = [];
+        }
       }
     }
 
