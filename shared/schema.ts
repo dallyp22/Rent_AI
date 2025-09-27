@@ -159,6 +159,9 @@ export const optimizationReports = pgTable("optimization_reports", {
   affectedUnits: integer("affected_units").notNull(),
   avgIncrease: decimal("avg_increase", { precision: 5, scale: 2 }).notNull(),
   riskLevel: text("risk_level").notNull(),
+  // Store the optimized units data
+  optimizedUnits: json("optimized_units").$type<any[]>(),
+  portfolioSummary: json("portfolio_summary").$type<any>(),
   createdAt: timestamp("created_at").defaultNow()
 });
 

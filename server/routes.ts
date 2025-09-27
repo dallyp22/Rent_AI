@@ -4444,7 +4444,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       console.log('[SESSION_OPTIMIZE] AI recommendations generated');
       console.log('[SESSION_OPTIMIZE] Recommendations count:', optimizationData.portfolioRecommendations?.length || 0);
 
-      // Update units with recommendations across all properties
+      // Build optimized units directly from recommendations without database updates
       const updatedUnits = [];
       for (const recommendation of optimizationData.portfolioRecommendations || []) {
         const unit = allUnits.find(u => 
@@ -4453,24 +4453,47 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
         );
         
         if (unit) {
-          const updatedUnit = await storage.updatePropertyUnit(unit.id, {
-            recommendedRent: recommendation.recommendedRent.toString()
+          // Create the optimized unit response directly without database update
+          updatedUnits.push({
+            ...unit,
+            propertyName: recommendation.propertyName,
+            propertyProfileId: recommendation.propertyProfileId,
+            currentRent: recommendation.currentRent?.toString() || unit.currentRent,
+            recommendedRent: recommendation.recommendedRent?.toString(),
+            marketAverage: recommendation.marketAverage,
+            change: recommendation.change,
+            annualImpact: recommendation.annualImpact,
+            confidenceLevel: recommendation.confidenceLevel,
+            reasoning: recommendation.reasoning,
+            // Include additional unit fields for frontend display
+            unitType: unit.unitType,
+            unitNumber: unit.unitNumber,
+            bedrooms: unit.bedrooms,
+            bathrooms: unit.bathrooms,
+            squareFootage: unit.squareFootage,
+            status: unit.status
           });
-          
-          if (updatedUnit) {
-            updatedUnits.push({
-              ...updatedUnit,
-              propertyName: recommendation.propertyName,
-              propertyProfileId: recommendation.propertyProfileId,
-              marketAverage: recommendation.marketAverage,
-              change: recommendation.change,
-              annualImpact: recommendation.annualImpact,
-              confidenceLevel: recommendation.confidenceLevel,
-              reasoning: recommendation.reasoning
-            });
-          }
+        } else {
+          // Include recommendations even if no matching unit found (AI generated recommendations)
+          console.log(`[SESSION_OPTIMIZE] Including AI recommendation without unit match: ${recommendation.unitNumber}`);
+          updatedUnits.push({
+            propertyName: recommendation.propertyName,
+            propertyProfileId: recommendation.propertyProfileId,
+            unitNumber: recommendation.unitNumber,
+            unitType: recommendation.unitType || 'Unknown',
+            currentRent: recommendation.currentRent?.toString() || '0',
+            recommendedRent: recommendation.recommendedRent?.toString(),
+            marketAverage: recommendation.marketAverage,
+            change: recommendation.change,
+            annualImpact: recommendation.annualImpact,
+            confidenceLevel: recommendation.confidenceLevel,
+            reasoning: recommendation.reasoning,
+            status: 'available'
+          });
         }
       }
+      
+      console.log(`[SESSION_OPTIMIZE] Created ${updatedUnits.length} optimized unit recommendations`);
 
       // Create optimization report for the session
       const portfolioSummary = optimizationData.portfolioSummary || {
@@ -4488,7 +4511,10 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
         totalIncrease: portfolioSummary.totalIncrease.toString(),
         affectedUnits: portfolioSummary.affectedUnits,
         avgIncrease: portfolioSummary.avgIncrease.toString(),
-        riskLevel: portfolioSummary.riskLevel
+        riskLevel: portfolioSummary.riskLevel,
+        // Store the optimized units and portfolio summary
+        optimizedUnits: updatedUnits,
+        portfolioSummary: portfolioSummary
       });
 
       const response = {
@@ -4562,40 +4588,54 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
       const sessionReport = sessionReports[0];
       console.log('[GET_SESSION_OPTIMIZATION] Using optimization report:', sessionReport.id, 'created at:', sessionReport.createdAt);
 
-      // Get scraped units for this session (the actual units from web scraping)
-      console.log('[GET_SESSION_OPTIMIZATION] Retrieving scraped units for session:', sessionId);
-      const scrapedUnits = await storage.getScrapedUnitsForSession(sessionId);
-      console.log('[GET_SESSION_OPTIMIZATION] Found', scrapedUnits.length, 'scraped units for session', sessionId);
+      // Get the stored optimized units from the report if available
+      let allUnits = [];
+      let portfolioSummary = {};
 
-      // Transform scraped units to include property information for the frontend
-      const allUnits = scrapedUnits.map(unit => {
-        console.log('[GET_SESSION_OPTIMIZATION] Processing scraped unit:', unit.unitNumber, 'from property ID:', unit.propertyId);
-        return {
-          ...unit,
-          // Keep the original scraped unit structure but ensure all expected fields are present
-          id: unit.id,
-          propertyId: unit.propertyId,
-          unitNumber: unit.unitNumber || `Unit-${unit.id}`,
-          unitType: unit.unitType || 'Unknown',
-          currentRent: unit.rent || '0',
-          bedrooms: unit.bedrooms || 0,
-          bathrooms: unit.bathrooms || '0',
-          squareFootage: unit.squareFootage || 0,
-          status: 'available', // Scraped units are typically available units
-          availabilityDate: unit.availabilityDate
+      if (sessionReport.optimizedUnits) {
+        // Use the stored optimized units if available
+        console.log('[GET_SESSION_OPTIMIZATION] Using stored optimized units from report');
+        allUnits = sessionReport.optimizedUnits;
+        portfolioSummary = sessionReport.portfolioSummary || {};
+        console.log('[GET_SESSION_OPTIMIZATION] Found', allUnits.length, 'stored optimized units');
+      } else {
+        // Fallback: Get scraped units for this session (for backward compatibility)
+        console.log('[GET_SESSION_OPTIMIZATION] No stored optimized units, falling back to scraped units');
+        const scrapedUnits = await storage.getScrapedUnitsForSession(sessionId);
+        console.log('[GET_SESSION_OPTIMIZATION] Found', scrapedUnits.length, 'scraped units for session', sessionId);
+
+        // Transform scraped units to include property information for the frontend
+        allUnits = scrapedUnits.map(unit => {
+          console.log('[GET_SESSION_OPTIMIZATION] Processing scraped unit:', unit.unitNumber, 'from property ID:', unit.propertyId);
+          return {
+            ...unit,
+            // Keep the original scraped unit structure but ensure all expected fields are present
+            id: unit.id,
+            propertyId: unit.propertyId,
+            unitNumber: unit.unitNumber || `Unit-${unit.id}`,
+            unitType: unit.unitType || 'Unknown',
+            currentRent: unit.rent || '0',
+            bedrooms: unit.bedrooms || 0,
+            bathrooms: unit.bathrooms || '0',
+            squareFootage: unit.squareFootage || 0,
+            status: 'available', // Scraped units are typically available units
+            availabilityDate: unit.availabilityDate
+          };
+        });
+
+        portfolioSummary = {
+          totalUnits: allUnits.length,
+          sessionId: sessionId,
+          reportId: sessionReport.id
         };
-      });
+      }
 
       const response = {
         sessionId: sessionId,
         sessionName: session.name,
         report: sessionReport,
         units: allUnits,
-        portfolioSummary: {
-          totalUnits: allUnits.length,
-          sessionId: sessionId,
-          reportId: sessionReport.id
-        },
+        portfolioSummary: portfolioSummary,
         portfolio: {
           [sessionId]: {
             units: allUnits,

@@ -2203,7 +2203,9 @@ export class MemStorageLegacy implements IStorage {
       createdAt: new Date(),
       sessionId: insertReport.sessionId ?? null,
       propertyProfileId: insertReport.propertyProfileId ?? null,
-      propertyId: insertReport.propertyId ?? null
+      propertyId: insertReport.propertyId ?? null,
+      optimizedUnits: insertReport.optimizedUnits ?? null,
+      portfolioSummary: insertReport.portfolioSummary ?? null
     };
     const reportKey = insertReport.propertyId ?? id;
     this.optimizationReports.set(reportKey, report);
