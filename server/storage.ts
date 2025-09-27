@@ -2642,6 +2642,12 @@ export class MemStorageLegacy implements IStorage {
     return Array.from(this.optimizationReports.values());
   }
 
+  async getOptimizationReportsBySession(sessionId: string): Promise<OptimizationReport[]> {
+    return Array.from(this.optimizationReports.values()).filter(report => 
+      report.sessionId === sessionId
+    );
+  }
+
   // PORTFOLIO ANALYTICS METHODS
   async getPortfolioMetrics(): Promise<any> {
     const subjectProperties = await this.getPropertyProfilesByType('subject');
