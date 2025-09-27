@@ -4498,23 +4498,33 @@ Important: Generate recommendations for ALL ${allUnits.length} units across the 
   app.get("/api/analysis-sessions/:sessionId/optimization", async (req, res) => {
     try {
       const sessionId = req.params.sessionId;
+      console.log('[GET_SESSION_OPTIMIZATION] Getting optimization report for session:', sessionId);
       
       // Get the analysis session
       const session = await storage.getAnalysisSession(sessionId);
       if (!session) {
+        console.log('[GET_SESSION_OPTIMIZATION] Session not found:', sessionId);
         return res.status(404).json({ message: "Analysis session not found" });
       }
 
-      // Find optimization report for this session
-      const allReports = await storage.getAllOptimizationReports?.() || [];
-      const sessionReport = allReports.find(report => report.sessionId === sessionId);
+      console.log('[GET_SESSION_OPTIMIZATION] Session found:', session.name);
+
+      // Get optimization reports for this session using the new direct method
+      const sessionReports = await storage.getOptimizationReportsBySession(sessionId);
+      console.log('[GET_SESSION_OPTIMIZATION] Found', sessionReports.length, 'optimization reports for session', sessionId);
       
-      if (!sessionReport) {
+      if (sessionReports.length === 0) {
+        console.log('[GET_SESSION_OPTIMIZATION] No optimization reports found for session:', sessionId);
         return res.status(404).json({ 
           message: "No optimization report found for this session",
-          suggestion: "Run the optimization process first"
+          suggestion: "Run the optimization process first",
+          sessionId: sessionId
         });
       }
+
+      // Use the most recent report
+      const sessionReport = sessionReports[0];
+      console.log('[GET_SESSION_OPTIMIZATION] Using optimization report:', sessionReport.id, 'created at:', sessionReport.createdAt);
 
       // Get property profiles in the session
       const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);

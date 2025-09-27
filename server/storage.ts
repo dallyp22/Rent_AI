@@ -124,6 +124,7 @@ export interface IStorage {
   // Optimization Reports
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
   getOptimizationReport(propertyId: string): Promise<OptimizationReport | undefined>;
+  getOptimizationReportsBySession(sessionId: string): Promise<OptimizationReport[]>;
   
   // Scrapezy Integration
   createScrapingJob(job: InsertScrapingJob): Promise<ScrapingJob>;
@@ -857,10 +858,39 @@ export class DrizzleStorage implements IStorage {
 
   async getAllOptimizationReports(): Promise<OptimizationReport[]> {
     try {
-      return await db.select().from(optimizationReports).orderBy(desc(optimizationReports.createdAt));
+      console.log('[DRIZZLE_STORAGE] Getting all optimization reports');
+      const reports = await db.select().from(optimizationReports).orderBy(desc(optimizationReports.createdAt));
+      console.log('[DRIZZLE_STORAGE] Found', reports.length, 'optimization reports');
+      return reports;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting all optimization reports:', error);
       throw new Error(`Failed to get optimization reports: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getOptimizationReportsBySession(sessionId: string): Promise<OptimizationReport[]> {
+    try {
+      console.log('[DRIZZLE_STORAGE] Getting optimization reports for session:', sessionId);
+      const reports = await db.select().from(optimizationReports)
+        .where(eq(optimizationReports.sessionId, sessionId))
+        .orderBy(desc(optimizationReports.createdAt));
+      console.log('[DRIZZLE_STORAGE] Found', reports.length, 'optimization reports for session', sessionId);
+      
+      if (reports.length > 0) {
+        console.log('[DRIZZLE_STORAGE] First report details:', {
+          id: reports[0].id,
+          sessionId: reports[0].sessionId,
+          goal: reports[0].goal,
+          totalIncrease: reports[0].totalIncrease,
+          affectedUnits: reports[0].affectedUnits,
+          createdAt: reports[0].createdAt
+        });
+      }
+      
+      return reports;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting optimization reports by session:', error);
+      throw new Error(`Failed to get optimization reports by session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
