@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
-import { setupAuth, isAuthenticated } from "./replitAuth";
+import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
+import { setupLocalAuth, registerLocalUser, loginLocal } from "./localAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
@@ -915,11 +916,20 @@ function parseNumber(value: any): number | undefined {
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware - MUST be first
   await setupAuth(app);
+  setupLocalAuth(); // Setup local authentication strategy
 
   // Auth routes
-  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
+  // Local auth routes
+  app.post('/api/auth/register', registerLocalUser);
+  app.post('/api/auth/login/local', loginLocal);
+  
+  // Unified auth route that works for both Replit and local auth
+  app.get('/api/auth/user', isAuthenticatedAny, async (req: any, res) => {
     try {
-      const userId = req.user.claims.sub;
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
       const user = await storage.getUser(userId);
       res.json(user);
     } catch (error) {

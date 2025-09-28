@@ -78,7 +78,7 @@ export async function setupAuth(app: Express) {
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
     verified: passport.AuthenticateCallback
   ) => {
-    const user = {};
+    const user = { authType: 'replit' as const };
     updateUserSession(user, tokens);
     await upsertUser(tokens.claims());
     verified(null, user);
@@ -98,7 +98,14 @@ export async function setupAuth(app: Express) {
     passport.use(strategy);
   }
 
-  passport.serializeUser((user: Express.User, cb) => cb(null, user));
+  passport.serializeUser((user: Express.User, cb) => {
+    // Add authType to serialized user object if not present (for backward compatibility)
+    const userWithAuthType = {
+      ...user,
+      authType: (user as any).authType || 'replit'
+    };
+    cb(null, userWithAuthType);
+  });
   passport.deserializeUser((user: Express.User, cb) => cb(null, user));
 
   app.get("/api/login", (req, res, next) => {
@@ -127,6 +134,7 @@ export async function setupAuth(app: Express) {
   });
 }
 
+// Original isAuthenticated middleware for backward compatibility (Replit auth only)
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
   const user = req.user as any;
 
@@ -155,3 +163,71 @@ export const isAuthenticated: RequestHandler = async (req, res, next) => {
     return;
   }
 };
+
+// Unified authentication middleware that supports both Replit and local auth
+export const isAuthenticatedAny: RequestHandler = async (req, res, next) => {
+  const user = req.user as any;
+  
+  // Check if user is authenticated
+  if (!req.isAuthenticated() || !user) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  
+  // Handle local authentication
+  if (user.authType === 'local') {
+    // Local auth users are already validated by passport session
+    return next();
+  }
+  
+  // Handle Replit authentication (existing logic)
+  if (user.authType === 'replit' || !user.authType) { // Support legacy users without authType
+    // Check token expiration for Replit auth
+    if (!user.expires_at) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    const now = Math.floor(Date.now() / 1000);
+    if (now <= user.expires_at) {
+      return next();
+    }
+    
+    // Try to refresh token for Replit auth
+    const refreshToken = user.refresh_token;
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    
+    try {
+      const config = await getOidcConfig();
+      const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+      updateUserSession(user, tokenResponse);
+      return next();
+    } catch (error) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+  }
+  
+  // Unknown auth type
+  return res.status(401).json({ message: "Unauthorized" });
+};
+
+// Helper function to get authenticated user ID regardless of auth type
+export function getAuthenticatedUserId(req: any): string | null {
+  if (!req.user) {
+    return null;
+  }
+  
+  const user = req.user as any;
+  
+  // Local auth users
+  if (user.authType === 'local') {
+    return user.userId;
+  }
+  
+  // Replit auth users
+  if (user.authType === 'replit' || user.claims?.sub) {
+    return user.claims?.sub;
+  }
+  
+  return null;
+}

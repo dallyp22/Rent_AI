@@ -198,6 +198,7 @@ export interface IStorage {
 
   // User authentication operations - MANDATORY for Replit Auth
   getUser(id: string): Promise<User | undefined>;
+  getUsersByEmailAndAuthProvider(email: string, authProvider: string): Promise<User[]>;
   upsertUser(user: UpsertUser): Promise<User>;
 }
 
@@ -596,20 +597,52 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  async getUsersByEmailAndAuthProvider(email: string, authProvider: string): Promise<User[]> {
+    try {
+      return await db.select()
+        .from(users)
+        .where(and(
+          eq(users.email, email.toLowerCase()),
+          eq(users.authProvider, authProvider)
+        ));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting users by email and auth provider:', error);
+      throw new Error(`Failed to get users by email and auth provider: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async upsertUser(user: UpsertUser): Promise<User> {
     try {
-      const [upsertedUser] = await db.insert(users).values(user).onConflictDoUpdate({
-        target: users.id,
-        set: {
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          profileImageUrl: user.profileImageUrl,
-          updatedAt: new Date()
-        }
-      }).returning();
+      // For local users, we need to handle passwordHash and authProvider
+      const userData: any = {
+        ...user,
+        authProvider: user.authProvider || 'replit', // Default to 'replit' for backward compatibility
+        updatedAt: new Date()
+      };
       
-      return upsertedUser;
+      // If user has an ID (Replit auth), do upsert by ID
+      // If no ID (local auth registration), do insert only
+      if (userData.id) {
+        const [upsertedUser] = await db.insert(users).values(userData).onConflictDoUpdate({
+          target: users.id,
+          set: {
+            email: userData.email,
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            profileImageUrl: userData.profileImageUrl,
+            authProvider: userData.authProvider,
+            passwordHash: userData.passwordHash,
+            emailVerified: userData.emailVerified,
+            updatedAt: new Date()
+          }
+        }).returning();
+        
+        return upsertedUser;
+      } else {
+        // For new local users, just insert without conflict handling
+        const [insertedUser] = await db.insert(users).values(userData).returning();
+        return insertedUser;
+      }
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error upserting user:', error);
       throw new Error(`Failed to upsert user: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -3359,10 +3392,28 @@ export class MemStorageLegacy implements IStorage {
     return this.users.get(id);
   }
 
+  async getUsersByEmailAndAuthProvider(email: string, authProvider: string): Promise<User[]> {
+    const users: User[] = [];
+    for (const user of Array.from(this.users.values())) {
+      if (user.email?.toLowerCase() === email.toLowerCase() && 
+          user.authProvider === authProvider) {
+        users.push(user);
+      }
+    }
+    return users;
+  }
+
   async upsertUser(userData: UpsertUser): Promise<User> {
     const user: User = {
       ...userData,
       id: userData.id || randomUUID(),
+      authProvider: userData.authProvider || 'replit',
+      passwordHash: userData.passwordHash ?? null,
+      emailVerified: userData.emailVerified ?? false,
+      verificationToken: userData.verificationToken ?? null,
+      verificationTokenExpires: userData.verificationTokenExpires ?? null,
+      resetToken: userData.resetToken ?? null,
+      resetTokenExpires: userData.resetTokenExpires ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
       email: userData.email ?? null,
