@@ -45,8 +45,8 @@ export const propertyProfiles = pgTable("property_profiles", {
   urlIdx: index("property_profiles_url_idx").on(table.url),
   locationIdx: index("property_profiles_location_idx").on(table.city, table.state),
   createdAtIdx: index("property_profiles_created_at_idx").on(table.createdAt),
-  // Unique constraint on URL to prevent duplicates
-  urlUnique: unique("property_profiles_url_unique").on(table.url),
+  // Unique constraint on URL per user to prevent duplicates for same user
+  urlUserUnique: unique("property_profiles_url_user_unique").on(table.url, table.userId),
   // Check constraint to ensure profileType is valid
   profileTypeCheck: check("property_profiles_profile_type_check", sql`${table.profileType} IN ('subject', 'competitor')`)
 }));
