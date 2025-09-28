@@ -82,7 +82,7 @@ export default function AuthDialog({ open, onOpenChange, defaultTab = "login" }:
   // Login mutation
   const loginMutation = useMutation({
     mutationFn: async (data: LoginFormData) => {
-      const response = await apiRequest("POST", "/api/auth/login", data);
+      const response = await apiRequest("POST", "/api/auth/login/local", data);
       return response.json();
     },
     onSuccess: async () => {
