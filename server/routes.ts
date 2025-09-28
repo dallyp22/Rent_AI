@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
-import { setupLocalAuth, registerLocalUser, loginLocal } from "./localAuth";
+import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
@@ -922,6 +922,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Local auth routes
   app.post('/api/auth/register', registerLocalUser);
   app.post('/api/auth/login/local', loginLocal);
+  
+  // Password reset routes
+  app.post('/api/auth/reset/request', resetPasswordRequest);
+  app.post('/api/auth/reset/confirm', resetPasswordConfirm);
   
   // Unified auth route that works for both Replit and local auth
   app.get('/api/auth/user', isAuthenticatedAny, async (req: any, res) => {

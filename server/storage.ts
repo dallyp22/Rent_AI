@@ -200,6 +200,11 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUsersByEmailAndAuthProvider(email: string, authProvider: string): Promise<User[]>;
   upsertUser(user: UpsertUser): Promise<User>;
+  
+  // Password reset token management
+  setResetToken(userId: string, token: string, expires: Date): Promise<void>;
+  getUserByResetToken(token: string): Promise<User | undefined>;
+  clearResetToken(userId: string): Promise<void>;
 }
 
 // DrizzleStorage class for actual database operations
@@ -646,6 +651,52 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error upserting user:', error);
       throw new Error(`Failed to upsert user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Password reset token management
+  async setResetToken(userId: string, token: string, expires: Date): Promise<void> {
+    try {
+      await db.update(users)
+        .set({
+          resetToken: token,
+          resetTokenExpires: expires,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error setting reset token:', error);
+      throw new Error(`Failed to set reset token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getUserByResetToken(token: string): Promise<User | undefined> {
+    try {
+      const [user] = await db.select()
+        .from(users)
+        .where(and(
+          eq(users.resetToken, token),
+          sql`${users.resetTokenExpires} > NOW()`
+        ));
+      return user;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting user by reset token:', error);
+      throw new Error(`Failed to get user by reset token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async clearResetToken(userId: string): Promise<void> {
+    try {
+      await db.update(users)
+        .set({
+          resetToken: null,
+          resetTokenExpires: null,
+          updatedAt: new Date()
+        })
+        .where(eq(users.id, userId));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error clearing reset token:', error);
+      throw new Error(`Failed to clear reset token: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -3423,6 +3474,37 @@ export class MemStorageLegacy implements IStorage {
     };
     this.users.set(user.id, user);
     return user;
+  }
+
+  // Password reset token management
+  async setResetToken(userId: string, token: string, expires: Date): Promise<void> {
+    const user = this.users.get(userId);
+    if (user) {
+      user.resetToken = token;
+      user.resetTokenExpires = expires;
+      user.updatedAt = new Date();
+      this.users.set(userId, user);
+    }
+  }
+
+  async getUserByResetToken(token: string): Promise<User | undefined> {
+    const now = new Date();
+    for (const user of Array.from(this.users.values())) {
+      if (user.resetToken === token && user.resetTokenExpires && user.resetTokenExpires > now) {
+        return user;
+      }
+    }
+    return undefined;
+  }
+
+  async clearResetToken(userId: string): Promise<void> {
+    const user = this.users.get(userId);
+    if (user) {
+      user.resetToken = null;
+      user.resetTokenExpires = null;
+      user.updatedAt = new Date();
+      this.users.set(userId, user);
+    }
   }
 }
 
