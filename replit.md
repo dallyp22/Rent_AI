@@ -33,10 +33,13 @@ Preferred communication style: Simple, everyday language.
 - **Caching Strategy**: Smart caching service with 30-day TTL for scraped data
 
 ### Authentication and Authorization
-- **Current State**: Full authentication system implemented with Replit OIDC
-- **Session Management**: Express sessions with PostgreSQL storage (7-day TTL)
-- **User Data Isolation**: All data is properly associated with authenticated users
-- **Security**: All endpoints protected with authentication middleware, data filtered by user ID
+- **Dual Authentication System**: Support for both Replit OAuth and local email/password authentication
+- **Local Authentication**: Email/password registration with bcrypt hashing (10 rounds)
+- **Password Reset**: Secure token-based password reset functionality for local users
+- **Session Management**: Express sessions with PostgreSQL storage (7-day TTL) for both auth types
+- **Unified Middleware**: isAuthenticatedAny and getAuthenticatedUserId support both auth methods
+- **User Data Isolation**: Complete data isolation between all users regardless of auth type
+- **Security**: All endpoints protected with unified authentication middleware
 - **Data Persistence**: User accounts persist across sessions with complete data isolation
 
 ### Web Scraping Integration
