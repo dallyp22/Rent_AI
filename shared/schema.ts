@@ -227,13 +227,29 @@ export const sessions = pgTable(
 // User storage table - MANDATORY for Replit Auth  
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  email: varchar("email").unique(),
+  email: varchar("email").notNull().unique(),
   firstName: varchar("first_name"),
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
+  // Dual authentication support fields
+  authProvider: text("auth_provider").notNull().default("replit"), // 'replit' or 'local'
+  passwordHash: text("password_hash"), // nullable - only used for local auth
+  emailVerified: boolean("email_verified").notNull().default(false),
+  verificationToken: text("verification_token"), // nullable
+  verificationTokenExpires: timestamp("verification_token_expires"), // nullable
+  resetToken: text("reset_token"), // nullable
+  resetTokenExpires: timestamp("reset_token_expires"), // nullable
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Indexes for performance
+  authProviderIdx: index("users_auth_provider_idx").on(table.authProvider),
+  emailIdx: index("users_email_idx").on(table.email),
+  // Unique index on lower(email) for case-insensitive email lookups
+  emailLowerIdx: index("users_email_lower_idx").on(sql`lower(${table.email})`),
+  // Check constraint to ensure authProvider is either 'replit' or 'local'
+  authProviderCheck: check("users_auth_provider_check", sql`${table.authProvider} IN ('replit', 'local')`)
+}));
 
 // NEW: Portfolio Management Tables
 
