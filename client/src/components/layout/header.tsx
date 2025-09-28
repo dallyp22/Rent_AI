@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -5,12 +6,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Download, LogOut, User, Settings, LogIn } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import type { User as UserType } from "@shared/schema";
+import AuthDialog from "@/components/auth/AuthDialog";
 
 export default function Header() {
   const { user, isLoading, isAuthenticated } = useAuth();
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
 
   const handleLogin = () => {
-    window.location.href = '/api/login';
+    setAuthDialogOpen(true);
   };
 
   const handleLogout = () => {
@@ -38,6 +41,7 @@ export default function Header() {
   };
 
   return (
+    <>
     <header className="bg-card border-b border-border px-6 py-4" data-testid="header">
       <div className="flex items-center justify-between">
         <div>
@@ -103,5 +107,11 @@ export default function Header() {
         </div>
       </div>
     </header>
+    
+    <AuthDialog 
+      open={authDialogOpen} 
+      onOpenChange={setAuthDialogOpen}
+    />
+    </>
   );
 }
