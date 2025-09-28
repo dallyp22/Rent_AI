@@ -483,7 +483,13 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             const currentRent = parseFloat(unit.currentRent);
             const change = adjustedPrice - currentRent;
             
+            // Find the property name for this unit based on propertyProfileId
+            const propertyProfile = sessionData?.propertyProfiles?.find(
+              p => p.id === unit.propertyProfileId
+            );
+            
             return {
+              propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
               unitType: unit.unitType,
               currentRent: currentRent,
@@ -556,6 +562,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             const change = adjustedPrice - currentRent;
             
             return {
+              propertyName: property.propertyName || property.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
               unitType: unit.unitType,
               currentRent: currentRent,

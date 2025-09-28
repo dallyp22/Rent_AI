@@ -9,6 +9,7 @@ export interface ExcelExportData {
     builtYear: number;
   };
   units: Array<{
+    propertyName?: string;
     unitNumber: string;
     unitType: string;
     currentRent: number;
@@ -49,6 +50,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   // Set column widths
   worksheet.columns = [
     { header: 'Unit Number', key: 'unitNumber', width: 15 },
+    { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
     { header: 'Recommended Rent', key: 'recommendedRent', width: 18 },
@@ -84,6 +86,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   // Add header row for units table
   const headerRow = worksheet.addRow([
     'Unit Number',
+    'Property',
     'Unit Type', 
     'Current Rent',
     'Recommended Rent',
@@ -114,6 +117,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   data.units.forEach((unit) => {
     const row = worksheet.addRow([
       unit.unitNumber,
+      unit.propertyName || '',
       unit.unitType,
       unit.currentRent,
       unit.recommendedRent || unit.currentRent,
@@ -124,8 +128,8 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     ]);
     
     // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(5); // Monthly Change column
-    const impactCell = row.getCell(6); // Annual Impact column
+    const changeCell = row.getCell(6); // Monthly Change column (shifted by 1 due to Property column)
+    const impactCell = row.getCell(7); // Annual Impact column (shifted by 1 due to Property column)
     
     if (unit.change > 0) {
       // Positive change - green
@@ -172,10 +176,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     });
     
     // Format currency cells
-    row.getCell(3).numFmt = '"$"#,##0.00'; // Current Rent
-    row.getCell(4).numFmt = '"$"#,##0.00'; // Recommended Rent
-    row.getCell(5).numFmt = '"$"#,##0.00'; // Monthly Change
-    row.getCell(6).numFmt = '"$"#,##0.00'; // Annual Impact
+    row.getCell(4).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 1 due to Property column)
+    row.getCell(5).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 1 due to Property column)
+    row.getCell(6).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 1 due to Property column)
+    row.getCell(7).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 1 due to Property column)
   });
   
   worksheet.addRow([]);
