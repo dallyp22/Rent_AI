@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
 import PropertySidebar from "@/components/property-sidebar";
 import PropertyProfileForm, { PropertyProfileFormRef } from "@/components/property-profile-form";
+import { ScrapingProgressModal } from "@/components/scraping-progress-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -54,6 +55,10 @@ export default function PropertyInput() {
   
   // Form dialog state
   const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
+  
+  // Modal state for scraping progress
+  const [showScrapingModal, setShowScrapingModal] = useState(false);
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   
   // Form reference for resetting
   const formRef = useRef<PropertyProfileFormRef>(null);
@@ -200,15 +205,24 @@ export default function PropertyInput() {
 
       await Promise.all(addPropertiesPromises);
 
+      // Trigger scraping for all properties in the session
+      const scrapingRes = await apiRequest("POST", `/api/analysis-sessions/${session.id}/scrape`, {});
+      const scrapingData = await scrapingRes.json();
+      
+      console.log("[SESSION_SCRAPING] Scraping initiated:", scrapingData);
+
       return session;
     },
     onSuccess: (session) => {
-      // Navigate to session-based summary page first (multi-property workflow)
-      setLocation(`/session/summarize/${session.id}`);
+      // Store session ID for modal
+      setCurrentSessionId(session.id);
+      
+      // Show the scraping progress modal
+      setShowScrapingModal(true);
 
       toast({
         title: "Analysis Session Created",
-        description: `Portfolio analysis started with ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties.`,
+        description: `Starting data collection for ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties...`,
       });
     },
     onError: (error) => {
@@ -476,6 +490,17 @@ export default function PropertyInput() {
           </Card>
         </div>
       </div>
+      
+      {/* Scraping Progress Modal */}
+      <ScrapingProgressModal
+        isOpen={showScrapingModal}
+        sessionId={currentSessionId || ''}
+        onComplete={() => {
+          setShowScrapingModal(false);
+          setLocation(`/session/summarize/${currentSessionId}`);
+        }}
+        onClose={() => setShowScrapingModal(false)}
+      />
     </div>
   );
 }
