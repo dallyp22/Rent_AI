@@ -3980,29 +3980,105 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         return res.status(404).json({ message: "Analysis session not found" });
       }
       
-      // Get all scraping jobs for this session
-      const scrapingJobs = await storage.getScrapingJobsBySession?.(sessionId) || [];
+      // Get all property profiles associated with this session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
       
-      const status = {
+      // Build properties array with detailed scraping status
+      const properties = [];
+      let completedProperties = 0;
+      let failedProperties = 0;
+      let processingProperties = 0;
+      let pendingProperties = 0;
+      
+      for (const profile of propertyProfiles) {
+        // Get scraping jobs for this property profile
+        const scrapingJobs = await storage.getScrapingJobsByProfile(profile.id);
+        
+        // Determine property-level scraping status based on latest job
+        let scrapingStatus: 'pending' | 'processing' | 'completed' | 'failed' | 'none' = 'none';
+        let errorMessage: string | undefined = undefined;
+        let unitsFound = 0;
+        
+        if (scrapingJobs.length > 0) {
+          // Sort jobs by creation date to get the latest
+          const sortedJobs = scrapingJobs.sort((a, b) => {
+            const dateA = a.createdAt ? new Date(a.createdAt) : new Date(0);
+            const dateB = b.createdAt ? new Date(b.createdAt) : new Date(0);
+            return dateB.getTime() - dateA.getTime();
+          });
+          
+          const latestJob = sortedJobs[0];
+          scrapingStatus = (latestJob.status as 'pending' | 'processing' | 'completed' | 'failed') || 'pending';
+          
+          if (latestJob.status === 'failed' && latestJob.errorMessage) {
+            errorMessage = latestJob.errorMessage;
+          }
+          
+          // Get units count for completed jobs
+          if (latestJob.status === 'completed') {
+            const units = await storage.getPropertyUnitsByProfile(profile.id);
+            unitsFound = units.length;
+          }
+        }
+        
+        // Update counters
+        if (scrapingStatus === 'completed') completedProperties++;
+        else if (scrapingStatus === 'failed') failedProperties++;
+        else if (scrapingStatus === 'processing') processingProperties++;
+        else if (scrapingStatus === 'pending') pendingProperties++;
+        
+        // Build property entry
+        const propertyEntry: any = {
+          propertyId: profile.id,
+          propertyName: profile.name,
+          profileType: profile.profileType,
+          scrapingStatus,
+          unitsFound
+        };
+        
+        if (errorMessage) {
+          propertyEntry.errorMessage = errorMessage;
+        }
+        
+        properties.push(propertyEntry);
+      }
+      
+      // Calculate overall status
+      const totalProperties = properties.length;
+      let overallStatus: 'pending' | 'processing' | 'completed' | 'partial' | 'failed';
+      
+      if (processingProperties > 0) {
+        // If any property is still being scraped
+        overallStatus = 'processing';
+      } else if (completedProperties === totalProperties && totalProperties > 0) {
+        // All properties scraped successfully
+        overallStatus = 'completed';
+      } else if (failedProperties === totalProperties && totalProperties > 0) {
+        // All properties failed
+        overallStatus = 'failed';
+      } else if (completedProperties > 0 && failedProperties > 0) {
+        // Some completed and some failed
+        overallStatus = 'partial';
+      } else if (pendingProperties === totalProperties && totalProperties > 0) {
+        // All are pending
+        overallStatus = 'pending';
+      } else {
+        // Default to pending if no properties or unclear state
+        overallStatus = 'pending';
+      }
+      
+      // Build response
+      const response = {
         sessionId,
-        sessionName: session.name,
-        totalJobs: scrapingJobs.length,
-        completedJobs: scrapingJobs.filter(job => job.status === 'completed').length,
-        failedJobs: scrapingJobs.filter(job => job.status === 'failed').length,
-        processingJobs: scrapingJobs.filter(job => job.status === 'processing').length,
-        pendingJobs: scrapingJobs.filter(job => job.status === 'pending').length,
-        jobs: scrapingJobs.map(job => ({
-          id: job.id,
-          propertyProfileId: job.propertyProfileId,
-          status: job.status,
-          stage: job.stage,
-          createdAt: job.createdAt,
-          completedAt: job.completedAt,
-          errorMessage: job.errorMessage
-        }))
+        overallStatus,
+        properties,
+        totalProperties,
+        completedProperties,
+        failedProperties,
+        processingProperties
       };
       
-      res.json(status);
+      res.json(response);
       
     } catch (error) {
       console.error("[SESSION_SCRAPING_STATUS] Error:", error);
