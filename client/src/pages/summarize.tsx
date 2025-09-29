@@ -669,18 +669,62 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   useEffect(() => {
     const triggerSessionScraping = async () => {
       if (isSessionMode && params.sessionId && sessionQuery.data && scrapingStage === 'none') {
-        console.log('[SESSION_SCRAPING] Auto-triggering scraping for session:', params.sessionId);
+        console.log('[SESSION_SCRAPING] Checking scraping status for session:', params.sessionId);
         
-        // Check if there are properties with URLs to scrape
-        const propertiesToScrape = sessionQuery.data.propertyProfiles?.filter(profile => profile.url);
-        
-        if (propertiesToScrape && propertiesToScrape.length > 0) {
-          console.log('[SESSION_SCRAPING] Found', propertiesToScrape.length, 'properties to scrape');
-          await sessionScrapingMutation.mutateAsync(params.sessionId);
-        } else {
-          console.log('[SESSION_SCRAPING] No properties with URLs found, skipping scraping');
-          setScrapingStage('completed');
-          setShowVacancyChart(true);
+        try {
+          // First check if scraping has already been done or is in progress
+          const statusResponse = await apiRequest('GET', `/api/analysis-sessions/${params.sessionId}/scraping-status`);
+          if (!statusResponse.ok) {
+            throw new Error('Failed to check scraping status');
+          }
+          
+          const statusData = await statusResponse.json();
+          console.log('[SESSION_SCRAPING] Current scraping status:', statusData.overallStatus);
+          
+          // Don't trigger new scraping if already completed or processing
+          if (statusData.overallStatus === 'completed') {
+            console.log('[SESSION_SCRAPING] Scraping already completed, skipping new scraping');
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+            return;
+          } else if (statusData.overallStatus === 'processing') {
+            console.log('[SESSION_SCRAPING] Scraping already in progress, starting progress check');
+            setScrapingStage('scraping');
+            // Start polling for completion
+            setTimeout(() => checkSessionScrapingProgress(), 5000);
+            return;
+          } else if (statusData.overallStatus === 'partial') {
+            // Some properties completed, some failed - show as completed to avoid duplicate
+            console.log('[SESSION_SCRAPING] Partial completion detected, showing completed state');
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+            return;
+          }
+          
+          // Only trigger scraping if status is pending, failed, or no jobs exist
+          // Check if there are properties with URLs to scrape
+          const propertiesToScrape = sessionQuery.data.propertyProfiles?.filter(profile => profile.url);
+          
+          if (propertiesToScrape && propertiesToScrape.length > 0) {
+            console.log('[SESSION_SCRAPING] Status is', statusData.overallStatus, '- triggering scraping for', propertiesToScrape.length, 'properties');
+            await sessionScrapingMutation.mutateAsync(params.sessionId);
+          } else {
+            console.log('[SESSION_SCRAPING] No properties with URLs found, skipping scraping');
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+          }
+        } catch (error) {
+          console.error('[SESSION_SCRAPING] Error checking scraping status:', error);
+          // If we can't check status, proceed with scraping to be safe
+          const propertiesToScrape = sessionQuery.data.propertyProfiles?.filter(profile => profile.url);
+          
+          if (propertiesToScrape && propertiesToScrape.length > 0) {
+            console.log('[SESSION_SCRAPING] Failed to check status, proceeding with scraping');
+            await sessionScrapingMutation.mutateAsync(params.sessionId);
+          } else {
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+          }
         }
       }
     };

@@ -359,6 +359,12 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           ? `Generated portfolio recommendations for ${unitCount} total units across multiple properties.`
           : `Generated recommendations for ${unitCount} units.`,
       });
+      
+      // Clean up modal state after showing completion
+      setTimeout(() => {
+        setShowOptimizationModal(false);
+        setOptimizationStage(1);
+      }, 2000); // Give time for modal to show stage 5 and auto-close
     },
     onError: (error: any) => {
       console.error('Optimization generation failed:', error);
