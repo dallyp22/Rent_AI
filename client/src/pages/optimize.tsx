@@ -22,6 +22,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import OptimizationControls from "@/components/optimization-controls";
+import { OptimizationProgressModal } from "@/components/optimization-progress-modal";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis } from "@shared/schema";
@@ -127,6 +128,8 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [currentModifiedPrices, setCurrentModifiedPrices] = useState<Record<string, number>>({});
+  const [showOptimizationModal, setShowOptimizationModal] = useState(false);
+  const [optimizationStage, setOptimizationStage] = useState(1);
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
@@ -265,6 +268,28 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         throw new Error('Please select a valid risk tolerance level');
       }
 
+      // Show modal and set initial stage
+      setShowOptimizationModal(true);
+      setOptimizationStage(1);
+      
+      // Simulate stage progression
+      const stageTimers: NodeJS.Timeout[] = [];
+      
+      // Stage 2: After 2 seconds - Analyzing market
+      stageTimers.push(setTimeout(() => {
+        setOptimizationStage(2);
+      }, 2000));
+      
+      // Stage 3: After 4 seconds - Generating AI recommendations
+      stageTimers.push(setTimeout(() => {
+        setOptimizationStage(3);
+      }, 4000));
+      
+      // Stage 4: After 6 seconds - Calculating impacts
+      stageTimers.push(setTimeout(() => {
+        setOptimizationStage(4);
+      }, 6000));
+
       const endpoint = isSessionMode 
         ? `/api/analysis-sessions/${sessionId}/optimize`
         : `/api/properties/${params.id}/optimize`;
@@ -277,27 +302,41 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
       const maxRetries = 3;
       let attempt = 0;
       
-      while (attempt < maxRetries) {
-        try {
-          const res = await apiRequest("POST", endpoint, data);
-          console.log('[OPTIMIZE_MUTATION] API call successful on attempt:', attempt + 1);
-          return res.json();
-        } catch (error) {
-          attempt++;
-          console.error(`[OPTIMIZE_MUTATION] Optimization attempt ${attempt} failed:`, error);
-          console.error(`[OPTIMIZE_MUTATION] Attempted endpoint:`, endpoint);
-          
-          if (attempt === maxRetries) {
-            // Extract meaningful error message from response
-            if (error instanceof Error) {
-              throw error;
+      try {
+        while (attempt < maxRetries) {
+          try {
+            const res = await apiRequest("POST", endpoint, data);
+            console.log('[OPTIMIZE_MUTATION] API call successful on attempt:', attempt + 1);
+            
+            // Clear stage timers and set to final stage
+            stageTimers.forEach(timer => clearTimeout(timer));
+            setOptimizationStage(5);
+            
+            return res.json();
+          } catch (error) {
+            attempt++;
+            console.error(`[OPTIMIZE_MUTATION] Optimization attempt ${attempt} failed:`, error);
+            console.error(`[OPTIMIZE_MUTATION] Attempted endpoint:`, endpoint);
+            
+            if (attempt === maxRetries) {
+              // Clear timers on error
+              stageTimers.forEach(timer => clearTimeout(timer));
+              
+              // Extract meaningful error message from response
+              if (error instanceof Error) {
+                throw error;
+              }
+              throw new Error('Network error - please check your connection and try again');
             }
-            throw new Error('Network error - please check your connection and try again');
+            
+            // Wait before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
           }
-          
-          // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
         }
+      } catch (error) {
+        // Clear timers on error
+        stageTimers.forEach(timer => clearTimeout(timer));
+        throw error;
       }
       
       // This should never be reached but satisfies TypeScript
@@ -312,6 +351,8 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
       const unitCount = Array.isArray(data.units) ? data.units.length : 
         (data.portfolio ? Object.values(data.portfolio).reduce((sum, p) => sum + p.units.length, 0) : 0);
       
+      // Stage 5 is already set in mutationFn, modal will auto-close
+      // Just show the success toast
       toast({
         title: "Optimization Complete",
         description: isSessionMode 
@@ -322,6 +363,10 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     onError: (error: any) => {
       console.error('Optimization generation failed:', error);
       const errorMessage = error.message || 'Failed to generate recommendations. Please try again.';
+      
+      // Close modal on error
+      setShowOptimizationModal(false);
+      setOptimizationStage(1);
       
       toast({
         title: "Optimization Failed",
@@ -394,8 +439,13 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     } else {
       // For single property mode, first create units if they don't exist, then optimize
       if (!optimizationQuery.data) {
+        // Show modal when starting the process with unit creation
+        setShowOptimizationModal(true);
+        setOptimizationStage(1);
+        
         createUnitsMutation.mutate(undefined, {
           onSuccess: () => {
+            // Modal is already showing, now proceed with optimization
             optimizeMutation.mutate({ 
               goal, 
               targetOccupancy: targetOcc, 
@@ -404,6 +454,10 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           },
           onError: (error) => {
             console.error('Failed to create units:', error);
+            // Close modal on error
+            setShowOptimizationModal(false);
+            setOptimizationStage(1);
+            
             toast({
               title: "Unit Creation Failed",
               description: "Could not prepare property data for optimization. Please try again.",
@@ -903,6 +957,22 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Optimization Progress Modal */}
+      {showOptimizationModal && (
+        <OptimizationProgressModal
+          isOpen={showOptimizationModal}
+          currentStage={optimizationStage}
+          onComplete={() => {
+            setShowOptimizationModal(false);
+            setOptimizationStage(1);
+          }}
+          onClose={() => {
+            setShowOptimizationModal(false);
+            setOptimizationStage(1);
+          }}
+        />
+      )}
     </div>
   );
 }
