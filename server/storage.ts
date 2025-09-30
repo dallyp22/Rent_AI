@@ -801,12 +801,40 @@ export class DrizzleStorage implements IStorage {
       // Filter by bedroom types
       if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
         console.log('[FILTER] Applying bedroom filter:', criteria.bedroomTypes);
-        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
-          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
-        );
-        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
-          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
-        );
+        
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+          // Use helper to get bedroom count from bedrooms field OR unitType string
+          const bedroomCount = this.getUnitBedroomCount(unit);
+          if (bedroomCount === null) return false;
+          
+          return criteria.bedroomTypes!.some(type => {
+            if (type === 'Studio' || type.toLowerCase() === 'studio') {
+              return bedroomCount === 0;
+            }
+            const match = type.match(/(\d+)/);
+            if (match) {
+              return bedroomCount === parseInt(match[1]);
+            }
+            return false;
+          });
+        });
+        
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+          // Use helper to get bedroom count from bedrooms field OR unitType string
+          const bedroomCount = this.getUnitBedroomCount(unit);
+          if (bedroomCount === null) return false;
+          
+          return criteria.bedroomTypes!.some(type => {
+            if (type === 'Studio' || type.toLowerCase() === 'studio') {
+              return bedroomCount === 0;
+            }
+            const match = type.match(/(\d+)/);
+            if (match) {
+              return bedroomCount === parseInt(match[1]);
+            }
+            return false;
+          });
+        });
       }
       
       // Filter by price range
@@ -1716,12 +1744,40 @@ export class DrizzleStorage implements IStorage {
       // Filter by bedroom types (already applied in getFilteredScrapedUnits, but apply again for safety)
       if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
         console.log('[FILTER] Applying bedroom filter:', criteria.bedroomTypes);
-        filteredSubjectUnits = filteredSubjectUnits.filter(unit => 
-          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
-        );
-        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => 
-          criteria.bedroomTypes!.includes(unit.unitType as "Studio" | "1BR" | "2BR" | "3BR")
-        );
+        
+        filteredSubjectUnits = filteredSubjectUnits.filter(unit => {
+          // Use helper to get bedroom count from bedrooms field OR unitType string
+          const bedroomCount = this.getUnitBedroomCount(unit);
+          if (bedroomCount === null) return false;
+          
+          return criteria.bedroomTypes!.some(type => {
+            if (type === 'Studio' || type.toLowerCase() === 'studio') {
+              return bedroomCount === 0;
+            }
+            const match = type.match(/(\d+)/);
+            if (match) {
+              return bedroomCount === parseInt(match[1]);
+            }
+            return false;
+          });
+        });
+        
+        filteredCompetitorUnits = filteredCompetitorUnits.filter(unit => {
+          // Use helper to get bedroom count from bedrooms field OR unitType string
+          const bedroomCount = this.getUnitBedroomCount(unit);
+          if (bedroomCount === null) return false;
+          
+          return criteria.bedroomTypes!.some(type => {
+            if (type === 'Studio' || type.toLowerCase() === 'studio') {
+              return bedroomCount === 0;
+            }
+            const match = type.match(/(\d+)/);
+            if (match) {
+              return bedroomCount === parseInt(match[1]);
+            }
+            return false;
+          });
+        });
       }
       
       // Filter by price range
