@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
 import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
@@ -4192,12 +4192,29 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             console.log(`🔍 [UNIT_MIX_DEBUG] profile.unitMix is null:`, profile.unitMix === null);
             console.log(`🔍 [UNIT_MIX_DEBUG] profile object keys:`, Object.keys(profile));
 
-            const unitMixBreakdown = profile.unitMix ? {
-              studio: profile.unitMix.studio || 0,
-              oneBedroom: profile.unitMix.oneBedroom || 0,
-              twoBedroom: profile.unitMix.twoBedroom || 0,
-              threeBedroom: profile.unitMix.threeBedroom || 0,
-              fourPlusBedroom: profile.unitMix.fourPlusBedroom || 0
+            // Parse unitMix if it's a JSON string (Drizzle sometimes returns JSON as string)
+            let parsedUnitMix: UnitMix | null = null;
+            if (profile.unitMix) {
+              if (typeof profile.unitMix === 'string') {
+                try {
+                  parsedUnitMix = JSON.parse(profile.unitMix);
+                  console.log(`🔍 [UNIT_MIX_FIX] Parsed unitMix from string for ${profile.name}:`, parsedUnitMix);
+                } catch (e) {
+                  console.error(`🔍 [UNIT_MIX_FIX] Failed to parse unitMix for ${profile.name}:`, e);
+                }
+              } else {
+                parsedUnitMix = profile.unitMix;
+                console.log(`🔍 [UNIT_MIX_FIX] UnitMix already an object for ${profile.name}:`, parsedUnitMix);
+              }
+            }
+
+            // Create unitMixBreakdown from parsed data
+            const unitMixBreakdown = parsedUnitMix ? {
+              studio: parsedUnitMix.studio || 0,
+              oneBedroom: parsedUnitMix.oneBedroom || 0,
+              twoBedroom: parsedUnitMix.twoBedroom || 0,
+              threeBedroom: parsedUnitMix.threeBedroom || 0,
+              fourPlusBedroom: parsedUnitMix.fourPlusBedroom || 0
             } : null;
 
             console.log(`🔍 [UNIT_MIX_DEBUG] Resulting unitMixBreakdown:`, unitMixBreakdown);
