@@ -624,36 +624,72 @@ export class DrizzleStorage implements IStorage {
 
   async upsertUser(user: UpsertUser): Promise<User> {
     try {
-      // For local users, we need to handle passwordHash and authProvider
+      console.log('[STORAGE] Upserting user with email:', user.email, 'authProvider:', user.authProvider);
+      
+      // First, check if a user with this email already exists
+      const existingUsers = await this.getUsersByEmailAndAuthProvider(user.email, user.authProvider || 'replit');
+      
+      if (existingUsers.length > 0) {
+        // User exists with same email and auth provider - update it
+        const existingUser = existingUsers[0];
+        console.log('[STORAGE] Found existing user with same email and auth provider:', existingUser.id);
+        
+        const [updatedUser] = await db.update(users)
+          .set({
+            firstName: user.firstName,
+            lastName: user.lastName,
+            profileImageUrl: user.profileImageUrl,
+            emailVerified: user.emailVerified ?? existingUser.emailVerified,
+            updatedAt: new Date()
+          })
+          .where(eq(users.id, existingUser.id))
+          .returning();
+        
+        return updatedUser;
+      }
+      
+      // Check if a user with this email exists but with a different auth provider
+      const [allUsersWithEmail] = await db.select()
+        .from(users)
+        .where(eq(users.email, user.email))
+        .limit(1);
+      
+      if (allUsersWithEmail) {
+        // User exists with same email but different auth provider
+        // Return the existing user (they should use their original login method)
+        console.log('[STORAGE] User exists with email', user.email, 'but different auth provider. Returning existing user.');
+        return allUsersWithEmail;
+      }
+      
+      // No existing user - create new one
       const userData: any = {
         ...user,
-        authProvider: user.authProvider || 'replit', // Default to 'replit' for backward compatibility
+        id: user.id || randomUUID(),
+        authProvider: user.authProvider || 'replit',
+        passwordHash: user.passwordHash ?? null,
+        emailVerified: user.emailVerified ?? false,
+        createdAt: new Date(),
         updatedAt: new Date()
       };
       
-      // If user has an ID (Replit auth), do upsert by ID
-      // If no ID (local auth registration), do insert only
-      if (userData.id) {
-        const [upsertedUser] = await db.insert(users).values(userData).onConflictDoUpdate({
+      console.log('[STORAGE] Creating new user with id:', userData.id);
+      
+      const [newUser] = await db.insert(users)
+        .values(userData)
+        .onConflictDoUpdate({
           target: users.id,
           set: {
             email: userData.email,
             firstName: userData.firstName,
             lastName: userData.lastName,
             profileImageUrl: userData.profileImageUrl,
-            authProvider: userData.authProvider,
-            passwordHash: userData.passwordHash,
             emailVerified: userData.emailVerified,
             updatedAt: new Date()
           }
-        }).returning();
-        
-        return upsertedUser;
-      } else {
-        // For new local users, just insert without conflict handling
-        const [insertedUser] = await db.insert(users).values(userData).returning();
-        return insertedUser;
-      }
+        })
+        .returning();
+      
+      return newUser;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error upserting user:', error);
       throw new Error(`Failed to upsert user: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -1537,15 +1573,83 @@ export class DrizzleStorage implements IStorage {
   // Filtered Analysis Methods
   async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
     try {
-      // Build the query with filters based on criteria
-      // Apply filters based on criteria (simplified implementation)
+      console.log('[STORAGE] Filtering scraped units with criteria:', JSON.stringify(criteria, null, 2));
+      
+      // Get all scraped units first
+      let allUnits = await db.select().from(scrapedUnits).orderBy(asc(scrapedUnits.rent));
+      console.log('[STORAGE] Total scraped units before filtering:', allUnits.length);
+      
+      // Filter by bedroom types if specified
       if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
-        return await db.select().from(scrapedUnits)
-          .where(inArray(scrapedUnits.unitType, criteria.bedroomTypes))
-          .orderBy(asc(scrapedUnits.rent));
+        allUnits = allUnits.filter(unit => {
+          // Match bedrooms count directly
+          const bedroomCount = unit.bedrooms;
+          return criteria.bedroomTypes!.some(type => {
+            // Handle "Studio" (0 bedrooms)
+            if (type === 'Studio') {
+              return bedroomCount === 0;
+            }
+            // Extract number from bedroom type string (e.g., "1BR" -> 1, "2BR" -> 2)
+            const match = type.match(/(\d+)/);
+            if (match) {
+              return bedroomCount === parseInt(match[1]);
+            }
+            return false;
+          });
+        });
+        console.log('[STORAGE] After bedroom filter:', allUnits.length);
       }
       
-      return await db.select().from(scrapedUnits).orderBy(asc(scrapedUnits.rent));
+      // Filter by price range
+      if (criteria.priceRange) {
+        const { min, max } = criteria.priceRange;
+        allUnits = allUnits.filter(unit => {
+          if (unit.rent === null) return false;
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent) : unit.rent;
+          return rent >= min && rent <= max;
+        });
+        console.log('[STORAGE] After price range filter:', allUnits.length);
+      }
+      
+      // Filter by square footage range
+      if (criteria.squareFootageRange) {
+        const { min, max } = criteria.squareFootageRange;
+        allUnits = allUnits.filter(unit => {
+          if (!unit.squareFootage) return false;
+          return unit.squareFootage >= min && unit.squareFootage <= max;
+        });
+        console.log('[STORAGE] After square footage filter:', allUnits.length);
+      }
+      
+      // Filter by availability
+      if (criteria.availability) {
+        const now = new Date();
+        allUnits = allUnits.filter(unit => {
+          if (!unit.availabilityDate) return true; // Include if no date specified
+          
+          const availDate = new Date(unit.availabilityDate);
+          
+          if (criteria.availability === '30days') {
+            const thirtyDaysOut = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+            return availDate <= thirtyDaysOut;
+          } else if (criteria.availability === '60days') {
+            const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
+            return availDate <= sixtyDaysOut;
+          } else if (criteria.availability === 'now') {
+            // Check if status indicates immediate availability
+            return unit.status === 'available' && 
+                   (unit.availabilityDate?.toLowerCase().includes('now') || 
+                    unit.availabilityDate?.toLowerCase().includes('immediate') ||
+                    availDate <= now);
+          }
+          
+          return true;
+        });
+        console.log('[STORAGE] After availability filter:', allUnits.length);
+      }
+      
+      console.log('[STORAGE] Final filtered units count:', allUnits.length);
+      return allUnits;
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting filtered scraped units:', error);
       throw new Error(`Failed to get filtered scraped units: ${error instanceof Error ? error.message : 'Unknown error'}`);
