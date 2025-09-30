@@ -4192,6 +4192,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               propertyUrl: profile.url,
               propertyAddress: profile.address,
               scrapedPropertyId: scrapedProperty.id,
+              totalUnits: profile.totalUnits || 0, // Include Property Profile's totalUnits
               units: normalizedUnits
             });
           }
@@ -4262,7 +4263,8 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       const calculateVacancyForProfile = async (profile: any) => {
         const units = await storage.getPropertyUnitsByProfile(profile.id);
         const availableUnits = units.filter(unit => unit.status === 'available');
-        const totalUnits = Math.max(units.length, profile.totalUnits || 0);
+        // ALWAYS use profile.totalUnits as the denominator for vacancy calculation
+        const totalUnits = profile.totalUnits || 0;
         
         return {
           id: profile.id,

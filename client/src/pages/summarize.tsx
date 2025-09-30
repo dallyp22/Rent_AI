@@ -73,6 +73,7 @@ interface CanonicalScrapedUnitsResponse {
   propertyUrl: string;
   propertyAddress: string;
   scrapedPropertyId: string;
+  totalUnits: number; // Total units from Property Profile
   units: ScrapedUnit[];
 }
 
@@ -164,7 +165,7 @@ const getBedroomDisplayLabel = (bedrooms: number | null | undefined): string => 
   return 'Unknown';
 };
 
-const calculateBedroomMetrics = (units: ScrapedUnit[]): BedroomTypeMetrics[] => {
+const calculateBedroomMetrics = (units: ScrapedUnit[], propertyTotalUnits: number = 0): BedroomTypeMetrics[] => {
   // Group units by bedroom count
   const bedroomGroups = units.reduce((acc, unit) => {
     const key = getBedroomDisplayKey(unit.bedrooms);
@@ -178,8 +179,11 @@ const calculateBedroomMetrics = (units: ScrapedUnit[]): BedroomTypeMetrics[] => 
   // Calculate metrics for each bedroom type
   return Object.entries(bedroomGroups).map(([key, groupUnits]) => {
     const availableUnits = groupUnits.filter(unit => unit.status === 'available');
-    const totalUnits = groupUnits.length;
-    const vacancyRate = totalUnits > 0 ? (availableUnits.length / totalUnits) * 100 : 0;
+    const scrapedUnitsInType = groupUnits.length;
+    
+    // For bedroom-level vacancy, show percentage of scraped units in this type that are available
+    // Note: This is informational only. The property-level vacancy rate (using propertyTotalUnits) is the accurate metric
+    const vacancyRate = scrapedUnitsInType > 0 ? (availableUnits.length / scrapedUnitsInType) * 100 : 0;
     
     // Calculate average rent (only for units with rent data)
     const unitsWithRent = groupUnits.filter(unit => unit.rent && Number(unit.rent) > 0);
@@ -203,9 +207,9 @@ const calculateBedroomMetrics = (units: ScrapedUnit[]): BedroomTypeMetrics[] => 
       type: displayLabel,
       displayKey: key,
       units: groupUnits,
-      totalUnits,
+      totalUnits: scrapedUnitsInType, // This is scraped units count in this bedroom type, not total property units
       availableUnits: availableUnits.length,
-      vacancyRate,
+      vacancyRate, // Percentage of scraped units in this bedroom type that are available (informational)
       avgRent,
       avgSqFt,
       pricePerSqFt
@@ -219,10 +223,13 @@ const calculateBedroomMetrics = (units: ScrapedUnit[]): BedroomTypeMetrics[] => 
 
 const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse[], sessionData?: AnalysisSession & { propertyProfiles: PropertyProfile[] }): PropertyUnitsOrganized[] => {
   return scrapedUnitsData.map(propertyData => {
-    const bedroomTypes = calculateBedroomMetrics(propertyData.units);
-    const totalUnits = propertyData.units.length;
+    // Use Property Profile's totalUnits instead of scraped units count
+    const totalUnits = propertyData.totalUnits || 0;
     const availableUnits = propertyData.units.filter(unit => unit.status === 'available').length;
     const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    
+    // Pass totalUnits to calculateBedroomMetrics for proportional calculations
+    const bedroomTypes = calculateBedroomMetrics(propertyData.units, totalUnits);
     
     // Check if this is a subject property
     const isSubjectProperty = sessionData?.propertyProfiles
