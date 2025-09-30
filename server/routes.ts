@@ -4186,6 +4186,22 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               bedrooms: unit.bedrooms || 0
             }));
 
+            console.log(`🔍 [UNIT_MIX_DEBUG] Property: ${profile.name}`);
+            console.log(`🔍 [UNIT_MIX_DEBUG] profile.unitMix value:`, profile.unitMix);
+            console.log(`🔍 [UNIT_MIX_DEBUG] profile.unitMix type:`, typeof profile.unitMix);
+            console.log(`🔍 [UNIT_MIX_DEBUG] profile.unitMix is null:`, profile.unitMix === null);
+            console.log(`🔍 [UNIT_MIX_DEBUG] profile object keys:`, Object.keys(profile));
+
+            const unitMixBreakdown = profile.unitMix ? {
+              studio: profile.unitMix.studio || 0,
+              oneBedroom: profile.unitMix.oneBedroom || 0,
+              twoBedroom: profile.unitMix.twoBedroom || 0,
+              threeBedroom: profile.unitMix.threeBedroom || 0,
+              fourPlusBedroom: profile.unitMix.fourPlusBedroom || 0
+            } : null;
+
+            console.log(`🔍 [UNIT_MIX_DEBUG] Resulting unitMixBreakdown:`, unitMixBreakdown);
+
             const resultObject = {
               propertyId: profile.id,
               propertyName: profile.name,
@@ -4193,13 +4209,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               propertyAddress: profile.address,
               scrapedPropertyId: scrapedProperty.id,
               totalUnits: profile.totalUnits || 0, // Include Property Profile's totalUnits
-              unitMixBreakdown: profile.unitMix ? {
-                studio: profile.unitMix.studio || 0,
-                oneBedroom: profile.unitMix.oneBedroom || 0,
-                twoBedroom: profile.unitMix.twoBedroom || 0,
-                threeBedroom: profile.unitMix.threeBedroom || 0,
-                fourPlusBedroom: profile.unitMix.fourPlusBedroom || 0
-              } : null,
+              unitMixBreakdown: unitMixBreakdown,
               units: normalizedUnits
             };
             

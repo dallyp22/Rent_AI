@@ -322,10 +322,16 @@ export class DrizzleStorage implements IStorage {
 
   async updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined> {
     try {
+      console.log(`🔍 [UPDATE_DEBUG] Updating property profile ${id}`);
+      console.log(`🔍 [UPDATE_DEBUG] updates.unitMix:`, updates.unitMix);
+      console.log(`🔍 [UPDATE_DEBUG] updates.unitMix type:`, typeof updates.unitMix);
+      
       const [updatedProfile] = await db.update(propertyProfiles)
         .set(updates)
         .where(eq(propertyProfiles.id, id))
         .returning();
+      
+      console.log(`🔍 [UPDATE_DEBUG] Updated profile unitMix:`, updatedProfile.unitMix);
       
       return updatedProfile;
     } catch (error) {
