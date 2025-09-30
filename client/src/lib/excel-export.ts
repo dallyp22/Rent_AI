@@ -1,28 +1,6 @@
 import ExcelJS from 'exceljs';
 import { formatCurrency } from '@/utils/formatters';
 
-// Helper function to format availability date
-function formatAvailabilityDate(date: string | undefined | null): string {
-  if (!date) {
-    return '-';
-  }
-  
-  const availDate = new Date(date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Reset time for date-only comparison
-  
-  if (availDate <= today) {
-    return 'Available Now';
-  }
-  
-  // Format as "MMM DD, YYYY"
-  return availDate.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
-}
-
 // Helper function to format square footage
 function formatSquareFootage(sqft: number | undefined | null): string {
   if (sqft === undefined || sqft === null) {
@@ -45,7 +23,6 @@ export interface ExcelExportData {
     unitNumber: string;
     unitType: string;
     squareFootage?: number;
-    availabilityDate?: string;
     currentRent: number;
     recommendedRent?: number;
     change: number;
@@ -87,7 +64,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
-    { header: 'Availability', key: 'availability', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
     { header: 'Recommended Rent', key: 'recommendedRent', width: 18 },
     { header: 'Monthly Change', key: 'change', width: 15 },
@@ -125,7 +101,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'Property',
     'Unit Type',
     'Square Footage',
-    'Availability',
     'Current Rent',
     'Recommended Rent',
     'Monthly Change',
@@ -158,7 +133,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.propertyName || '',
       unit.unitType,
       formatSquareFootage(unit.squareFootage),
-      formatAvailabilityDate(unit.availabilityDate),
       unit.currentRent,
       unit.recommendedRent || unit.currentRent,
       unit.change,
@@ -168,8 +142,8 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     ]);
     
     // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(8); // Monthly Change column (shifted by 3: Property, Square Footage, Availability)
-    const impactCell = row.getCell(9); // Annual Impact column (shifted by 3: Property, Square Footage, Availability)
+    const changeCell = row.getCell(7); // Monthly Change column (shifted by 2: Property, Square Footage)
+    const impactCell = row.getCell(8); // Annual Impact column (shifted by 2: Property, Square Footage)
     
     if (unit.change > 0) {
       // Positive change - green
@@ -216,10 +190,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     });
     
     // Format currency cells
-    row.getCell(6).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 3: Property, Square Footage, Availability)
-    row.getCell(7).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 3: Property, Square Footage, Availability)
-    row.getCell(8).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 3: Property, Square Footage, Availability)
-    row.getCell(9).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 3: Property, Square Footage, Availability)
+    row.getCell(5).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 2: Property, Square Footage)
+    row.getCell(6).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 2: Property, Square Footage)
+    row.getCell(7).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 2: Property, Square Footage)
+    row.getCell(8).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 2: Property, Square Footage)
   });
   
   worksheet.addRow([]);
