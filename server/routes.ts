@@ -1686,8 +1686,8 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
           updatedUnits.push({
             ...updatedUnit,
-            squareFootage: unit.squareFootage, // Include squareFootage from enriched unit
-            availabilityDate: unit.availabilityDate, // Include availabilityDate from enriched unit
+            squareFootage: (unit as any).squareFootage || undefined, // Include squareFootage from enriched unit
+            availabilityDate: (unit as any).availabilityDate || undefined, // Include availabilityDate from enriched unit
             confidenceLevel: recommendation.confidenceLevel,
             reasoning: recommendation.reasoning
           });
