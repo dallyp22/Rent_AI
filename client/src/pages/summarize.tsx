@@ -448,7 +448,7 @@ const BedroomUnitsTable = ({ bedroomType, propertyId }: { bedroomType: BedroomTy
                   >
                     {isAvailable ? 'Available' : 'Occupied'}
                   </Badge>
-                  {unit.availabilityDate && isAvailable && (
+                  {unit.availabilityDate && (
                     <div className="text-xs text-muted-foreground mt-1">
                       {unit.availabilityDate}
                     </div>

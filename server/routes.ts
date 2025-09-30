@@ -903,6 +903,29 @@ function normalizeAvailability(value: any): string | undefined {
   return undefined;
 }
 
+// Helper function to determine if an availability date indicates current vacancy
+// Conservative approach: only return true if we're 100% certain the unit is vacant RIGHT NOW
+function isCurrentlyAvailable(availabilityDate: string | null | undefined): boolean {
+  // Empty/null means unknown status, treat as occupied to be safe
+  if (!availabilityDate) return false;
+  
+  const cleanValue = availabilityDate.trim().toLowerCase();
+  
+  // Only these phrases strongly indicate IMMEDIATE availability
+  if (cleanValue.includes('available now') || 
+      cleanValue.includes('immediate')) {
+    return true;
+  }
+  
+  // Everything else returns false, including:
+  // - "Call for availability" - doesn't guarantee immediate vacancy
+  // - "Contact for availability" - doesn't guarantee immediate vacancy
+  // - Any specific dates (MM/DD/YYYY or YYYY-MM-DD format)
+  // - Month/year patterns ("January 2025", "02/2025")
+  // - Any other text
+  return false;
+}
+
 function parseNumber(value: any): number | undefined {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -1934,7 +1957,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             squareFootage: unit.squareFootage,
             rent: unit.rent?.toString() || null,
             availabilityDate: unit.availabilityDate,
-            status: unit.availabilityDate && unit.availabilityDate.toLowerCase().includes('available') ? 'available' : 'occupied'
+            status: isCurrentlyAvailable(unit.availabilityDate) ? 'available' : 'occupied'
           }));
           
           const savedUnits = await storage.replaceScrapedUnitsForProperty(property.id, unitsToInsert);
@@ -2098,8 +2121,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           const typeUnits = unitTypeGroups[type];
           const totalUnits = typeUnits.length;
           const availableUnits = typeUnits.filter(u => 
-            u.status === 'available' || 
-            (u.availabilityDate && u.availabilityDate.toLowerCase().includes('available'))
+            u.status === 'available'
           ).length;
           
           const rentPrices = typeUnits
@@ -2127,8 +2149,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         // Calculate overall vacancy rate
         const totalUnits = units.length;
         const totalAvailable = units.filter(u => 
-          u.status === 'available' || 
-          (u.availabilityDate && u.availabilityDate.toLowerCase().includes('available'))
+          u.status === 'available'
         ).length;
         const overallVacancyRate = totalUnits > 0 ? (totalAvailable / totalUnits) * 100 : 0;
 
@@ -4240,7 +4261,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       // Helper function to calculate vacancy data for a property profile
       const calculateVacancyForProfile = async (profile: any) => {
         const units = await storage.getPropertyUnitsByProfile(profile.id);
-        const availableUnits = units.filter(unit => unit.status === 'vacant' || unit.status === 'available');
+        const availableUnits = units.filter(unit => unit.status === 'available');
         const totalUnits = Math.max(units.length, profile.totalUnits || 0);
         
         return {
