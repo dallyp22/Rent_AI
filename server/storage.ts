@@ -1570,6 +1570,35 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  /**
+   * Helper to extract normalized bedroom count from a scraped unit
+   * Checks bedrooms field first, then falls back to parsing unitType string
+   */
+  private getUnitBedroomCount(unit: ScrapedUnit): number | null {
+    // Primary source: numeric bedrooms field
+    if (unit.bedrooms !== null && unit.bedrooms !== undefined) {
+      return unit.bedrooms;
+    }
+    
+    // Fallback: parse unitType string
+    if (unit.unitType) {
+      const unitTypeLower = unit.unitType.toLowerCase();
+      
+      // Check for Studio (0 bedrooms)
+      if (unitTypeLower.includes('studio')) {
+        return 0;
+      }
+      
+      // Extract number from patterns like "1 Bed", "1 Bedroom", "1BR", "2 Bed", etc.
+      const match = unit.unitType.match(/(\d+)\s*(bed|bedroom|br)/i);
+      if (match) {
+        return parseInt(match[1]);
+      }
+    }
+    
+    return null;
+  }
+
   // Filtered Analysis Methods
   async getFilteredScrapedUnits(criteria: FilterCriteria): Promise<ScrapedUnit[]> {
     try {
@@ -1582,14 +1611,18 @@ export class DrizzleStorage implements IStorage {
       // Filter by bedroom types if specified
       if (criteria.bedroomTypes && criteria.bedroomTypes.length > 0) {
         allUnits = allUnits.filter(unit => {
-          // Match bedrooms count directly
-          const bedroomCount = unit.bedrooms;
+          // Get normalized bedroom count from bedrooms field or unitType
+          const bedroomCount = this.getUnitBedroomCount(unit);
+          
+          // If we couldn't determine bedroom count, exclude the unit
+          if (bedroomCount === null) return false;
+          
           return criteria.bedroomTypes!.some(type => {
             // Handle "Studio" (0 bedrooms)
-            if (type === 'Studio') {
+            if (type === 'Studio' || type.toLowerCase() === 'studio') {
               return bedroomCount === 0;
             }
-            // Extract number from bedroom type string (e.g., "1BR" -> 1, "2BR" -> 2)
+            // Extract number from filter type (e.g., "1BR" -> 1, "2BR" -> 2)
             const match = type.match(/(\d+)/);
             if (match) {
               return bedroomCount === parseInt(match[1]);
