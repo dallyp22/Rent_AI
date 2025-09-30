@@ -74,6 +74,13 @@ interface CanonicalScrapedUnitsResponse {
   propertyAddress: string;
   scrapedPropertyId: string;
   totalUnits: number; // Total units from Property Profile
+  unitMixBreakdown?: {
+    studio: number;
+    oneBedroom: number;
+    twoBedroom: number;
+    threeBedroom: number;
+    fourPlusBedroom: number;
+  } | null;
   units: ScrapedUnit[];
 }
 
@@ -165,7 +172,17 @@ const getBedroomDisplayLabel = (bedrooms: number | null | undefined): string => 
   return 'Unknown';
 };
 
-const calculateBedroomMetrics = (units: ScrapedUnit[], propertyTotalUnits: number = 0): BedroomTypeMetrics[] => {
+const calculateBedroomMetrics = (
+  units: ScrapedUnit[], 
+  propertyTotalUnits: number = 0,
+  unitMixBreakdown?: {
+    studio: number;
+    oneBedroom: number;
+    twoBedroom: number;
+    threeBedroom: number;
+    fourPlusBedroom: number;
+  } | null
+): BedroomTypeMetrics[] => {
   // Group units by bedroom count
   const bedroomGroups = units.reduce((acc, unit) => {
     const key = getBedroomDisplayKey(unit.bedrooms);
@@ -181,9 +198,34 @@ const calculateBedroomMetrics = (units: ScrapedUnit[], propertyTotalUnits: numbe
     const availableUnits = groupUnits.filter(unit => unit.status === 'available');
     const scrapedUnitsInType = groupUnits.length;
     
-    // For bedroom-level vacancy, show percentage of scraped units in this type that are available
-    // Note: This is informational only. The property-level vacancy rate (using propertyTotalUnits) is the accurate metric
-    const vacancyRate = scrapedUnitsInType > 0 ? (availableUnits.length / scrapedUnitsInType) * 100 : 0;
+    // Get the total units for this bedroom type from unit mix breakdown
+    let bedroomTotal = scrapedUnitsInType; // Default to scraped units count
+    
+    if (unitMixBreakdown) {
+      // Map the bedroom type key to the correct unit mix field
+      switch (key) {
+        case 'studio':
+          bedroomTotal = unitMixBreakdown.studio || scrapedUnitsInType;
+          break;
+        case 'oneBed':
+          bedroomTotal = unitMixBreakdown.oneBedroom || scrapedUnitsInType;
+          break;
+        case 'twoBed':
+          bedroomTotal = unitMixBreakdown.twoBedroom || scrapedUnitsInType;
+          break;
+        case 'threeBed':
+          bedroomTotal = unitMixBreakdown.threeBedroom || scrapedUnitsInType;
+          break;
+        case 'fourPlusBed':
+          bedroomTotal = unitMixBreakdown.fourPlusBedroom || scrapedUnitsInType;
+          break;
+        default:
+          bedroomTotal = scrapedUnitsInType;
+      }
+    }
+    
+    // Calculate vacancy rate using the bedroom total from unit mix (or fallback to scraped units)
+    const vacancyRate = bedroomTotal > 0 ? (availableUnits.length / bedroomTotal) * 100 : 0;
     
     // Calculate average rent (only for units with rent data)
     const unitsWithRent = groupUnits.filter(unit => unit.rent && Number(unit.rent) > 0);
@@ -207,9 +249,9 @@ const calculateBedroomMetrics = (units: ScrapedUnit[], propertyTotalUnits: numbe
       type: displayLabel,
       displayKey: key,
       units: groupUnits,
-      totalUnits: scrapedUnitsInType, // This is scraped units count in this bedroom type, not total property units
+      totalUnits: bedroomTotal, // Use bedroom total from unit mix breakdown (or fallback)
       availableUnits: availableUnits.length,
-      vacancyRate, // Percentage of scraped units in this bedroom type that are available (informational)
+      vacancyRate, // Accurate vacancy rate using unit mix breakdown
       avgRent,
       avgSqFt,
       pricePerSqFt
@@ -240,11 +282,12 @@ const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse
     console.log(`🔍 [ORGANIZE_UNITS] Calculated values for ${propertyData.propertyName}:`, {
       totalUnits,
       availableUnits,
-      vacancyRate: vacancyRate.toFixed(2) + '%'
+      vacancyRate: vacancyRate.toFixed(2) + '%',
+      hasUnitMixBreakdown: !!propertyData.unitMixBreakdown
     });
     
-    // Pass totalUnits to calculateBedroomMetrics for proportional calculations
-    const bedroomTypes = calculateBedroomMetrics(propertyData.units, totalUnits);
+    // Pass totalUnits and unitMixBreakdown to calculateBedroomMetrics for accurate vacancy calculations
+    const bedroomTypes = calculateBedroomMetrics(propertyData.units, totalUnits, propertyData.unitMixBreakdown);
     
     // Check if this is a subject property
     const isSubjectProperty = sessionData?.propertyProfiles
