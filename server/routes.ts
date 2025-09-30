@@ -1587,7 +1587,12 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             currentRent: scrapedUnit.rent || "0",
             status: scrapedUnit.status || "occupied"
           });
-          units.push(unit);
+          // Enrich unit with scraped data fields for optimization
+          units.push({
+            ...unit,
+            squareFootage: scrapedUnit.squareFootage,
+            availabilityDate: scrapedUnit.availabilityDate
+          });
         }
       } else {
         // Fall back to existing PropertyUnits only if no scraped data
@@ -1681,6 +1686,8 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
           updatedUnits.push({
             ...updatedUnit,
+            squareFootage: unit.squareFootage, // Include squareFootage from enriched unit
+            availabilityDate: unit.availabilityDate, // Include availabilityDate from enriched unit
             confidenceLevel: recommendation.confidenceLevel,
             reasoning: recommendation.reasoning
           });
