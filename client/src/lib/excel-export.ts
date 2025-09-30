@@ -36,6 +36,21 @@ export interface ExcelExportData {
     avgIncrease: number;
     riskLevel: string;
   };
+  // New vacancy metrics section
+  vacancyMetrics?: {
+    overallVacancy: number;
+    totalUnits: number;
+    vacantUnits: number;
+    vacancyByBedroom: {
+      studio: number | null;
+      oneBedroom: number | null;
+      twoBedroom: number | null;
+      threeBedroom: number | null;
+      fourPlusBedroom: number | null;
+    };
+    competitorAvgVacancy?: number;
+    marketPosition?: string;
+  };
   marketInsights?: {
     occupancyImpact: string;
     competitivePosition: string;
@@ -89,6 +104,54 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   worksheet.addRow(['Total Units:', data.propertyInfo.units]);
   worksheet.addRow(['Built Year:', data.propertyInfo.builtYear]);
   worksheet.addRow([]);
+  
+  // Vacancy Metrics Section (if available)
+  if (data.vacancyMetrics) {
+    const vacancyHeaderRow = worksheet.addRow(['Vacancy Metrics']);
+    vacancyHeaderRow.getCell(1).font = { size: 14, bold: true, color: { argb: 'FF059669' } };
+    
+    const overallVacancyRow = worksheet.addRow(['Overall Vacancy Rate:', `${data.vacancyMetrics.overallVacancy.toFixed(1)}%`]);
+    overallVacancyRow.getCell(1).font = { bold: true };
+    
+    // Apply conditional formatting to vacancy rate
+    const vacancyCell = overallVacancyRow.getCell(2);
+    if (data.vacancyMetrics.overallVacancy <= 5) {
+      vacancyCell.font = { color: { argb: 'FF059669' }, bold: true };
+      vacancyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+    } else if (data.vacancyMetrics.overallVacancy <= 15) {
+      vacancyCell.font = { color: { argb: 'FFF59E0B' }, bold: true };
+      vacancyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4E5' } };
+    } else {
+      vacancyCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+      vacancyCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+    }
+    
+    worksheet.addRow(['Vacant Units:', `${data.vacancyMetrics.vacantUnits} of ${data.vacancyMetrics.totalUnits}`]);
+    
+    // Market comparison if available
+    if (data.vacancyMetrics.competitorAvgVacancy !== undefined) {
+      worksheet.addRow(['Market Avg Vacancy:', `${data.vacancyMetrics.competitorAvgVacancy.toFixed(1)}%`]);
+    }
+    if (data.vacancyMetrics.marketPosition) {
+      worksheet.addRow(['Market Position:', data.vacancyMetrics.marketPosition]);
+    }
+    
+    // Vacancy by bedroom type
+    worksheet.addRow(['Vacancy by Bedroom Type:', '']);
+    const bedroomVacancy = data.vacancyMetrics.vacancyByBedroom;
+    
+    const formatVacancyValue = (value: number | null): string => {
+      return value !== null ? `${value.toFixed(1)}%` : 'N/A';
+    };
+    
+    worksheet.addRow(['  Studio:', formatVacancyValue(bedroomVacancy.studio)]);
+    worksheet.addRow(['  1 Bedroom:', formatVacancyValue(bedroomVacancy.oneBedroom)]);
+    worksheet.addRow(['  2 Bedroom:', formatVacancyValue(bedroomVacancy.twoBedroom)]);
+    worksheet.addRow(['  3 Bedroom:', formatVacancyValue(bedroomVacancy.threeBedroom)]);
+    worksheet.addRow(['  4+ Bedroom:', formatVacancyValue(bedroomVacancy.fourPlusBedroom)]);
+    
+    worksheet.addRow([]);
+  }
   
   // Units Section Header
   const unitsHeaderRow = worksheet.addRow(['Unit-by-Unit Optimization']);

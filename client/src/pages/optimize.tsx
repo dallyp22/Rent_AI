@@ -24,8 +24,10 @@ import OptimizationTable from "@/components/optimization-table";
 import OptimizationControls from "@/components/optimization-controls";
 import { OptimizationProgressModal } from "@/components/optimization-progress-modal";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
+import { exportPortfolioToExcel, type PortfolioExportData } from "@/lib/portfolio-excel-export";
+import { calculateOverallVacancy, calculateVacancyByBedroom } from "@shared/vacancy-utils";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
-import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis } from "@shared/schema";
+import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis, ScrapedUnit } from "@shared/schema";
 
 interface OptimizationData {
   report: OptimizationReport;
@@ -507,7 +509,55 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     setIsExporting(true);
 
     try {
-      let exportData: ExcelExportData;
+      // Fetch vacancy data
+      let vacancyData: any = null;
+      try {
+        if (isSessionMode) {
+          // Fetch portfolio vacancy data
+          const vacancyResponse = await apiRequest('GET', `/api/analysis-sessions/${sessionId}/vacancy-summary`);
+          vacancyData = await vacancyResponse.json();
+        } else {
+          // For single property, we can fetch vacancy data if available from scraped units
+          const propertyId = params.id;
+          try {
+            const unitsResponse = await apiRequest('GET', `/api/scraped-units?propertyId=${propertyId}`);
+            const scrapedUnitsData = await unitsResponse.json();
+            
+            // Calculate vacancy for single property
+            if (scrapedUnitsData && scrapedUnitsData.length > 0) {
+              const property = propertyQuery.data?.property;
+              const propertyProfile = propertyQuery.data?.analysis;
+              
+              if (property || propertyProfile) {
+                const units = scrapedUnitsData[0]?.units || [];
+                const overallVacancy = calculateOverallVacancy(
+                  { 
+                    unitMix: propertyProfile?.unitMix || null, 
+                    totalUnits: property?.totalUnits || propertyProfile?.totalUnits || 0 
+                  }, 
+                  units
+                );
+                
+                const vacancyByBedroom = calculateVacancyByBedroom(
+                  { unitMix: propertyProfile?.unitMix || null },
+                  units
+                );
+                
+                vacancyData = {
+                  overallVacancy: overallVacancy || 0,
+                  vacancyByBedroom,
+                  totalUnits: property?.totalUnits || propertyProfile?.totalUnits || 0,
+                  vacantUnits: units.length || 0
+                };
+              }
+            }
+          } catch (err) {
+            console.log('Could not fetch vacancy data for single property, continuing without it');
+          }
+        }
+      } catch (error) {
+        console.log('Vacancy data not available, continuing without it');
+      }
 
       if (isSessionMode) {
         // Session mode - portfolio export
@@ -523,19 +573,177 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           return;
         }
 
-        // For portfolio mode, create a combined export
+        // For portfolio mode, use the portfolio export function
         const totalUnits = subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0);
-        const portfolioAddress = subjectProperties.length === 1 
-          ? subjectProperties[0].address 
-          : `Portfolio (${subjectProperties.length} properties)`;
         
-        exportData = {
-          propertyInfo: {
-            address: portfolioAddress,
-            type: 'Portfolio',
-            units: totalUnits,
-            builtYear: Math.min(...subjectProperties.map(p => p.builtYear || new Date().getFullYear())),
+        // Calculate portfolio summary metrics
+        let totalCurrentRevenue = 0;
+        let totalOptimizedRevenue = 0;
+        let totalOptimizationPotential = 0;
+        let affectedUnits = 0;
+        
+        optimization.units.forEach(unit => {
+          const currentRent = parseFloat(unit.currentRent);
+          const adjustedPrice = currentModifiedPrices[unit.id] || 
+            (unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent);
+          
+          totalCurrentRevenue += currentRent;
+          totalOptimizedRevenue += adjustedPrice;
+          
+          const change = adjustedPrice - currentRent;
+          if (change !== 0) {
+            affectedUnits++;
+            totalOptimizationPotential += change;
+          }
+        });
+        
+        // Build property performance data
+        const propertyPerformance = subjectProperties.map(property => {
+          // Get units for this property
+          const propertyUnits = optimization.units.filter(unit => 
+            unit.propertyProfileId === property.id
+          );
+          
+          // Calculate metrics for this property
+          const propertyCurrentRevenue = propertyUnits.reduce((sum, unit) => 
+            sum + parseFloat(unit.currentRent), 0
+          );
+          
+          const propertyOptimizedRevenue = propertyUnits.reduce((sum, unit) => {
+            const adjustedPrice = currentModifiedPrices[unit.id] || 
+              (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
+            return sum + adjustedPrice;
+          }, 0);
+          
+          // Find vacancy data for this property if available
+          const propertyVacancyData = vacancyData?.subjectProperties?.find(
+            (p: any) => p.id === property.id
+          );
+          
+          return {
+            propertyId: property.id,
+            propertyName: property.name || property.address || 'Unknown',
+            address: property.address || 'N/A',
+            totalUnits: property.totalUnits || 0,
+            currentMonthlyRevenue: propertyCurrentRevenue,
+            optimizedMonthlyRevenue: propertyOptimizedRevenue,
+            optimizationPotential: propertyOptimizedRevenue - propertyCurrentRevenue,
+            annualOptimizationPotential: (propertyOptimizedRevenue - propertyCurrentRevenue) * 12,
+            occupancyRate: propertyVacancyData ? (100 - (propertyVacancyData.overallVacancy || 0)) : 95,
+            performanceScore: 80, // Default score
+            lastAnalyzed: new Date().toISOString(),
+            // Add vacancy metrics if available
+            overallVacancy: propertyVacancyData?.overallVacancy,
+            vacantUnits: propertyVacancyData?.scrapedUnitsCount,
+            vacancyByBedroom: propertyVacancyData?.vacancyByBedroom
+          };
+        });
+        
+        // Prepare portfolio export data
+        const portfolioExportData: PortfolioExportData = {
+          portfolioSummary: {
+            totalProperties: subjectProperties.length,
+            totalUnits: totalUnits,
+            totalCurrentRevenue: totalCurrentRevenue,
+            totalOptimizedRevenue: totalOptimizedRevenue,
+            totalOptimizationPotential: totalOptimizationPotential,
+            annualOptimizationPotential: totalOptimizationPotential * 12,
+            avgPerformanceScore: 80,
+            portfolioROI: totalCurrentRevenue > 0 ? (totalOptimizationPotential / totalCurrentRevenue) * 100 : 0,
+            avgOccupancyRate: vacancyData?.portfolioMetrics?.avgPortfolioVacancy ? 
+              (100 - vacancyData.portfolioMetrics.avgPortfolioVacancy) : 95,
+            generatedAt: new Date().toISOString(),
+            // Add vacancy metrics
+            avgPortfolioVacancy: vacancyData?.portfolioMetrics?.avgPortfolioVacancy,
+            totalVacantUnits: vacancyData?.portfolioMetrics?.totalVacantUnits
           },
+          propertyPerformance: propertyPerformance,
+          // Add vacancy metrics section if available
+          vacancyMetrics: vacancyData?.portfolioMetrics ? {
+            portfolioVacancy: {
+              overallVacancy: vacancyData.portfolioMetrics.avgPortfolioVacancy || 0,
+              totalUnits: vacancyData.portfolioMetrics.totalPortfolioUnits || totalUnits,
+              vacantUnits: vacancyData.portfolioMetrics.totalVacantUnits || 0,
+              vacancyByBedroom: vacancyData.portfolioMetrics.portfolioVacancyByBedroom || {
+                studio: null,
+                oneBedroom: null,
+                twoBedroom: null,
+                threeBedroom: null,
+                fourPlusBedroom: null
+              }
+            },
+            propertyVacancies: subjectProperties.map(property => {
+              const propertyVacancyData = vacancyData?.subjectProperties?.find(
+                (p: any) => p.id === property.id
+              );
+              
+              return {
+                propertyId: property.id,
+                propertyName: property.name || property.address || 'Unknown',
+                totalUnits: property.totalUnits || 0,
+                vacantUnits: propertyVacancyData?.scrapedUnitsCount || 0,
+                overallVacancy: propertyVacancyData?.overallVacancy || 0,
+                vacancyByBedroom: propertyVacancyData?.vacancyByBedroom || {
+                  studio: null,
+                  oneBedroom: null,
+                  twoBedroom: null,
+                  threeBedroom: null,
+                  fourPlusBedroom: null
+                }
+              };
+            }),
+            marketPosition: vacancyData.portfolioMetrics.marketPosition,
+            competitorAvgVacancy: vacancyData.portfolioMetrics.avgCompetitorVacancy
+          } : undefined
+        };
+        
+        // Export using portfolio export function
+        await exportPortfolioToExcel(portfolioExportData, 'executive');
+        
+        toast({
+          title: "Export Successful",
+          description: `Portfolio optimization report downloaded (${optimization.units.length} units across ${subjectProperties.length} properties).`,
+        });
+        
+        setIsExporting(false);
+        return; // Exit early for portfolio export
+      }
+      
+      // Single property mode
+      const property = propertyQuery.data?.property;
+      
+      if (!property) {
+        toast({
+          title: "Export Failed",
+          description: "Property data not available. Please refresh the page and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Update to include vacancy data
+      const exportData: ExcelExportData = {
+        propertyInfo: {
+          address: property.address,
+          type: property.propertyType || 'Unknown',
+          units: property.totalUnits || 0,
+          builtYear: property.builtYear || 0,
+        },
+        // Add vacancy metrics if available
+        vacancyMetrics: vacancyData ? {
+          overallVacancy: vacancyData.overallVacancy || 0,
+          totalUnits: vacancyData.totalUnits || property.totalUnits || 0,
+          vacantUnits: vacancyData.vacantUnits || 0,
+          vacancyByBedroom: vacancyData.vacancyByBedroom || {
+            studio: null,
+            oneBedroom: null,
+            twoBedroom: null,
+            threeBedroom: null,
+            fourPlusBedroom: null
+          },
+          competitorAvgVacancy: undefined,
+          marketPosition: undefined
+        } : undefined,
           units: optimization.units.map(unit => {
             // Use modified price if available, otherwise use recommended rent
             const adjustedPrice = currentModifiedPrices[unit.id] || 
@@ -595,81 +803,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             };
           })()
         };
-      } else {
-        // Single property mode
-        const property = propertyQuery.data?.property;
-        
-        if (!property) {
-          toast({
-            title: "Export Failed",
-            description: "Property data not available. Please refresh the page and try again.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        exportData = {
-          propertyInfo: {
-            address: property.address,
-            type: property.propertyType || 'Unknown',
-            units: property.totalUnits || 0,
-            builtYear: property.builtYear || 0,
-          },
-          units: optimization.units.map(unit => {
-            // Use modified price if available, otherwise use recommended rent
-            const adjustedPrice = currentModifiedPrices[unit.id] || 
-              (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
-            const currentRent = parseFloat(unit.currentRent);
-            const change = adjustedPrice - currentRent;
-            
-            return {
-              propertyName: property.propertyName || property.address || 'Unknown Property',
-              unitNumber: unit.unitNumber,
-              unitType: unit.unitType,
-              squareFootage: (unit as any).squareFootage || undefined,
-              currentRent: currentRent,
-              recommendedRent: adjustedPrice,
-              change: change,
-              annualImpact: change * 12,
-              status: unit.status,
-              reasoning: currentModifiedPrices[unit.id] 
-                ? 'User-adjusted pricing recommendation' 
-                : 'AI-generated pricing recommendation'
-            };
-          }),
-          summary: (() => {
-            // Recalculate summary based on adjusted prices
-            let totalIncrease = 0;
-            let affectedUnits = 0;
-            let totalCurrentRent = 0;
-            
-            optimization.units.forEach(unit => {
-              const currentRent = parseFloat(unit.currentRent);
-              totalCurrentRent += currentRent;
-              
-              const adjustedPrice = currentModifiedPrices[unit.id] || 
-                (unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent);
-              const change = adjustedPrice - currentRent;
-              
-              if (change !== 0) {
-                affectedUnits++;
-                totalIncrease += change * 12; // Annual increase
-              }
-            });
-            
-            const avgIncrease = totalCurrentRent > 0 
-              ? ((totalIncrease / 12) / totalCurrentRent * 100).toFixed(2)
-              : '0';
-            
-            return {
-              totalIncrease: totalIncrease,
-              affectedUnits: affectedUnits,
-              avgIncrease: parseFloat(avgIncrease),
-              riskLevel: optimization.report.riskLevel,
-            };
-          })()
-        };
-      }
 
       await exportToExcel(exportData);
       
