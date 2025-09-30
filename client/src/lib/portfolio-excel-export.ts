@@ -12,9 +12,6 @@ export interface PortfolioExportData {
     portfolioROI: number;
     avgOccupancyRate: number;
     generatedAt: string;
-    // New vacancy metrics
-    avgPortfolioVacancy?: number;
-    totalVacantUnits?: number;
   };
   propertyPerformance: Array<{
     propertyId: string;
@@ -28,48 +25,7 @@ export interface PortfolioExportData {
     occupancyRate: number;
     performanceScore: number;
     lastAnalyzed: Date | string;
-    // New vacancy metrics per property
-    overallVacancy?: number;
-    vacantUnits?: number;
-    vacancyByBedroom?: {
-      studio: number | null;
-      oneBedroom: number | null;
-      twoBedroom: number | null;
-      threeBedroom: number | null;
-      fourPlusBedroom: number | null;
-    };
   }>;
-  // New vacancy data section
-  vacancyMetrics?: {
-    portfolioVacancy: {
-      overallVacancy: number;
-      totalUnits: number;
-      vacantUnits: number;
-      vacancyByBedroom: {
-        studio: number | null;
-        oneBedroom: number | null;
-        twoBedroom: number | null;
-        threeBedroom: number | null;
-        fourPlusBedroom: number | null;
-      };
-    };
-    propertyVacancies: Array<{
-      propertyId: string;
-      propertyName: string;
-      totalUnits: number;
-      vacantUnits: number;
-      overallVacancy: number;
-      vacancyByBedroom: {
-        studio: number | null;
-        oneBedroom: number | null;
-        twoBedroom: number | null;
-        threeBedroom: number | null;
-        fourPlusBedroom: number | null;
-      };
-    }>;
-    marketPosition?: string;
-    competitorAvgVacancy?: number;
-  };
   trends?: {
     revenueGrowth: number;
     occupancyTrend: number;
@@ -131,11 +87,6 @@ export async function exportPortfolioToExcel(
     await createPerformanceSheet(workbook, data, colors);
   }
   
-  // Add Vacancy Metrics sheet for all report types except basic summary
-  if ((reportType === 'performance' || reportType === 'executive' || reportType === 'financial') && data.vacancyMetrics) {
-    await createVacancySheet(workbook, data, colors);
-  }
-  
   if (reportType === 'executive' && data.insights) {
     await createInsightsSheet(workbook, data, colors);
   }
@@ -192,18 +143,6 @@ async function createSummarySheet(workbook: ExcelJS.Workbook, data: PortfolioExp
     ['Monthly Optimization Potential', `$${data.portfolioSummary.totalOptimizationPotential.toLocaleString()}`, ''],
     ['Annual Optimization Potential', `$${data.portfolioSummary.annualOptimizationPotential.toLocaleString()}`, ''],
     ['Average Occupancy Rate', `${data.portfolioSummary.avgOccupancyRate.toFixed(1)}%`, data.portfolioSummary.avgOccupancyRate > 85 ? 'Excellent' : data.portfolioSummary.avgOccupancyRate > 75 ? 'Good' : 'Needs Attention'],
-    ['Average Vacancy Rate', 
-      data.portfolioSummary.avgPortfolioVacancy !== undefined ? 
-        `${data.portfolioSummary.avgPortfolioVacancy.toFixed(1)}%` : 'N/A',
-      data.portfolioSummary.avgPortfolioVacancy !== undefined ? 
-        (data.portfolioSummary.avgPortfolioVacancy < 5 ? 'Excellent' :
-         data.portfolioSummary.avgPortfolioVacancy < 15 ? 'Good' : 'Needs Attention') : ''
-    ],
-    ['Total Vacant Units',
-      data.portfolioSummary.totalVacantUnits !== undefined ?
-        `${data.portfolioSummary.totalVacantUnits} / ${data.portfolioSummary.totalUnits}` : 'N/A',
-      ''
-    ],
     ['Portfolio ROI', `${data.portfolioSummary.portfolioROI.toFixed(1)}%`, data.portfolioSummary.portfolioROI > 12 ? 'Above Average' : 'Market Rate'],
     ['Average Performance Score', `${data.portfolioSummary.avgPerformanceScore.toFixed(0)}/100`, data.portfolioSummary.avgPerformanceScore > 80 ? 'Excellent' : data.portfolioSummary.avgPerformanceScore > 70 ? 'Good' : 'Needs Improvement']
   ];
@@ -270,8 +209,6 @@ async function createFinancialSheet(workbook: ExcelJS.Workbook, data: PortfolioE
     'Monthly Potential',
     'Annual Potential',
     'Occupancy %',
-    'Vacancy %',
-    'Vacant Units',
     'Avg Rent/Unit',
     'Performance Score'
   ]);
@@ -302,8 +239,6 @@ async function createFinancialSheet(workbook: ExcelJS.Workbook, data: PortfolioE
       property.optimizationPotential || 0,
       property.annualOptimizationPotential || 0,
       property.occupancyRate || 0,
-      property.overallVacancy !== undefined ? property.overallVacancy : 'N/A',
-      property.vacantUnits !== undefined ? property.vacantUnits : 'N/A',
       avgRentPerUnit,
       property.performanceScore || 0
     ]);
@@ -316,31 +251,13 @@ async function createFinancialSheet(workbook: ExcelJS.Workbook, data: PortfolioE
       };
 
       // Format currency columns
-      if ([4, 5, 6, 7, 11].includes(colNumber)) {
+      if ([4, 5, 6, 7, 9].includes(colNumber)) {
         cell.numFmt = '"$"#,##0.00';
       }
       
       // Format percentage columns
       if (colNumber === 8) {
         cell.numFmt = '0.0"%"';
-      }
-      
-      // Format vacancy percentage
-      if (colNumber === 9 && typeof cell.value === 'number') {
-        cell.numFmt = '0.0"%"';
-        // Color code vacancy rate
-        if (property.overallVacancy !== undefined) {
-          if (property.overallVacancy <= 5) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightGreen } };
-            cell.font = { color: { argb: colors.primaryGreen }, bold: true };
-          } else if (property.overallVacancy <= 15) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4E5' } };
-            cell.font = { color: { argb: 'FFF59E0B' }, bold: true };
-          } else {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightRed } };
-            cell.font = { color: { argb: 'FFDC2626' }, bold: true };
-          }
-        }
       }
 
       // Color code optimization potential
@@ -350,7 +267,7 @@ async function createFinancialSheet(workbook: ExcelJS.Workbook, data: PortfolioE
       }
 
       // Color code performance score
-      if (colNumber === 12) {
+      if (colNumber === 10) {
         if (property.performanceScore > 80) {
           cell.font = { color: { argb: colors.primaryGreen }, bold: true };
         } else if (property.performanceScore < 60) {
@@ -401,8 +318,6 @@ async function createFinancialSheet(workbook: ExcelJS.Workbook, data: PortfolioE
     { width: 15 }, // Monthly Potential
     { width: 15 }, // Annual Potential
     { width: 12 }, // Occupancy %
-    { width: 12 }, // Vacancy %
-    { width: 12 }, // Vacant Units
     { width: 15 }, // Avg Rent/Unit
     { width: 15 }  // Performance Score
   ];
@@ -525,235 +440,6 @@ async function createPerformanceSheet(workbook: ExcelJS.Workbook, data: Portfoli
     { width: 25 }, // Value/Property Name
     { width: 15 }, // Trend/Performance Score
     { width: 20 }  // Benchmark/Optimization Potential
-  ];
-}
-
-async function createVacancySheet(workbook: ExcelJS.Workbook, data: PortfolioExportData, colors: any) {
-  const worksheet = workbook.addWorksheet('Vacancy Metrics');
-
-  // Title
-  const titleRow = worksheet.addRow(['Portfolio Vacancy Analysis']);
-  titleRow.getCell(1).font = { size: 18, bold: true, color: { argb: colors.primaryBlue } };
-  titleRow.height = 30;
-  
-  worksheet.addRow(['Analysis Date:', new Date().toLocaleDateString()]);
-  worksheet.addRow([]);
-
-  if (!data.vacancyMetrics) {
-    const noDataRow = worksheet.addRow(['Vacancy data not available']);
-    noDataRow.getCell(1).font = { italic: true, color: { argb: colors.lightGray } };
-    return;
-  }
-
-  // Portfolio Summary Section
-  const summaryHeader = worksheet.addRow(['Portfolio Vacancy Summary']);
-  summaryHeader.getCell(1).font = { size: 14, bold: true, color: { argb: colors.primaryGreen } };
-  worksheet.addRow([]);
-
-  const summaryData = [
-    ['Metric', 'Value', 'Status'],
-    ['Overall Portfolio Vacancy', `${data.vacancyMetrics.portfolioVacancy.overallVacancy.toFixed(1)}%`,
-      data.vacancyMetrics.portfolioVacancy.overallVacancy < 5 ? 'Excellent' :
-      data.vacancyMetrics.portfolioVacancy.overallVacancy < 15 ? 'Good' : 'Needs Attention'],
-    ['Total Units', data.vacancyMetrics.portfolioVacancy.totalUnits, ''],
-    ['Vacant Units', data.vacancyMetrics.portfolioVacancy.vacantUnits, ''],
-    ['Market Position', data.vacancyMetrics.marketPosition || 'N/A', ''],
-    ['Competitor Avg Vacancy', data.vacancyMetrics.competitorAvgVacancy !== undefined ? 
-      `${data.vacancyMetrics.competitorAvgVacancy.toFixed(1)}%` : 'N/A', '']
-  ];
-
-  summaryData.forEach((row, index) => {
-    const excelRow = worksheet.addRow(row);
-    if (index === 0) {
-      // Header row
-      excelRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.primaryBlue } };
-        cell.border = {
-          top: { style: 'thin' }, left: { style: 'thin' },
-          bottom: { style: 'thin' }, right: { style: 'thin' }
-        };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      });
-    } else {
-      // Data rows
-      excelRow.eachCell((cell, colNumber) => {
-        if (colNumber === 1) {
-          cell.font = { bold: true };
-        }
-        cell.border = {
-          top: { style: 'thin' }, left: { style: 'thin' },
-          bottom: { style: 'thin' }, right: { style: 'thin' }
-        };
-      });
-    }
-  });
-
-  worksheet.addRow([]);
-  worksheet.addRow([]);
-
-  // Vacancy by Bedroom Type Section
-  const bedroomHeader = worksheet.addRow(['Vacancy by Bedroom Type']);
-  bedroomHeader.getCell(1).font = { size: 14, bold: true, color: { argb: colors.primaryGreen } };
-  worksheet.addRow([]);
-
-  const bedroomData = [
-    ['Bedroom Type', 'Portfolio Vacancy %', 'Status'],
-    ['Studio', 
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.studio !== null ?
-        `${data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.studio.toFixed(1)}%` : 'N/A',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.studio !== null ?
-        (data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.studio < 5 ? 'Low' :
-         data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.studio < 15 ? 'Moderate' : 'High') : ''],
-    ['1 Bedroom',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.oneBedroom !== null ?
-        `${data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.oneBedroom.toFixed(1)}%` : 'N/A',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.oneBedroom !== null ?
-        (data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.oneBedroom < 5 ? 'Low' :
-         data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.oneBedroom < 15 ? 'Moderate' : 'High') : ''],
-    ['2 Bedroom',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.twoBedroom !== null ?
-        `${data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.twoBedroom.toFixed(1)}%` : 'N/A',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.twoBedroom !== null ?
-        (data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.twoBedroom < 5 ? 'Low' :
-         data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.twoBedroom < 15 ? 'Moderate' : 'High') : ''],
-    ['3 Bedroom',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.threeBedroom !== null ?
-        `${data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.threeBedroom.toFixed(1)}%` : 'N/A',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.threeBedroom !== null ?
-        (data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.threeBedroom < 5 ? 'Low' :
-         data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.threeBedroom < 15 ? 'Moderate' : 'High') : ''],
-    ['4+ Bedroom',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.fourPlusBedroom !== null ?
-        `${data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.fourPlusBedroom.toFixed(1)}%` : 'N/A',
-      data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.fourPlusBedroom !== null ?
-        (data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.fourPlusBedroom < 5 ? 'Low' :
-         data.vacancyMetrics.portfolioVacancy.vacancyByBedroom.fourPlusBedroom < 15 ? 'Moderate' : 'High') : '']
-  ];
-
-  bedroomData.forEach((row, index) => {
-    const excelRow = worksheet.addRow(row);
-    if (index === 0) {
-      // Header row
-      excelRow.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.primaryBlue } };
-        cell.border = {
-          top: { style: 'thin' }, left: { style: 'thin' },
-          bottom: { style: 'thin' }, right: { style: 'thin' }
-        };
-        cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      });
-    } else {
-      // Data rows
-      excelRow.eachCell((cell, colNumber) => {
-        if (colNumber === 1) {
-          cell.font = { bold: true };
-        }
-        // Apply conditional formatting to vacancy percentage column
-        if (colNumber === 2 && cell.value !== 'N/A' && typeof row[1] === 'string') {
-          const vacancyValue = parseFloat(row[1].replace('%', ''));
-          if (vacancyValue <= 5) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightGreen } };
-            cell.font = { color: { argb: colors.primaryGreen }, bold: true };
-          } else if (vacancyValue <= 15) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4E5' } };
-            cell.font = { color: { argb: 'FFF59E0B' }, bold: true };
-          } else {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightRed } };
-            cell.font = { color: { argb: 'FFDC2626' }, bold: true };
-          }
-        }
-        cell.border = {
-          top: { style: 'thin' }, left: { style: 'thin' },
-          bottom: { style: 'thin' }, right: { style: 'thin' }
-        };
-      });
-    }
-  });
-
-  worksheet.addRow([]);
-  worksheet.addRow([]);
-
-  // Property-by-Property Vacancy Details
-  const propertyHeader = worksheet.addRow(['Property Vacancy Details']);
-  propertyHeader.getCell(1).font = { size: 14, bold: true, color: { argb: colors.primaryGreen } };
-  worksheet.addRow([]);
-
-  const propertyHeaderRow = worksheet.addRow([
-    'Property Name',
-    'Total Units',
-    'Vacant Units',
-    'Overall Vacancy %',
-    'Studio %',
-    '1BR %',
-    '2BR %',
-    '3BR %',
-    '4BR+ %'
-  ]);
-
-  propertyHeaderRow.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.primaryBlue } };
-    cell.border = {
-      top: { style: 'thin' }, left: { style: 'thin' },
-      bottom: { style: 'thin' }, right: { style: 'thin' }
-    };
-    cell.alignment = { horizontal: 'center', vertical: 'middle' };
-  });
-
-  // Add property data
-  data.vacancyMetrics.propertyVacancies.forEach((property) => {
-    const row = worksheet.addRow([
-      property.propertyName,
-      property.totalUnits,
-      property.vacantUnits,
-      property.overallVacancy,
-      property.vacancyByBedroom.studio !== null ? property.vacancyByBedroom.studio : 'N/A',
-      property.vacancyByBedroom.oneBedroom !== null ? property.vacancyByBedroom.oneBedroom : 'N/A',
-      property.vacancyByBedroom.twoBedroom !== null ? property.vacancyByBedroom.twoBedroom : 'N/A',
-      property.vacancyByBedroom.threeBedroom !== null ? property.vacancyByBedroom.threeBedroom : 'N/A',
-      property.vacancyByBedroom.fourPlusBedroom !== null ? property.vacancyByBedroom.fourPlusBedroom : 'N/A'
-    ]);
-
-    row.eachCell((cell, colNumber) => {
-      cell.border = {
-        top: { style: 'thin' }, left: { style: 'thin' },
-        bottom: { style: 'thin' }, right: { style: 'thin' }
-      };
-
-      // Format percentage columns
-      if (colNumber >= 4 && typeof cell.value === 'number') {
-        cell.numFmt = '0.0"%"';
-
-        // Apply conditional formatting to overall vacancy
-        if (colNumber === 4) {
-          if (property.overallVacancy <= 5) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightGreen } };
-            cell.font = { color: { argb: colors.primaryGreen }, bold: true };
-          } else if (property.overallVacancy <= 15) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF4E5' } };
-            cell.font = { color: { argb: 'FFF59E0B' }, bold: true };
-          } else {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: colors.lightRed } };
-            cell.font = { color: { argb: 'FFDC2626' }, bold: true };
-          }
-        }
-      }
-    });
-  });
-
-  // Set column widths
-  worksheet.columns = [
-    { width: 25 }, // Property Name
-    { width: 12 }, // Total Units
-    { width: 12 }, // Vacant Units
-    { width: 15 }, // Overall Vacancy %
-    { width: 10 }, // Studio %
-    { width: 10 }, // 1BR %
-    { width: 10 }, // 2BR %
-    { width: 10 }, // 3BR %
-    { width: 10 }  // 4BR+ %
   ];
 }
 
