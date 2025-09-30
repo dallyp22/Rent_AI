@@ -222,11 +222,26 @@ const calculateBedroomMetrics = (units: ScrapedUnit[], propertyTotalUnits: numbe
 };
 
 const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse[], sessionData?: AnalysisSession & { propertyProfiles: PropertyProfile[] }): PropertyUnitsOrganized[] => {
+  console.log('🔍 [ORGANIZE_UNITS] Starting organization with', scrapedUnitsData.length, 'properties');
+  
   return scrapedUnitsData.map(propertyData => {
+    console.log(`🔍 [ORGANIZE_UNITS] Processing property:`, {
+      propertyName: propertyData.propertyName,
+      propertyId: propertyData.propertyId,
+      totalUnitsFromAPI: propertyData.totalUnits,
+      unitsArrayLength: propertyData.units?.length || 0
+    });
+    
     // Use Property Profile's totalUnits instead of scraped units count
     const totalUnits = propertyData.totalUnits || 0;
     const availableUnits = propertyData.units.filter(unit => unit.status === 'available').length;
     const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    
+    console.log(`🔍 [ORGANIZE_UNITS] Calculated values for ${propertyData.propertyName}:`, {
+      totalUnits,
+      availableUnits,
+      vacancyRate: vacancyRate.toFixed(2) + '%'
+    });
     
     // Pass totalUnits to calculateBedroomMetrics for proportional calculations
     const bedroomTypes = calculateBedroomMetrics(propertyData.units, totalUnits);
@@ -235,7 +250,7 @@ const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse
     const isSubjectProperty = sessionData?.propertyProfiles
       ?.find(profile => profile.id === propertyData.propertyId)?.profileType === 'subject' || false;
     
-    return {
+    const result = {
       propertyId: propertyData.propertyId,
       propertyName: propertyData.propertyName,
       propertyAddress: propertyData.propertyAddress,
@@ -245,6 +260,14 @@ const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse
       availableUnits,
       vacancyRate
     };
+    
+    console.log(`🔍 [ORGANIZE_UNITS] Final result for ${propertyData.propertyName}:`, {
+      totalUnits: result.totalUnits,
+      availableUnits: result.availableUnits,
+      vacancyRate: result.vacancyRate.toFixed(2) + '%'
+    });
+    
+    return result;
   });
 };
 
@@ -565,7 +588,17 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
       if (!response.ok) {
         throw new Error('Failed to fetch scraped units data');
       }
-      return await response.json();
+      const data = await response.json();
+      console.log('🔍 [SCRAPED_UNITS_QUERY] Full API response:', JSON.stringify(data, null, 2));
+      console.log('🔍 [SCRAPED_UNITS_QUERY] Number of properties:', data.length);
+      data.forEach((property: CanonicalScrapedUnitsResponse, index: number) => {
+        console.log(`🔍 [SCRAPED_UNITS_QUERY] Property ${index + 1}:`, {
+          propertyName: property.propertyName,
+          totalUnits: property.totalUnits,
+          unitsArrayLength: property.units?.length || 0
+        });
+      });
+      return data;
     },
     enabled: isSessionMode && !!params.sessionId,
     retry: 3,
@@ -964,7 +997,15 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               </CardHeader>
               <CardContent>
                 <div className="space-y-8">
-                  {organizeUnitsByProperty(scrapedUnitsQuery.data, sessionData).map((propertyData) => (
+                  {(() => {
+                    console.log('🔍 [RENDER] About to organize properties, scrapedUnitsQuery.data:', scrapedUnitsQuery.data);
+                    const organizedData = organizeUnitsByProperty(scrapedUnitsQuery.data, sessionData);
+                    console.log('🔍 [RENDER] Organized data result:', organizedData);
+                    organizedData.forEach((prop, idx) => {
+                      console.log(`🔍 [RENDER] Property ${idx + 1} - ${prop.propertyName}: totalUnits=${prop.totalUnits}, availableUnits=${prop.availableUnits}`);
+                    });
+                    return organizedData;
+                  })().map((propertyData) => (
                     <div key={propertyData.propertyId} className="space-y-4">
                       {/* Property Header */}
                       <div className={`p-4 rounded-lg border ${

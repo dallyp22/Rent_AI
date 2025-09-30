@@ -4186,7 +4186,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               bedrooms: unit.bedrooms || 0
             }));
 
-            result.push({
+            const resultObject = {
               propertyId: profile.id,
               propertyName: profile.name,
               propertyUrl: profile.url,
@@ -4194,7 +4194,16 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               scrapedPropertyId: scrapedProperty.id,
               totalUnits: profile.totalUnits || 0, // Include Property Profile's totalUnits
               units: normalizedUnits
+            };
+            
+            console.log(`🔍 [SESSION_SCRAPED_UNITS] Adding result for ${profile.name}:`, {
+              propertyName: profile.name,
+              totalUnitsFromProfile: profile.totalUnits,
+              totalUnitsInResult: resultObject.totalUnits,
+              unitsArrayLength: normalizedUnits.length
             });
+            
+            result.push(resultObject);
           }
 
         } catch (profileError) {
