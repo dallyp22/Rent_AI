@@ -198,7 +198,7 @@ const FilteredAnalysisResults = memo(({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            ${analysis.avgRent.toLocaleString()}
+            ${analysis.avgRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </motion.div>
           <div className="text-sm text-muted-foreground">Avg Rent</div>
         </motion.div>
