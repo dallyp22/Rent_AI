@@ -238,7 +238,7 @@ const FilteredAnalysisResults = memo(({
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5 }}
           >
-            ${analysis.pricePerSqFt}
+            ${analysis.pricePerSqFt.toFixed(2)}
           </motion.div>
           <div className="text-sm text-muted-foreground">Price/Sq Ft</div>
         </motion.div>
