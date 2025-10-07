@@ -266,23 +266,23 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                   <div className="text-center">
-                    <div className="font-semibold text-blue-600 dark:text-blue-400">{subjectProperties.length}</div>
+                    <div className="text-2xl font-semibold text-blue-600 dark:text-blue-400">{subjectProperties.length}</div>
                     <div className="text-muted-foreground">Subject Properties</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-semibold text-green-600 dark:text-green-400">
+                    <div className="text-2xl font-semibold text-green-600 dark:text-green-400">
                       {sessionData.propertyProfiles?.filter((p: PropertyProfile) => p.profileType === 'competitor').length || 0}
                     </div>
                     <div className="text-muted-foreground">Competitors</div>
                   </div>
                   <div className="text-center">
-                    <div className="font-semibold text-orange-600 dark:text-orange-400">
+                    <div className="text-2xl font-semibold text-orange-600 dark:text-orange-400">
                       {subjectProperties.reduce((sum: number, p: PropertyProfile) => sum + (p.totalUnits || 0), 0)}
                     </div>
                     <div className="text-muted-foreground">Total Units</div>
                   </div>
                   <div className="text-center" data-testid="competitive-filter-status">
-                    <div className="font-semibold text-purple-600 dark:text-purple-400">
+                    <div className="text-2xl font-semibold text-purple-600 dark:text-purple-400">
                       {isCompetitiveFilterActive ? (
                         <div className="flex items-center justify-center gap-1">
                           <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
