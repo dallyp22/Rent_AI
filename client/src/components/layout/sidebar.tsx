@@ -19,7 +19,7 @@ interface NavigationItem {
 export default function Sidebar() {
   const [location] = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(["Property Input"]));
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(["Select Properties"]));
   
   // Extract property ID from current URL
   const extractPropertyId = (path: string): string | null => {
@@ -32,7 +32,7 @@ export default function Sidebar() {
   // Generate navigation with dynamic property IDs and auth requirements
   const navigation: NavigationItem[] = [
     { 
-      name: "Property Input", 
+      name: "Select Properties", 
       href: "/", 
       icon: Home,
       enabled: true,
