@@ -949,7 +949,15 @@ export class DrizzleStorage implements IStorage {
         percentileRank: 70,
         locationScore: 85,
         amenityScore: 80,
-        pricePerSqFt: 2.5,
+        pricePerSqFt: (() => {
+          const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
+          const validUnitsWithSqft = allUnits.filter(u => u.squareFootage && u.squareFootage > 0);
+          if (validUnitsWithSqft.length === 0) return 0;
+          const rent = (unit: typeof validUnitsWithSqft[0]) => 
+            typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) || 0 : (unit.rent || 0);
+          return Math.round((validUnitsWithSqft.reduce((sum, unit) => 
+            sum + (rent(unit) / (unit.squareFootage || 1)), 0) / validUnitsWithSqft.length) * 100) / 100;
+        })(),
         subjectUnits: filteredSubjectUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
@@ -1827,7 +1835,15 @@ export class DrizzleStorage implements IStorage {
         percentileRank: 70,
         locationScore: 85,
         amenityScore: 80,
-        pricePerSqFt: 2.5,
+        pricePerSqFt: (() => {
+          const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
+          const validUnitsWithSqft = allUnits.filter(u => u.squareFootage && u.squareFootage > 0);
+          if (validUnitsWithSqft.length === 0) return 0;
+          const rent = (unit: typeof validUnitsWithSqft[0]) => 
+            typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) || 0 : (unit.rent || 0);
+          return Math.round((validUnitsWithSqft.reduce((sum, unit) => 
+            sum + (rent(unit) / (unit.squareFootage || 1)), 0) / validUnitsWithSqft.length) * 100) / 100;
+        })(),
         subjectUnits: filteredSubjectUnits.map(unit => ({
           unitId: unit.id,
           propertyName: unit.propertyName,
