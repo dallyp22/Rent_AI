@@ -98,7 +98,7 @@ export default function Sidebar() {
     <div className="w-64 bg-card border-r border-border flex flex-col" data-testid="sidebar">
       <div className="p-6 border-b border-border">
         <h1 className="text-xl font-bold text-primary" data-testid="app-title">
-          PropertyAnalytics Pro
+          Rent AI Optimization
         </h1>
         <p className="text-sm text-muted-foreground mt-1" data-testid="app-subtitle">
           Real Estate Analysis Platform
