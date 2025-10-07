@@ -2576,7 +2576,12 @@ export class MemStorageLegacy implements IStorage {
       percentileRank,
       locationScore: Math.min(100, Math.max(0, percentileRank + 5)),
       amenityScore: Math.min(100, Math.max(0, amenityScore)),
-      pricePerSqFt: subjectAvgSqFt > 0 ? Math.round((subjectAvgRent / subjectAvgSqFt) * 100) / 100 : 0,
+      pricePerSqFt: (() => {
+        const validUnitsWithSqft = subjectUnitsFormatted.filter(u => u.squareFootage && u.squareFootage > 0);
+        return validUnitsWithSqft.length > 0 
+          ? Math.round((validUnitsWithSqft.reduce((sum, unit) => sum + (unit.rent / (unit.squareFootage || 1)), 0) / validUnitsWithSqft.length) * 100) / 100
+          : 0;
+      })(),
       subjectUnits: subjectUnitsFormatted,
       competitorUnits: competitorUnitsFormatted,
       competitiveEdges,
@@ -3371,7 +3376,12 @@ export class MemStorageLegacy implements IStorage {
       percentileRank,
       locationScore: Math.min(100, Math.max(0, percentileRank + 5)),
       amenityScore: Math.min(100, Math.max(0, amenityScore)),
-      pricePerSqFt: subjectAvgSqFt > 0 ? Math.round((subjectAvgRent / subjectAvgSqFt) * 100) / 100 : 0,
+      pricePerSqFt: (() => {
+        const validUnitsWithSqft = subjectUnitsFormatted.filter(u => u.squareFootage && u.squareFootage > 0);
+        return validUnitsWithSqft.length > 0 
+          ? Math.round((validUnitsWithSqft.reduce((sum, unit) => sum + (unit.rent / (unit.squareFootage || 1)), 0) / validUnitsWithSqft.length) * 100) / 100
+          : 0;
+      })(),
       // New fields
       subjectUnits: subjectUnitsFormatted,
       competitorUnits: competitorUnitsFormatted,
