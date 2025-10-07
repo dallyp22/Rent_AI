@@ -364,7 +364,7 @@ export default function PropertyInput() {
               onClick={handleStartAnalysis}
               disabled={createAnalysisSessionMutation.isPending}
               data-testid="button-start-analysis"
-              className="shrink-0"
+              className={`shrink-0 ${!createAnalysisSessionMutation.isPending ? 'animate-glow' : ''}`}
             >
               <Play className="h-4 w-4 mr-2" />
               {createAnalysisSessionMutation.isPending ? "Starting..." : `Analyze Selected Properties (${propertySelection.totalCount})`}

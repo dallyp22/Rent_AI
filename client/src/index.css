@@ -177,3 +177,30 @@
   -webkit-appearance: none;
   margin: 0;
 }
+
+/* Button glow animation using pseudo-element to preserve focus ring */
+@keyframes button-glow {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
+.animate-glow {
+  position: relative;
+}
+
+.animate-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, transparent 70%);
+  animation: button-glow 2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
