@@ -1356,7 +1356,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
 
           {/* Portfolio Navigation */}
           <div className="flex justify-end pt-6">
-            <Button onClick={handleContinueToAnalyze} data-testid="button-continue-to-analyze">
+            <Button onClick={handleContinueToAnalyze} data-testid="button-continue-to-analyze" className="animate-glow">
               Proceed to Portfolio Analysis
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
