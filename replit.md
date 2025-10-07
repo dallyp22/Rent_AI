@@ -1,8 +1,20 @@
-# Property Analytics Pro - Real Estate Analysis Platform
+# Rent AI Optimization - Real Estate Analysis Platform
 
 ## Overview
 
-Property Analytics Pro is a comprehensive real estate analysis platform that helps property managers and real estate professionals analyze, compare, and optimize their property pricing strategies. The application combines AI-powered property analysis with web scraping capabilities to provide market insights and competitive analysis. It features a multi-stage workflow that guides users through property input, competitor analysis, detailed comparison, and pricing optimization.
+Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real estate analysis platform that helps property managers and real estate professionals analyze, compare, and optimize their property pricing strategies. The application combines AI-powered property analysis with web scraping capabilities to provide market insights and competitive analysis. It features a multi-stage workflow that guides users through property input, competitor analysis, detailed comparison, and pricing optimization.
+
+## Recent Changes
+
+### October 7, 2025
+- **Branding Update**: Changed application title from "Property Analytics Pro" to "Rent AI Optimization"
+- **Navigation Improvement**: Updated sidebar navigation text from "Property Input" to "Select Properties" for clarity
+- **UX Enhancement**: Added accessible glow animation to "Analyze Selected Properties" button
+  - Uses CSS pseudo-element approach to avoid conflicts with focus ring
+  - Subtle pulsing radial gradient effect (2s duration)
+  - Conditionally shows only when button is enabled
+  - Preserves keyboard navigation accessibility
+- **Bug Fix**: Corrected price per square foot calculation to properly average individual unit calculations instead of dividing aggregate values
 
 ## User Preferences
 
