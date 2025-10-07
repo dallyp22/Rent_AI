@@ -142,7 +142,7 @@ export default function PropertySidebar({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Target className="h-4 w-4 text-blue-600" />
-              <h3 className="font-medium text-sm">Subject Properties</h3>
+              <h3 className="font-medium text-base">Subject Properties</h3>
               <Badge variant="secondary" className="text-xs" data-testid="badge-subject-count">
                 {subjectProperties.length} available
               </Badge>
@@ -212,7 +212,7 @@ export default function PropertySidebar({
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Users className="h-4 w-4 text-orange-600" />
-              <h3 className="font-medium text-sm">Competitor Properties</h3>
+              <h3 className="font-medium text-base">Competitor Properties</h3>
               <Badge variant="secondary" className="text-xs" data-testid="badge-competitor-count">
                 {competitorProperties.length} available
               </Badge>
