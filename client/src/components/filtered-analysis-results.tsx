@@ -180,7 +180,7 @@ const FilteredAnalysisResults = memo(({
           >
             {analysis.unitCount}
           </motion.div>
-          <div className="text-sm text-muted-foreground">Your Units</div>
+          <div className="text-sm text-muted-foreground">All Units</div>
         </motion.div>
         
         <motion.div 
