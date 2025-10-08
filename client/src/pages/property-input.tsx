@@ -11,7 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, AlertCircle, Database, Play, Building2, Plus, Lock, LogIn, ShieldAlert } from "lucide-react";
+import { CheckCircle, AlertCircle, Database, Play, Building2, Plus, Lock, ShieldAlert } from "lucide-react";
 import { Link } from "wouter";
 import type { 
   InsertPropertyProfile, 
@@ -392,19 +392,9 @@ export default function PropertyInput() {
                   <Lock className="h-12 w-12 text-gray-400 mx-auto" />
                   <div>
                     <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Create Account to Add Properties</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
                       Sign in to create property profiles, save your analysis, and access portfolio management features.
                     </p>
-                    <Button
-                      onClick={() => {
-                        sessionStorage.setItem('auth_redirect_path', window.location.pathname + window.location.search);
-                        window.location.href = '/api/login';
-                      }}
-                      data-testid="button-form-login"
-                    >
-                      <LogIn className="h-4 w-4 mr-2" />
-                      Sign In to Continue
-                    </Button>
                   </div>
                 </div>
               ) : (
