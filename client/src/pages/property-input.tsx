@@ -317,27 +317,13 @@ export default function PropertyInput() {
                 <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
                   🎯 Trial Mode - Create Your First Analysis
                 </h4>
-                <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
+                <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
                   You're browsing as a guest! You can view existing property data and explore basic features, 
                   but creating properties and saving analysis requires an account.
                 </p>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      sessionStorage.setItem('auth_redirect_path', window.location.pathname + window.location.search);
-                      window.location.href = '/api/login';
-                    }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white"
-                    data-testid="button-guest-login"
-                  >
-                    <LogIn className="h-4 w-4 mr-2" />
-                    Sign In to Save & Create
-                  </Button>
-                  <span className="text-xs text-blue-700 dark:text-blue-300 self-center">
-                    Free account • Portfolio management • Data persistence
-                  </span>
-                </div>
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Free account • Portfolio management • Data persistence
+                </p>
               </div>
             </div>
           </CardContent>
