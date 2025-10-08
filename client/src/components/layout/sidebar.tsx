@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
@@ -275,16 +274,6 @@ export default function Sidebar() {
                 Sign in to access portfolio management features
               </AlertDescription>
             </Alert>
-            <Button 
-              onClick={() => window.location.href = '/api/login'}
-              variant="outline" 
-              size="sm" 
-              className="w-full mt-2"
-              data-testid="sidebar-login-button"
-            >
-              <LogIn className="mr-2 h-4 w-4" />
-              Sign In
-            </Button>
           </div>
         )}
         
