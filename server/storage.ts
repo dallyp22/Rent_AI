@@ -34,6 +34,9 @@ import {
   type FilteredAnalysis,
   type UnitComparison,
   type CompetitiveEdges,
+  // TAG definitions types
+  type TagDefinition,
+  type InsertTagDefinition,
   // User authentication types
   type User,
   type UpsertUser
@@ -51,6 +54,7 @@ import {
   propertyAnalysis,
   competitorProperties,
   propertyUnits,
+  tagDefinitions,
   optimizationReports,
   scrapingJobs,
   scrapedProperties,
@@ -121,10 +125,22 @@ export interface IStorage {
   // Property Units
   createPropertyUnit(unit: InsertPropertyUnit): Promise<PropertyUnit>;
   getPropertyUnits(propertyId: string): Promise<PropertyUnit[]>;
+  getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]>;
   updatePropertyUnit(id: string, updates: Partial<PropertyUnit>): Promise<PropertyUnit | undefined>;
+  deletePropertyUnit(id: string): Promise<boolean>;
   clearPropertyUnits(propertyId: string): Promise<void>;  // Legacy - uses propertyId
   clearPropertyUnitsByProfile(propertyProfileId: string): Promise<void>;  // New - uses propertyProfileId
   replacePropertyUnitsByProfile(propertyProfileId: string, units: InsertPropertyUnit[]): Promise<PropertyUnit[]>;
+  bulkUpdatePropertyUnits(updates: { id: string; updates: Partial<PropertyUnit> }[]): Promise<PropertyUnit[]>;
+  bulkDeletePropertyUnits(ids: string[]): Promise<boolean>;
+  
+  // TAG Definitions
+  createTagDefinition(tagDef: InsertTagDefinition): Promise<TagDefinition>;
+  getTagDefinition(id: string): Promise<TagDefinition | undefined>;
+  getTagDefinitionsByProperty(propertyProfileId: string): Promise<TagDefinition[]>;
+  updateTagDefinition(id: string, updates: Partial<TagDefinition>): Promise<TagDefinition | undefined>;
+  deleteTagDefinition(id: string): Promise<boolean>;
+  updateTagDisplayOrder(propertyProfileId: string, tags: { id: string; displayOrder: number }[]): Promise<TagDefinition[]>;
   
   // Optimization Reports
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
@@ -1242,6 +1258,17 @@ export class DrizzleStorage implements IStorage {
     }
   }
 
+  async getPropertyUnitsByProfile(propertyProfileId: string): Promise<PropertyUnit[]> {
+    try {
+      return await db.select().from(propertyUnits)
+        .where(eq(propertyUnits.propertyProfileId, propertyProfileId))
+        .orderBy(asc(propertyUnits.unitNumber));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting property units by profile:', error);
+      throw new Error(`Failed to get property units by profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   async updatePropertyUnit(id: string, updates: Partial<PropertyUnit>): Promise<PropertyUnit | undefined> {
     try {
       const [updatedUnit] = await db.update(propertyUnits)
@@ -1310,6 +1337,124 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error replacing property units:', error);
       throw new Error(`Failed to replace property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async deletePropertyUnit(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(propertyUnits).where(eq(propertyUnits.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error deleting property unit:', error);
+      throw new Error(`Failed to delete property unit: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async bulkUpdatePropertyUnits(updates: { id: string; updates: Partial<PropertyUnit> }[]): Promise<PropertyUnit[]> {
+    try {
+      const results: PropertyUnit[] = [];
+      for (const update of updates) {
+        const [updatedUnit] = await db.update(propertyUnits)
+          .set(update.updates)
+          .where(eq(propertyUnits.id, update.id))
+          .returning();
+        if (updatedUnit) {
+          results.push(updatedUnit);
+        }
+      }
+      return results;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error bulk updating property units:', error);
+      throw new Error(`Failed to bulk update property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async bulkDeletePropertyUnits(ids: string[]): Promise<boolean> {
+    try {
+      if (ids.length === 0) return true;
+      const result = await db.delete(propertyUnits).where(inArray(propertyUnits.id, ids));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error bulk deleting property units:', error);
+      throw new Error(`Failed to bulk delete property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // TAG Definition Methods
+  async createTagDefinition(tagDef: InsertTagDefinition): Promise<TagDefinition> {
+    try {
+      const [created] = await db.insert(tagDefinitions).values(tagDef).returning();
+      return created;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error creating tag definition:', error);
+      throw new Error(`Failed to create tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getTagDefinition(id: string): Promise<TagDefinition | undefined> {
+    try {
+      const [tag] = await db.select().from(tagDefinitions).where(eq(tagDefinitions.id, id));
+      return tag;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting tag definition:', error);
+      throw new Error(`Failed to get tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getTagDefinitionsByProperty(propertyProfileId: string): Promise<TagDefinition[]> {
+    try {
+      return await db.select()
+        .from(tagDefinitions)
+        .where(eq(tagDefinitions.propertyProfileId, propertyProfileId))
+        .orderBy(asc(tagDefinitions.displayOrder));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting tag definitions by property:', error);
+      throw new Error(`Failed to get tag definitions by property: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async updateTagDefinition(id: string, updates: Partial<TagDefinition>): Promise<TagDefinition | undefined> {
+    try {
+      const [updated] = await db.update(tagDefinitions)
+        .set(updates)
+        .where(eq(tagDefinitions.id, id))
+        .returning();
+      return updated;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error updating tag definition:', error);
+      throw new Error(`Failed to update tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async deleteTagDefinition(id: string): Promise<boolean> {
+    try {
+      const result = await db.delete(tagDefinitions).where(eq(tagDefinitions.id, id));
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error deleting tag definition:', error);
+      throw new Error(`Failed to delete tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async updateTagDisplayOrder(propertyProfileId: string, tags: { id: string; displayOrder: number }[]): Promise<TagDefinition[]> {
+    try {
+      const results: TagDefinition[] = [];
+      for (const tag of tags) {
+        const [updated] = await db.update(tagDefinitions)
+          .set({ displayOrder: tag.displayOrder })
+          .where(and(
+            eq(tagDefinitions.id, tag.id),
+            eq(tagDefinitions.propertyProfileId, propertyProfileId)
+          ))
+          .returning();
+        if (updated) {
+          results.push(updated);
+        }
+      }
+      return results;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error updating tag display order:', error);
+      throw new Error(`Failed to update tag display order: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

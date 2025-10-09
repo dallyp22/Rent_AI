@@ -1,13 +1,15 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
 import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
+import * as ExcelJS from "exceljs";
+import multer from "multer";
 
 // Using GPT-4o as the latest available model
 const openai = new OpenAI({ 
@@ -6347,6 +6349,624 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       console.error("Error getting optimization reports for session:", error);
       res.status(500).json({ 
         message: "Failed to get optimization reports for session", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ============ TAG-BASED UNIT MANAGEMENT ROUTES ============
+  
+  // Configure multer for Excel file upload
+  const upload = multer({ 
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+  });
+
+  // ============ TAG Definition Routes ============
+
+  // GET /api/tag-definitions - List all tag definitions (optionally filtered by property)
+  app.get("/api/tag-definitions", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { propertyProfileId } = req.query;
+      
+      if (propertyProfileId) {
+        // Verify user owns this property profile
+        const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+        if (!propertyProfile || propertyProfile.userId !== userId) {
+          return res.status(403).json({ message: "Access denied to property profile" });
+        }
+        
+        const tags = await storage.getTagDefinitionsByProperty(propertyProfileId);
+        res.json(tags);
+      } else {
+        // Return empty array if no propertyProfileId specified
+        res.json([]);
+      }
+    } catch (error) {
+      console.error("Error fetching tag definitions:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch tag definitions", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/tag-definitions - Create new tag definition
+  app.post("/api/tag-definitions", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const tagData = insertTagDefinitionSchema.parse(req.body);
+      
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(tagData.propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const tag = await storage.createTagDefinition(tagData);
+      res.json(tag);
+    } catch (error) {
+      console.error("Error creating tag definition:", error);
+      res.status(500).json({ 
+        message: "Failed to create tag definition", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // PUT /api/tag-definitions/:id - Update tag definition
+  app.put("/api/tag-definitions/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const tagId = req.params.id;
+      const updates = req.body;
+
+      // Get existing tag to verify ownership
+      const existingTag = await storage.getTagDefinition(tagId);
+      if (!existingTag) {
+        return res.status(404).json({ message: "Tag definition not found" });
+      }
+
+      // Verify user owns the property profile
+      const propertyProfile = await storage.getPropertyProfile(existingTag.propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const updatedTag = await storage.updateTagDefinition(tagId, updates);
+      if (!updatedTag) {
+        return res.status(404).json({ message: "Tag definition not found" });
+      }
+
+      res.json(updatedTag);
+    } catch (error) {
+      console.error("Error updating tag definition:", error);
+      res.status(500).json({ 
+        message: "Failed to update tag definition", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // DELETE /api/tag-definitions/:id - Delete tag definition
+  app.delete("/api/tag-definitions/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const tagId = req.params.id;
+
+      // Get existing tag to verify ownership
+      const existingTag = await storage.getTagDefinition(tagId);
+      if (!existingTag) {
+        return res.status(404).json({ message: "Tag definition not found" });
+      }
+
+      // Verify user owns the property profile
+      const propertyProfile = await storage.getPropertyProfile(existingTag.propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const deleted = await storage.deleteTagDefinition(tagId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Tag definition not found" });
+      }
+
+      res.json({ message: "Tag definition deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting tag definition:", error);
+      res.status(500).json({ 
+        message: "Failed to delete tag definition", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // PUT /api/tag-definitions/reorder - Update display order
+  app.put("/api/tag-definitions/reorder", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { propertyProfileId, tags } = req.body;
+      
+      if (!propertyProfileId || !Array.isArray(tags)) {
+        return res.status(400).json({ message: "Invalid request body" });
+      }
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const updatedTags = await storage.updateTagDisplayOrder(propertyProfileId, tags);
+      res.json(updatedTags);
+    } catch (error) {
+      console.error("Error reordering tag definitions:", error);
+      res.status(500).json({ 
+        message: "Failed to reorder tag definitions", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ============ Unit CRUD Routes ============
+
+  // GET /api/property-profiles/:id/units - List units for a property
+  app.get("/api/property-profiles/:id/units", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.id;
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      res.json(units);
+    } catch (error) {
+      console.error("Error fetching units:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch units", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET /api/property-profiles/:propertyId/hierarchy - Get hierarchical unit data
+  app.get("/api/property-profiles/:propertyId/hierarchy", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.propertyId;
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      // Get units and tags for the property
+      const [units, tags] = await Promise.all([
+        storage.getPropertyUnitsByProfile(propertyProfileId),
+        storage.getTagDefinitionsByProperty(propertyProfileId)
+      ]);
+
+      // Build hierarchy structure
+      const hierarchy = {
+        propertyProfileId,
+        propertyName: propertyProfile.name,
+        tags: tags.map(tag => ({
+          id: tag.id,
+          tag: tag.tag,
+          displayOrder: tag.displayOrder,
+          description: tag.description,
+          units: units.filter(unit => unit.tag === tag.tag)
+        })),
+        untaggedUnits: units.filter(unit => !unit.tag)
+      };
+
+      res.json(hierarchy);
+    } catch (error) {
+      console.error("Error fetching unit hierarchy:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch unit hierarchy", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/units - Create new unit
+  app.post("/api/units", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const unitData = insertPropertyUnitSchema.parse(req.body);
+
+      // Verify user owns the property profile if specified
+      if (unitData.propertyProfileId) {
+        const propertyProfile = await storage.getPropertyProfile(unitData.propertyProfileId);
+        if (!propertyProfile || propertyProfile.userId !== userId) {
+          return res.status(403).json({ message: "Access denied to property profile" });
+        }
+      }
+
+      const unit = await storage.createPropertyUnit(unitData);
+      res.json(unit);
+    } catch (error) {
+      console.error("Error creating unit:", error);
+      res.status(500).json({ 
+        message: "Failed to create unit", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // PUT /api/units/:id - Update unit
+  app.put("/api/units/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const unitId = req.params.id;
+      const updates = req.body;
+
+      // Get existing unit to verify ownership
+      const existingUnit = await storage.updatePropertyUnit(unitId, {});
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Unit not found" });
+      }
+
+      // Verify user owns the property profile if it exists
+      if (existingUnit.propertyProfileId) {
+        const propertyProfile = await storage.getPropertyProfile(existingUnit.propertyProfileId);
+        if (!propertyProfile || propertyProfile.userId !== userId) {
+          return res.status(403).json({ message: "Access denied to property profile" });
+        }
+      }
+
+      const updatedUnit = await storage.updatePropertyUnit(unitId, updates);
+      if (!updatedUnit) {
+        return res.status(404).json({ message: "Unit not found" });
+      }
+
+      res.json(updatedUnit);
+    } catch (error) {
+      console.error("Error updating unit:", error);
+      res.status(500).json({ 
+        message: "Failed to update unit", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // DELETE /api/units/:id - Delete unit
+  app.delete("/api/units/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const unitId = req.params.id;
+
+      // Get existing unit to verify ownership
+      const existingUnit = await storage.updatePropertyUnit(unitId, {});
+      if (!existingUnit) {
+        return res.status(404).json({ message: "Unit not found" });
+      }
+
+      // Verify user owns the property profile if it exists
+      if (existingUnit.propertyProfileId) {
+        const propertyProfile = await storage.getPropertyProfile(existingUnit.propertyProfileId);
+        if (!propertyProfile || propertyProfile.userId !== userId) {
+          return res.status(403).json({ message: "Access denied to property profile" });
+        }
+      }
+
+      const deleted = await storage.deletePropertyUnit(unitId);
+      if (!deleted) {
+        return res.status(404).json({ message: "Unit not found" });
+      }
+
+      res.json({ message: "Unit deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting unit:", error);
+      res.status(500).json({ 
+        message: "Failed to delete unit", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/units/bulk-update - Bulk update units
+  app.post("/api/units/bulk-update", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { updates } = req.body;
+      
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ message: "Invalid request body - updates must be an array" });
+      }
+
+      // Verify ownership for all units (could be optimized for larger batches)
+      for (const update of updates) {
+        const existingUnit = await storage.updatePropertyUnit(update.id, {});
+        if (existingUnit && existingUnit.propertyProfileId) {
+          const propertyProfile = await storage.getPropertyProfile(existingUnit.propertyProfileId);
+          if (!propertyProfile || propertyProfile.userId !== userId) {
+            return res.status(403).json({ message: `Access denied to unit ${update.id}` });
+          }
+        }
+      }
+
+      const updatedUnits = await storage.bulkUpdatePropertyUnits(updates);
+      res.json(updatedUnits);
+    } catch (error) {
+      console.error("Error bulk updating units:", error);
+      res.status(500).json({ 
+        message: "Failed to bulk update units", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/units/bulk-delete - Bulk delete units
+  app.post("/api/units/bulk-delete", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { ids } = req.body;
+      
+      if (!Array.isArray(ids)) {
+        return res.status(400).json({ message: "Invalid request body - ids must be an array" });
+      }
+
+      // Verify ownership for all units (could be optimized for larger batches)
+      for (const unitId of ids) {
+        const existingUnit = await storage.updatePropertyUnit(unitId, {});
+        if (existingUnit && existingUnit.propertyProfileId) {
+          const propertyProfile = await storage.getPropertyProfile(existingUnit.propertyProfileId);
+          if (!propertyProfile || propertyProfile.userId !== userId) {
+            return res.status(403).json({ message: `Access denied to unit ${unitId}` });
+          }
+        }
+      }
+
+      const deleted = await storage.bulkDeletePropertyUnits(ids);
+      res.json({ 
+        message: deleted ? "Units deleted successfully" : "No units were deleted",
+        success: deleted 
+      });
+    } catch (error) {
+      console.error("Error bulk deleting units:", error);
+      res.status(500).json({ 
+        message: "Failed to bulk delete units", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // ============ Excel Import/Export Routes ============
+
+  // POST /api/import-excel - Import units from Excel file
+  app.post("/api/import-excel", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      const { propertyProfileId } = req.body;
+      
+      if (!propertyProfileId) {
+        return res.status(400).json({ message: "Property profile ID is required" });
+      }
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      // Parse Excel file
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) {
+        return res.status(400).json({ message: "No worksheet found in Excel file" });
+      }
+
+      const units: any[] = [];
+      let headerRow: string[] = [];
+      
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) {
+          // Header row
+          headerRow = row.values as string[];
+          headerRow = headerRow.slice(1); // Remove first empty element
+        } else {
+          // Data row
+          const rowValues = row.values as any[];
+          const unit: any = {
+            propertyProfileId
+          };
+          
+          // Map Excel columns to unit fields
+          headerRow.forEach((header, index) => {
+            const value = rowValues[index + 1]; // Excel rows are 1-indexed
+            if (value !== undefined && value !== null) {
+              const headerLower = header?.toString().toLowerCase();
+              
+              // Map common Excel headers to schema fields
+              if (headerLower?.includes('unit') && headerLower?.includes('number')) {
+                unit.unitNumber = value.toString();
+              } else if (headerLower?.includes('type')) {
+                unit.unitType = value.toString();
+              } else if (headerLower?.includes('current') && headerLower?.includes('rent')) {
+                unit.currentRent = value.toString();
+              } else if (headerLower?.includes('recommended') && headerLower?.includes('rent')) {
+                unit.recommendedRent = value.toString();
+              } else if (headerLower?.includes('status')) {
+                unit.status = value.toString();
+              } else if (headerLower?.includes('tag')) {
+                unit.tag = value.toString();
+              } else if (headerLower?.includes('bedroom')) {
+                unit.bedrooms = parseInt(value.toString()) || 0;
+              } else if (headerLower?.includes('bathroom')) {
+                unit.bathrooms = value.toString();
+              } else if (headerLower?.includes('priority')) {
+                unit.optimizationPriority = parseInt(value.toString()) || 0;
+              }
+            }
+          });
+          
+          // Validate required fields
+          if (unit.unitNumber && unit.unitType && unit.currentRent) {
+            units.push(unit);
+          }
+        }
+      });
+
+      if (units.length === 0) {
+        return res.status(400).json({ message: "No valid units found in Excel file" });
+      }
+
+      // Replace existing units with imported ones
+      const importedUnits = await storage.replacePropertyUnitsByProfile(propertyProfileId, units);
+      
+      res.json({
+        message: `Successfully imported ${importedUnits.length} units`,
+        count: importedUnits.length,
+        units: importedUnits
+      });
+    } catch (error) {
+      console.error("Error importing Excel file:", error);
+      res.status(500).json({ 
+        message: "Failed to import Excel file", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET /api/export-excel/:propertyId - Export units to Excel file
+  app.get("/api/export-excel/:propertyId", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.propertyId;
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      // Get units and tags for the property
+      const [units, tags] = await Promise.all([
+        storage.getPropertyUnitsByProfile(propertyProfileId),
+        storage.getTagDefinitionsByProperty(propertyProfileId)
+      ]);
+
+      // Create Excel workbook
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet('Units');
+
+      // Add header row
+      worksheet.columns = [
+        { header: 'Unit Number', key: 'unitNumber', width: 15 },
+        { header: 'Unit Type', key: 'unitType', width: 15 },
+        { header: 'Current Rent', key: 'currentRent', width: 15 },
+        { header: 'Recommended Rent', key: 'recommendedRent', width: 15 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'TAG', key: 'tag', width: 20 },
+        { header: 'Bedrooms', key: 'bedrooms', width: 10 },
+        { header: 'Bathrooms', key: 'bathrooms', width: 10 },
+        { header: 'Optimization Priority', key: 'optimizationPriority', width: 20 }
+      ];
+
+      // Add data rows
+      units.forEach(unit => {
+        worksheet.addRow({
+          unitNumber: unit.unitNumber,
+          unitType: unit.unitType,
+          currentRent: unit.currentRent,
+          recommendedRent: unit.recommendedRent,
+          status: unit.status,
+          tag: unit.tag,
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          optimizationPriority: unit.optimizationPriority
+        });
+      });
+
+      // Style header row
+      worksheet.getRow(1).font = { bold: true };
+      worksheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FFE0E0E0' }
+      };
+
+      // Generate Excel buffer
+      const buffer = await workbook.xlsx.writeBuffer();
+
+      // Send file
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${propertyProfile.name}_units_${new Date().toISOString().split('T')[0]}.xlsx"`);
+      res.send(buffer);
+    } catch (error) {
+      console.error("Error exporting Excel file:", error);
+      res.status(500).json({ 
+        message: "Failed to export Excel file", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
