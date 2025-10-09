@@ -7307,10 +7307,16 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
             debugInfo.push(rowDebug);
           }
           
-          // Validate required fields and property matching
-          if (unit.unitNumber && unit.unitType && unit.currentRent && propertyName) {
-            // Try to match property name (case-insensitive)
-            const normalizedPropertyName = propertyName.toLowerCase();
+          // Set default value for currentRent if not provided
+          if (!unit.currentRent) {
+            unit.currentRent = "0";
+            console.log(`📊 [EXCEL_IMPORT] Row ${rowNumber}: No currentRent provided, using default value "0"`);
+          }
+          
+          // Validate required fields and property matching (currentRent is now optional with default)
+          if (unit.unitNumber && unit.unitType && propertyName) {
+            // Try to match property name (case-insensitive and trim spaces)
+            const normalizedPropertyName = propertyName.trim().toLowerCase();
             const propertyId = propertyMap.get(normalizedPropertyName);
             
             if (propertyId) {
@@ -7333,7 +7339,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
             const missing = [];
             if (!unit.unitNumber) missing.push('unitNumber');
             if (!unit.unitType) missing.push('unitType');
-            if (!unit.currentRent) missing.push('currentRent');
+            // currentRent is no longer required as we provide a default
             if (!propertyName) missing.push('propertyName');
             console.log(`📊 [EXCEL_IMPORT] Row ${rowNumber} missing required fields:`, missing);
           }
