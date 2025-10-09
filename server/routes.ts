@@ -1,15 +1,13 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
 import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
-import multer from "multer";
-import ExcelJS from "exceljs";
 
 // Using GPT-4o as the latest available model
 const openai = new OpenAI({ 
@@ -937,50 +935,6 @@ function parseNumber(value: any): number | undefined {
   return undefined;
 }
 
-// Helper function for hierarchical sorting (Property → Bedroom → TAG)
-async function sortUnitsHierarchically(units: any[], storageInstance: typeof storage): Promise<any[]> {
-  // Get all tag definitions with displayOrder
-  const tagDefinitions = await storageInstance.getAllTagDefinitions();
-  
-  // Create a tag-to-order map for quick lookup
-  const tagOrderMap = new Map<string, number>();
-  for (const tagDef of tagDefinitions) {
-    tagOrderMap.set(tagDef.tag, tagDef.displayOrder);
-  }
-  
-  // Sort units hierarchically
-  return units.sort((a, b) => {
-    // Primary sort: propertyName (alphabetical)
-    const propA = a.propertyName || '';
-    const propB = b.propertyName || '';
-    if (propA !== propB) {
-      return propA.localeCompare(propB);
-    }
-    
-    // Secondary sort: bedrooms (numerical, 0-4+)
-    const bedroomsA = a.bedrooms ?? 999; // Put units without bedrooms at the end
-    const bedroomsB = b.bedrooms ?? 999;
-    if (bedroomsA !== bedroomsB) {
-      return bedroomsA - bedroomsB;
-    }
-    
-    // Tertiary sort: tag (by displayOrder from tagDefinitions)
-    const tagA = a.tag || '';
-    const tagB = b.tag || '';
-    
-    // Get display orders (default to 999 if tag not found)
-    const orderA = tagOrderMap.get(tagA) ?? 999;
-    const orderB = tagOrderMap.get(tagB) ?? 999;
-    
-    if (orderA !== orderB) {
-      return orderA - orderB;
-    }
-    
-    // If display orders are the same, sort by tag name alphabetically
-    return tagA.localeCompare(tagB);
-  });
-}
-
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware - MUST be first
@@ -1008,17 +962,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
-    }
-  });
-  
-  // Get tag definitions for Excel export sorting
-  app.get('/api/tag-definitions', async (req, res) => {
-    try {
-      const tagDefinitions = await storage.getAllTagDefinitions();
-      res.json(tagDefinitions);
-    } catch (error) {
-      console.error("Error fetching tag definitions:", error);
-      res.status(500).json({ message: "Failed to fetch tag definitions" });
     }
   });
   
@@ -1665,18 +1608,11 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
             unitType: scrapedUnit.unitType,
             currentRent: scrapedUnit.rent || "0",
-            status: scrapedUnit.status || "occupied",
-            tag: scrapedUnit.floorPlanName || scrapedUnit.unitType, // Extract TAG from floorPlanName
-            bedrooms: scrapedUnit.bedrooms,
-            bathrooms: scrapedUnit.bathrooms?.toString()
+            status: scrapedUnit.status || "occupied"
           });
           // Enrich unit with scraped data fields for optimization
           units.push({
             ...unit,
-            propertyName: property?.propertyName || '',
-            tag: scrapedUnit.floorPlanName || scrapedUnit.unitType,
-            bedrooms: scrapedUnit.bedrooms,
-            bathrooms: scrapedUnit.bathrooms?.toString(),
             squareFootage: scrapedUnit.squareFootage,
             availabilityDate: scrapedUnit.availabilityDate
           });
@@ -1684,20 +1620,11 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       } else {
         // Fall back to existing PropertyUnits only if no scraped data
         units = await storage.getPropertyUnits(propertyId);
-        // Add propertyName to units for sorting
-        units = units.map(unit => ({
-          ...unit,
-          propertyName: property?.propertyName || ''
-        }));
       }
       
       if (!property || units.length === 0) {
         return res.status(404).json({ message: "Property or units not found" });
       }
-      
-      // Apply hierarchical sorting (Property → Bedroom → TAG)
-      units = await sortUnitsHierarchically(units, storage);
-      console.log(`[OPTIMIZE] Applied hierarchical sorting to ${units.length} units`);
 
       // Convert parameters to readable format for AI
       const goalDisplayMap: Record<string, string> = {
@@ -4011,112 +3938,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       res.status(500).json({ message: "Failed to get property profile scraping status" });
     }
   });
-
-  // Get units hierarchically for a property profile (Property → Bedroom → TAG → Units)
-  app.get("/api/property-profiles/:id/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
-    try {
-      const propertyProfileId = req.params.id;
-      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
-      
-      if (!propertyProfile) {
-        return res.status(404).json({ message: "Property profile not found" });
-      }
-      
-      // Get hierarchical unit structure
-      const hierarchy = await storage.getUnitsHierarchyByProperty(propertyProfileId);
-      
-      // Transform to include property information
-      const response = {
-        propertyId: propertyProfile.id,
-        propertyName: propertyProfile.name,
-        hierarchy
-      };
-      
-      res.json(response);
-      
-    } catch (error) {
-      console.error("[PROPERTY_PROFILE_HIERARCHICAL_UNITS] Error:", error);
-      res.status(500).json({ message: "Failed to get hierarchical units" });
-    }
-  });
-
-  // Get units in flat format for a property profile
-  app.get("/api/property-profiles/:id/units", isAuthenticatedAny, async (req: any, res) => {
-    try {
-      const propertyProfileId = req.params.id;
-      const userId = getAuthenticatedUserId(req);
-      
-      if (!userId) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-      
-      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
-      
-      if (!propertyProfile) {
-        return res.status(404).json({ message: "Property profile not found" });
-      }
-      
-      // Verify the profile belongs to the user
-      if (propertyProfile.userId && propertyProfile.userId !== userId) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      
-      // Get all units for this property profile
-      const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
-      
-      res.json(units);
-      
-    } catch (error) {
-      console.error("[PROPERTY_PROFILE_UNITS] Error:", error);
-      res.status(500).json({ message: "Failed to get property units" });
-    }
-  });
-
-  // Get units hierarchically for an analysis session (Session → Properties → Bedroom → TAG → Units)
-  app.get("/api/analysis-sessions/:sessionId/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
-    try {
-      const { sessionId } = req.params;
-      
-      // Get session to verify it exists
-      const session = await storage.getAnalysisSession(sessionId);
-      if (!session) {
-        return res.status(404).json({ message: "Session not found" });
-      }
-      
-      // Verify ownership
-      const userId = getAuthenticatedUserId(req);
-      if (session.userId && session.userId !== userId) {
-        return res.status(403).json({ message: "Forbidden" });
-      }
-      
-      // Get all property profiles in session
-      const profiles = await storage.getPropertyProfilesInSession(sessionId);
-      
-      // Aggregate hierarchical data from all properties
-      const properties = [];
-      
-      for (const profile of profiles) {
-        const hierarchy = await storage.getUnitsHierarchyByProperty(profile.id);
-        properties.push({
-          propertyId: profile.id,
-          propertyName: profile.name,
-          hierarchy
-        });
-      }
-      
-      const response = {
-        sessionId: session.id,
-        sessionName: session.name,
-        properties
-      };
-      
-      res.json(response);
-      
-    } catch (error) {
-      console.error("[SESSION_HIERARCHICAL_UNITS] Error:", error);
-      res.status(500).json({ message: "Failed to get session hierarchical units" });
-    }
-  });
   
   // Scrape all properties in an analysis session (NON-BLOCKING)
   app.post("/api/analysis-sessions/:sessionId/scrape", isAuthenticatedAny, async (req: any, res) => {
@@ -4746,7 +4567,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             currentRent: unit.rent?.toString() || '0',
             recommendedRent: null, // Will be set by optimization
             status: unit.status || 'available',
-            tag: unit.floorPlanName || unit.unitType, // Extract TAG from floorPlanName
             bedrooms: unit.bedrooms || 0,
             bathrooms: unit.bathrooms?.toString() || '0',
             squareFootage: unit.squareFootage || 0,
@@ -4790,12 +4610,6 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           suggestion: "Ensure properties have units data available"
         });
       }
-      
-      // Apply hierarchical sorting (Property → Bedroom → TAG)
-      const sortedUnits = await sortUnitsHierarchically(allUnits, storage);
-      allUnits.length = 0;
-      allUnits.push(...sortedUnits);
-      console.log(`[SESSION_OPTIMIZE] Applied hierarchical sorting to ${allUnits.length} units`);
 
       // Generate AI-powered portfolio optimization recommendations
       const goalDisplayMap: Record<string, string> = {
@@ -6533,205 +6347,6 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       console.error("Error getting optimization reports for session:", error);
       res.status(500).json({ 
         message: "Failed to get optimization reports for session", 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  });
-
-  // Configure multer for file uploads
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-      fileSize: 10 * 1024 * 1024, // 10MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      // Only accept Excel files
-      if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-          file.mimetype === 'application/vnd.ms-excel' ||
-          file.originalname.endsWith('.xlsx') ||
-          file.originalname.endsWith('.xls')) {
-        cb(null, true);
-      } else {
-        cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
-      }
-    }
-  });
-
-  // Excel Import Endpoint
-  app.post("/api/import-excel", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
-    try {
-      const userId = getAuthenticatedUserId(req);
-      if (!userId) {
-        return res.status(401).json({ message: "User not authenticated" });
-      }
-
-      if (!req.file) {
-        return res.status(400).json({ message: "No file uploaded" });
-      }
-
-      console.log('[IMPORT] Starting Excel import for user:', userId);
-      console.log('[IMPORT] File name:', req.file.originalname);
-      console.log('[IMPORT] File size:', req.file.size);
-
-      // Parse Excel file
-      const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(req.file.buffer);
-      const worksheet = workbook.worksheets[0];
-
-      if (!worksheet) {
-        return res.status(400).json({ message: "Excel file has no worksheets" });
-      }
-
-      // Process rows and group by property
-      const propertiesMap = new Map<string, any[]>();
-      const tagSet = new Set<string>();
-      let rowCount = 0;
-
-      worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // Skip header row
-        
-        // Extract cell values
-        const unit = row.getCell(1).value?.toString() || '';
-        const tags = row.getCell(2).value?.toString() || '';
-        const beds = Number(row.getCell(3).value) || 0;
-        const baths = Number(row.getCell(4).value) || 0;
-        const sqft = Number(row.getCell(5).value) || 0;
-        const property = row.getCell(6).value?.toString() || '';
-        const address = row.getCell(7).value?.toString() || '';
-        const unitType = row.getCell(8).value?.toString() || '';
-        
-        // Skip empty rows
-        if (!property || !address) return;
-        
-        // Group by property
-        const key = `${property}|${address}`;
-        if (!propertiesMap.has(key)) {
-          propertiesMap.set(key, []);
-        }
-        
-        // Add unit data
-        propertiesMap.get(key)!.push({
-          unit,
-          tags,
-          beds,
-          baths,
-          sqft,
-          unitType
-        });
-        
-        // Collect tags
-        if (tags) {
-          tagSet.add(tags);
-        }
-        
-        rowCount++;
-      });
-
-      if (rowCount === 0) {
-        return res.status(400).json({ message: "No valid data rows found in Excel file" });
-      }
-
-      console.log(`[IMPORT] Found ${rowCount} units across ${propertiesMap.size} properties`);
-      console.log(`[IMPORT] Found ${tagSet.size} unique tags`);
-
-      // Import results
-      const importSummary = {
-        propertiesProcessed: 0,
-        propertiesCreated: 0,
-        propertiesUpdated: 0,
-        unitsImported: 0,
-        tagsCreated: 0,
-        errors: [] as string[]
-      };
-
-      // Create or update TAG definitions
-      let displayOrder = 1;
-      for (const tag of Array.from(tagSet)) {
-        try {
-          await storage.upsertTagDefinition({
-            tag,
-            category: 'unit_config',
-            displayOrder: displayOrder++,
-            sortPriority: 1,
-            description: `Imported from Excel: ${tag}`
-          });
-          importSummary.tagsCreated++;
-        } catch (error) {
-          console.error(`[IMPORT] Error creating tag ${tag}:`, error);
-          importSummary.errors.push(`Failed to create tag: ${tag}`);
-        }
-      }
-
-      // Process each property
-      for (const [propertyKey, units] of Array.from(propertiesMap)) {
-        const [propertyName, propertyAddress] = propertyKey.split('|');
-        
-        try {
-          // Check if property profile exists
-          let propertyProfile = await storage.getPropertyProfileByNameAndAddress(userId, propertyName, propertyAddress);
-          
-          if (!propertyProfile) {
-            // Create new property profile
-            console.log(`[IMPORT] Creating new property profile: ${propertyName}`);
-            propertyProfile = await storage.createPropertyProfile({
-              userId,
-              name: propertyName,
-              address: propertyAddress,
-              url: `https://placeholder.com/${propertyName.replace(/\s+/g, '-').toLowerCase()}`, // Placeholder URL
-              profileType: 'subject',
-              totalUnits: units.length
-            });
-            importSummary.propertiesCreated++;
-          } else {
-            // Update existing property profile
-            console.log(`[IMPORT] Property profile already exists: ${propertyName}`);
-            await storage.updatePropertyProfile(propertyProfile.id, {
-              totalUnits: units.length
-            });
-            importSummary.propertiesUpdated++;
-          }
-          
-          importSummary.propertiesProcessed++;
-          
-          // Clear existing units for this property profile
-          await storage.clearPropertyUnitsByProfile(propertyProfile.id);
-          
-          // Import all units for this property
-          for (const unitData of units) {
-            try {
-              await storage.createPropertyUnit({
-                propertyProfileId: propertyProfile.id,
-                unitNumber: unitData.unit || `Unit-${Math.random().toString(36).substr(2, 9)}`,
-                unitType: unitData.unitType || 'Unknown',
-                tag: unitData.tags || null,
-                bedrooms: unitData.beds,
-                bathrooms: unitData.baths,
-                squareFeet: unitData.sqft,
-                currentRent: "0", // Default to 0
-                status: 'occupied' // Default status
-              });
-              importSummary.unitsImported++;
-            } catch (error) {
-              console.error(`[IMPORT] Error importing unit for ${propertyName}:`, error);
-              importSummary.errors.push(`Failed to import unit for ${propertyName}: ${unitData.unit}`);
-            }
-          }
-        } catch (error) {
-          console.error(`[IMPORT] Error processing property ${propertyName}:`, error);
-          importSummary.errors.push(`Failed to process property: ${propertyName}`);
-        }
-      }
-
-      console.log('[IMPORT] Import completed:', importSummary);
-      
-      res.json({
-        success: true,
-        summary: importSummary
-      });
-    } catch (error) {
-      console.error('[IMPORT] Excel import error:', error);
-      res.status(500).json({ 
-        message: "Failed to import Excel file", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }

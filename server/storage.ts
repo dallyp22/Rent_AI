@@ -30,8 +30,6 @@ import {
   type InsertScrapedProperty,
   type ScrapedUnit,
   type InsertScrapedUnit,
-  type TagDefinition,
-  type InsertTagDefinition,
   type FilterCriteria,
   type FilteredAnalysis,
   type UnitComparison,
@@ -57,7 +55,6 @@ import {
   scrapingJobs,
   scrapedProperties,
   scrapedUnits,
-  tagDefinitions,
   users
 } from "@shared/schema";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
@@ -83,7 +80,6 @@ export interface IStorage {
   getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
   getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]>;
   getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
-  getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined>;
   updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined>;
   deletePropertyProfile(id: string): Promise<boolean>;
   
@@ -199,21 +195,6 @@ export interface IStorage {
   updateCompetitiveRelationship(id: string, updates: Partial<CompetitiveRelationship>): Promise<CompetitiveRelationship | undefined>;
   toggleCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined>;
   deleteCompetitiveRelationship(id: string): Promise<boolean>;
-
-  // TAG Management Operations
-  createTagDefinition(tagDef: InsertTagDefinition): Promise<TagDefinition>;
-  getTagDefinition(tag: string): Promise<TagDefinition | undefined>;
-  getAllTagDefinitions(): Promise<TagDefinition[]>;
-  getTagDefinitionsByGroup(tagGroup: string): Promise<TagDefinition[]>;
-  upsertTagDefinition(tagDef: InsertTagDefinition): Promise<TagDefinition>;
-  updateTagDefinition(id: string, updates: Partial<TagDefinition>): Promise<TagDefinition | undefined>;
-  deleteTagDefinition(id: string): Promise<boolean>;
-  
-  // Hierarchical Unit Queries (Property → Bedroom → TAG)
-  getUnitsHierarchyByProperty(propertyProfileId: string): Promise<any>;
-  getUnitsHierarchyBySession(sessionId: string): Promise<any>;
-  getUnitsByPropertyAndTag(propertyProfileId: string, tag: string): Promise<PropertyUnit[]>;
-  getUnitsByPropertyBedroomTag(propertyProfileId: string, bedrooms: number, tag: string): Promise<PropertyUnit[]>;
 
   // User authentication operations - MANDATORY for Replit Auth
   getUser(id: string): Promise<User | undefined>;
@@ -336,29 +317,6 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[ERROR DRIZZLE_STORAGE] Error getting property profiles by user and type:', error);
       throw new Error(`Failed to get property profiles by user and type: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined> {
-    try {
-      console.log('[DEBUG DRIZZLE_STORAGE] getPropertyProfileByNameAndAddress called with userId:', userId, 'name:', name, 'address:', address);
-      
-      const [profile] = await db.select()
-        .from(propertyProfiles)
-        .where(and(
-          eq(propertyProfiles.userId, userId),
-          eq(propertyProfiles.name, name),
-          eq(propertyProfiles.address, address),
-          sql`${propertyProfiles.userId} IS NOT NULL`,
-          sql`${propertyProfiles.userId} != ''`
-        ));
-      
-      console.log('[DEBUG DRIZZLE_STORAGE] Found profile:', profile ? 'yes' : 'no');
-      
-      return profile;
-    } catch (error) {
-      console.error('[ERROR DRIZZLE_STORAGE] Error getting property profile by name and address:', error);
-      throw new Error(`Failed to get property profile by name and address: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -2117,244 +2075,6 @@ export class DrizzleStorage implements IStorage {
       throw new Error(`Failed to delete competitive relationship: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
-
-  // TAG Management Methods
-  async createTagDefinition(insertTagDef: InsertTagDefinition): Promise<TagDefinition> {
-    try {
-      const [tagDef] = await db.insert(tagDefinitions).values(insertTagDef).returning();
-      return tagDef;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error creating tag definition:', error);
-      throw new Error(`Failed to create tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getTagDefinition(tag: string): Promise<TagDefinition | undefined> {
-    try {
-      const [tagDef] = await db.select().from(tagDefinitions).where(eq(tagDefinitions.tag, tag));
-      return tagDef;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting tag definition:', error);
-      throw new Error(`Failed to get tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getAllTagDefinitions(): Promise<TagDefinition[]> {
-    try {
-      return await db.select().from(tagDefinitions).orderBy(asc(tagDefinitions.displayOrder), asc(tagDefinitions.sortPriority));
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting all tag definitions:', error);
-      throw new Error(`Failed to get tag definitions: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getTagDefinitionsByGroup(tagGroup: string): Promise<TagDefinition[]> {
-    try {
-      return await db.select()
-        .from(tagDefinitions)
-        .where(eq(tagDefinitions.tagGroup, tagGroup))
-        .orderBy(asc(tagDefinitions.sortPriority), asc(tagDefinitions.displayOrder));
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting tag definitions by group:', error);
-      throw new Error(`Failed to get tag definitions by group: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async upsertTagDefinition(insertTagDef: InsertTagDefinition): Promise<TagDefinition> {
-    try {
-      // Check if tag exists
-      const existing = await this.getTagDefinition(insertTagDef.tag);
-      
-      if (existing) {
-        // Update existing tag
-        const [updatedTag] = await db.update(tagDefinitions)
-          .set({
-            ...insertTagDef,
-            updatedAt: new Date()
-          })
-          .where(eq(tagDefinitions.id, existing.id))
-          .returning();
-        return updatedTag;
-      } else {
-        // Create new tag
-        return await this.createTagDefinition(insertTagDef);
-      }
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error upserting tag definition:', error);
-      throw new Error(`Failed to upsert tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async updateTagDefinition(id: string, updates: Partial<TagDefinition>): Promise<TagDefinition | undefined> {
-    try {
-      const [updatedTag] = await db.update(tagDefinitions)
-        .set({
-          ...updates,
-          updatedAt: new Date()
-        })
-        .where(eq(tagDefinitions.id, id))
-        .returning();
-      
-      return updatedTag;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error updating tag definition:', error);
-      throw new Error(`Failed to update tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async deleteTagDefinition(id: string): Promise<boolean> {
-    try {
-      const result = await db.delete(tagDefinitions).where(eq(tagDefinitions.id, id));
-      return result.rowCount > 0;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error deleting tag definition:', error);
-      throw new Error(`Failed to delete tag definition: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  // Hierarchical Unit Queries
-  async getUnitsHierarchyByProperty(propertyProfileId: string): Promise<any> {
-    try {
-      // Get all units for this property
-      const units = await db.select()
-        .from(propertyUnits)
-        .where(eq(propertyUnits.propertyProfileId, propertyProfileId))
-        .orderBy(asc(propertyUnits.bedrooms), asc(propertyUnits.tag));
-      
-      // Get all tag definitions for sorting
-      const tags = await this.getAllTagDefinitions();
-      const tagOrderMap = new Map(tags.map(t => [t.tag, t.displayOrder ?? 999]));
-      
-      // Build hierarchy: { bedrooms: { tag: [units] } }
-      const hierarchy: any = {};
-      
-      for (const unit of units) {
-        const bedroomKey = unit.bedrooms ?? 0;
-        const tagKey = unit.tag ?? 'untagged';
-        
-        if (!hierarchy[bedroomKey]) {
-          hierarchy[bedroomKey] = {};
-        }
-        
-        if (!hierarchy[bedroomKey][tagKey]) {
-          hierarchy[bedroomKey][tagKey] = [];
-        }
-        
-        hierarchy[bedroomKey][tagKey].push(unit);
-      }
-      
-      // Sort tags within each bedroom group by displayOrder
-      for (const bedroomKey of Object.keys(hierarchy)) {
-        const tags = Object.keys(hierarchy[bedroomKey]);
-        const sortedTags = tags.sort((a, b) => {
-          const orderA = tagOrderMap.get(a) ?? 999;
-          const orderB = tagOrderMap.get(b) ?? 999;
-          return orderA - orderB;
-        });
-        
-        // Rebuild with sorted tags
-        const sortedTagObj: any = {};
-        for (const tag of sortedTags) {
-          sortedTagObj[tag] = hierarchy[bedroomKey][tag];
-        }
-        hierarchy[bedroomKey] = sortedTagObj;
-      }
-      
-      return hierarchy;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting units hierarchy by property:', error);
-      throw new Error(`Failed to get units hierarchy: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getUnitsHierarchyBySession(sessionId: string): Promise<any> {
-    try {
-      // Get all property profiles in the session
-      const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
-      
-      // Get all tag definitions for sorting
-      const tags = await this.getAllTagDefinitions();
-      const tagOrderMap = new Map(tags.map(t => [t.tag, t.displayOrder ?? 999]));
-      
-      // Build combined hierarchy for all properties: { bedrooms: { tag: [units] } }
-      const hierarchy: any = {};
-      
-      for (const profile of propertyProfiles) {
-        const units = await db.select()
-          .from(propertyUnits)
-          .where(eq(propertyUnits.propertyProfileId, profile.id))
-          .orderBy(asc(propertyUnits.bedrooms), asc(propertyUnits.tag));
-        
-        for (const unit of units) {
-          const bedroomKey = unit.bedrooms ?? 0;
-          const tagKey = unit.tag ?? 'untagged';
-          
-          if (!hierarchy[bedroomKey]) {
-            hierarchy[bedroomKey] = {};
-          }
-          
-          if (!hierarchy[bedroomKey][tagKey]) {
-            hierarchy[bedroomKey][tagKey] = [];
-          }
-          
-          hierarchy[bedroomKey][tagKey].push(unit);
-        }
-      }
-      
-      // Sort tags within each bedroom group by displayOrder
-      for (const bedroomKey of Object.keys(hierarchy)) {
-        const tags = Object.keys(hierarchy[bedroomKey]);
-        const sortedTags = tags.sort((a, b) => {
-          const orderA = tagOrderMap.get(a) ?? 999;
-          const orderB = tagOrderMap.get(b) ?? 999;
-          return orderA - orderB;
-        });
-        
-        // Rebuild with sorted tags
-        const sortedTagObj: any = {};
-        for (const tag of sortedTags) {
-          sortedTagObj[tag] = hierarchy[bedroomKey][tag];
-        }
-        hierarchy[bedroomKey] = sortedTagObj;
-      }
-      
-      return hierarchy;
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting units hierarchy by session:', error);
-      throw new Error(`Failed to get units hierarchy by session: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getUnitsByPropertyAndTag(propertyProfileId: string, tag: string): Promise<PropertyUnit[]> {
-    try {
-      return await db.select()
-        .from(propertyUnits)
-        .where(and(
-          eq(propertyUnits.propertyProfileId, propertyProfileId),
-          eq(propertyUnits.tag, tag)
-        ))
-        .orderBy(asc(propertyUnits.unitNumber));
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting units by property and tag:', error);
-      throw new Error(`Failed to get units by property and tag: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
-
-  async getUnitsByPropertyBedroomTag(propertyProfileId: string, bedrooms: number, tag: string): Promise<PropertyUnit[]> {
-    try {
-      return await db.select()
-        .from(propertyUnits)
-        .where(and(
-          eq(propertyUnits.propertyProfileId, propertyProfileId),
-          eq(propertyUnits.bedrooms, bedrooms),
-          eq(propertyUnits.tag, tag)
-        ))
-        .orderBy(asc(propertyUnits.unitNumber));
-    } catch (error) {
-      console.error('[DRIZZLE_STORAGE] Error getting units by property, bedroom, and tag:', error);
-      throw new Error(`Failed to get units by property, bedroom, and tag: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
-  }
 }
 
 // Renamed MemStorage to MemStorageLegacy for fallback
@@ -2378,7 +2098,6 @@ export class MemStorageLegacy implements IStorage {
   private scrapingJobs: Map<string, ScrapingJob>;
   private scrapedProperties: Map<string, ScrapedProperty>;
   private scrapedUnits: Map<string, ScrapedUnit>;
-  private tagDefinitions: Map<string, TagDefinition>;
   private workflowStates: Map<string, WorkflowState>;
   
   // User authentication
@@ -2404,7 +2123,6 @@ export class MemStorageLegacy implements IStorage {
     this.scrapingJobs = new Map();
     this.scrapedProperties = new Map();
     this.scrapedUnits = new Map();
-    this.tagDefinitions = new Map();
     this.workflowStates = new Map();
     
     // Initialize user authentication
@@ -2463,14 +2181,6 @@ export class MemStorageLegacy implements IStorage {
   async getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
     return Array.from(this.propertyProfiles.values()).filter(
       profile => profile.userId === userId && profile.profileType === profileType
-    );
-  }
-
-  async getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined> {
-    return Array.from(this.propertyProfiles.values()).find(
-      profile => profile.userId === userId && 
-                 profile.name === name && 
-                 profile.address === address
     );
   }
 
@@ -3003,21 +2713,10 @@ export class MemStorageLegacy implements IStorage {
       ...insertUnit, 
       id, 
       createdAt: new Date(),
-      updatedAt: new Date(),
       propertyId: insertUnit.propertyId ?? null,
       propertyProfileId: insertUnit.propertyProfileId ?? null,
       status: insertUnit.status || "occupied",
-      recommendedRent: insertUnit.recommendedRent ?? null,
-      tag: insertUnit.tag ?? null,
-      bedrooms: insertUnit.bedrooms ?? null,
-      bathrooms: insertUnit.bathrooms ?? null,
-      squareFeet: insertUnit.squareFeet ?? null,
-      marketRent: insertUnit.marketRent ?? null,
-      optimalRent: insertUnit.optimalRent ?? null,
-      leaseEndDate: insertUnit.leaseEndDate ?? null,
-      daysOnMarket: insertUnit.daysOnMarket ?? null,
-      rentPercentile: insertUnit.rentPercentile ?? null,
-      optimizationPriority: insertUnit.optimizationPriority ?? null
+      recommendedRent: insertUnit.recommendedRent ?? null
     };
     this.propertyUnits.set(id, unit);
     return unit;
@@ -3033,7 +2732,7 @@ export class MemStorageLegacy implements IStorage {
     const unit = this.propertyUnits.get(id);
     if (!unit) return undefined;
     
-    const updatedUnit = { ...unit, ...updates, updatedAt: new Date() };
+    const updatedUnit = { ...unit, ...updates };
     this.propertyUnits.set(id, updatedUnit);
     return updatedUnit;
   }
@@ -3961,209 +3660,6 @@ export class MemStorageLegacy implements IStorage {
 
   async deleteCompetitiveRelationship(id: string): Promise<boolean> {
     return this.competitiveRelationships.delete(id);
-  }
-
-  // TAG Management Methods
-  async createTagDefinition(insertTagDef: InsertTagDefinition): Promise<TagDefinition> {
-    const id = randomUUID();
-    const tagDef: TagDefinition = {
-      ...insertTagDef,
-      id,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      category: insertTagDef.category ?? null,
-      tagGroup: insertTagDef.tagGroup ?? null,
-      displayOrder: insertTagDef.displayOrder ?? 999,
-      sortPriority: insertTagDef.sortPriority ?? 0,
-      description: insertTagDef.description ?? null,
-      bedroomCount: insertTagDef.bedroomCount ?? null
-    };
-    this.tagDefinitions.set(id, tagDef);
-    return tagDef;
-  }
-
-  async getTagDefinition(tag: string): Promise<TagDefinition | undefined> {
-    return Array.from(this.tagDefinitions.values()).find(t => t.tag === tag);
-  }
-
-  async getAllTagDefinitions(): Promise<TagDefinition[]> {
-    const tags = Array.from(this.tagDefinitions.values());
-    return tags.sort((a, b) => {
-      const displayOrderDiff = (a.displayOrder ?? 999) - (b.displayOrder ?? 999);
-      if (displayOrderDiff !== 0) return displayOrderDiff;
-      return (a.sortPriority ?? 0) - (b.sortPriority ?? 0);
-    });
-  }
-
-  async getTagDefinitionsByGroup(tagGroup: string): Promise<TagDefinition[]> {
-    const tags = Array.from(this.tagDefinitions.values()).filter(t => t.tagGroup === tagGroup);
-    return tags.sort((a, b) => {
-      const sortPriorityDiff = (a.sortPriority ?? 0) - (b.sortPriority ?? 0);
-      if (sortPriorityDiff !== 0) return sortPriorityDiff;
-      return (a.displayOrder ?? 999) - (b.displayOrder ?? 999);
-    });
-  }
-
-  async upsertTagDefinition(insertTagDef: InsertTagDefinition): Promise<TagDefinition> {
-    const existing = await this.getTagDefinition(insertTagDef.tag);
-    
-    if (existing) {
-      // Update existing tag
-      const updatedTag: TagDefinition = {
-        ...existing,
-        ...insertTagDef,
-        updatedAt: new Date()
-      };
-      this.tagDefinitions.set(existing.id, updatedTag);
-      return updatedTag;
-    } else {
-      // Create new tag
-      return await this.createTagDefinition(insertTagDef);
-    }
-  }
-
-  async updateTagDefinition(id: string, updates: Partial<TagDefinition>): Promise<TagDefinition | undefined> {
-    const tagDef = this.tagDefinitions.get(id);
-    if (!tagDef) return undefined;
-    
-    const updatedTag = {
-      ...tagDef,
-      ...updates,
-      updatedAt: new Date()
-    };
-    this.tagDefinitions.set(id, updatedTag);
-    return updatedTag;
-  }
-
-  async deleteTagDefinition(id: string): Promise<boolean> {
-    return this.tagDefinitions.delete(id);
-  }
-
-  // Hierarchical Unit Queries
-  async getUnitsHierarchyByProperty(propertyProfileId: string): Promise<any> {
-    // Get all units for this property
-    const units = Array.from(this.propertyUnits.values()).filter(
-      unit => unit.propertyProfileId === propertyProfileId
-    );
-    
-    // Get all tag definitions for sorting
-    const tags = await this.getAllTagDefinitions();
-    const tagOrderMap = new Map(tags.map(t => [t.tag, t.displayOrder ?? 999]));
-    
-    // Build hierarchy: { bedrooms: { tag: [units] } }
-    const hierarchy: any = {};
-    
-    for (const unit of units) {
-      const bedroomKey = unit.bedrooms ?? 0;
-      const tagKey = unit.tag ?? 'untagged';
-      
-      if (!hierarchy[bedroomKey]) {
-        hierarchy[bedroomKey] = {};
-      }
-      
-      if (!hierarchy[bedroomKey][tagKey]) {
-        hierarchy[bedroomKey][tagKey] = [];
-      }
-      
-      hierarchy[bedroomKey][tagKey].push(unit);
-    }
-    
-    // Sort tags within each bedroom group by displayOrder
-    for (const bedroomKey of Object.keys(hierarchy)) {
-      const tagKeys = Object.keys(hierarchy[bedroomKey]);
-      const sortedTags = tagKeys.sort((a, b) => {
-        const orderA = tagOrderMap.get(a) ?? 999;
-        const orderB = tagOrderMap.get(b) ?? 999;
-        return orderA - orderB;
-      });
-      
-      // Rebuild with sorted tags
-      const sortedTagObj: any = {};
-      for (const tag of sortedTags) {
-        sortedTagObj[tag] = hierarchy[bedroomKey][tag];
-      }
-      hierarchy[bedroomKey] = sortedTagObj;
-    }
-    
-    return hierarchy;
-  }
-
-  async getUnitsHierarchyBySession(sessionId: string): Promise<any> {
-    // Get all property profiles in the session
-    const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
-    
-    // Get all tag definitions for sorting
-    const tags = await this.getAllTagDefinitions();
-    const tagOrderMap = new Map(tags.map(t => [t.tag, t.displayOrder ?? 999]));
-    
-    // Build combined hierarchy for all properties: { bedrooms: { tag: [units] } }
-    const hierarchy: any = {};
-    
-    for (const profile of propertyProfiles) {
-      const units = Array.from(this.propertyUnits.values()).filter(
-        unit => unit.propertyProfileId === profile.id
-      );
-      
-      for (const unit of units) {
-        const bedroomKey = unit.bedrooms ?? 0;
-        const tagKey = unit.tag ?? 'untagged';
-        
-        if (!hierarchy[bedroomKey]) {
-          hierarchy[bedroomKey] = {};
-        }
-        
-        if (!hierarchy[bedroomKey][tagKey]) {
-          hierarchy[bedroomKey][tagKey] = [];
-        }
-        
-        hierarchy[bedroomKey][tagKey].push(unit);
-      }
-    }
-    
-    // Sort tags within each bedroom group by displayOrder
-    for (const bedroomKey of Object.keys(hierarchy)) {
-      const tagKeys = Object.keys(hierarchy[bedroomKey]);
-      const sortedTags = tagKeys.sort((a, b) => {
-        const orderA = tagOrderMap.get(a) ?? 999;
-        const orderB = tagOrderMap.get(b) ?? 999;
-        return orderA - orderB;
-      });
-      
-      // Rebuild with sorted tags
-      const sortedTagObj: any = {};
-      for (const tag of sortedTags) {
-        sortedTagObj[tag] = hierarchy[bedroomKey][tag];
-      }
-      hierarchy[bedroomKey] = sortedTagObj;
-    }
-    
-    return hierarchy;
-  }
-
-  async getUnitsByPropertyAndTag(propertyProfileId: string, tag: string): Promise<PropertyUnit[]> {
-    return Array.from(this.propertyUnits.values())
-      .filter(unit => unit.propertyProfileId === propertyProfileId && unit.tag === tag)
-      .sort((a, b) => {
-        if (a.unitNumber && b.unitNumber) {
-          return a.unitNumber.localeCompare(b.unitNumber);
-        }
-        return 0;
-      });
-  }
-
-  async getUnitsByPropertyBedroomTag(propertyProfileId: string, bedrooms: number, tag: string): Promise<PropertyUnit[]> {
-    return Array.from(this.propertyUnits.values())
-      .filter(unit => 
-        unit.propertyProfileId === propertyProfileId && 
-        unit.bedrooms === bedrooms && 
-        unit.tag === tag
-      )
-      .sort((a, b) => {
-        if (a.unitNumber && b.unitNumber) {
-          return a.unitNumber.localeCompare(b.unitNumber);
-        }
-        return 0;
-      });
   }
 
   // USER AUTHENTICATION OPERATIONS - MANDATORY for Replit Auth

@@ -8,10 +8,8 @@ import Header from "@/components/layout/header";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import PropertyInput from "@/pages/property-input";
 import PropertyProfiles from "@/pages/property-profiles";
-import PropertyDetail from "@/pages/property-detail";
 import PortfolioDashboard from "@/pages/portfolio-dashboard";
 import PropertySelectionMatrix from "@/pages/property-selection-matrix";
-import ImportData from "@/pages/import-data";
 import Summarize from "@/pages/summarize";
 import Analyze from "@/pages/analyze";
 import Optimize from "@/pages/optimize";
@@ -31,14 +29,6 @@ function Router() {
         </ProtectedRoute>
       </Route>
       
-      <Route path="/property-profile/:id">
-        {(params) => (
-          <ProtectedRoute>
-            <PropertyDetail params={params} />
-          </ProtectedRoute>
-        )}
-      </Route>
-      
       <Route path="/portfolio-dashboard">
         <ProtectedRoute>
           <PortfolioDashboard />
@@ -48,12 +38,6 @@ function Router() {
       <Route path="/property-selection-matrix">
         <ProtectedRoute>
           <PropertySelectionMatrix />
-        </ProtectedRoute>
-      </Route>
-      
-      <Route path="/import-data">
-        <ProtectedRoute>
-          <ImportData />
         </ProtectedRoute>
       </Route>
       
