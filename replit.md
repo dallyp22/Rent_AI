@@ -8,13 +8,42 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ### October 9, 2025
 - **TAG-Based Hierarchical Sorting**: Enhanced platform to support Property → Bedroom → TAG drill-down for Nustyle portfolio (17 properties, 3,000 units, 353 TAGs)
-  - **Database Schema**: Added TAG, bedrooms, bathrooms, squareFeet fields to propertyUnits table with composite indexes for efficient hierarchical queries
-  - **TAG Definitions Table**: Created tagDefinitions table with displayOrder field for consistent TAG sorting across the platform
-  - **Storage Layer**: Implemented TAG-aware CRUD methods and hierarchical query capabilities in both DrizzleStorage and MemStorageLegacy
-  - **Optimization Logic**: Built hierarchical sorting (Property → Bedroom → TAG) in optimization endpoints using TAG displayOrder
-  - **Excel Export**: Enhanced export function with hierarchical structure, property/bedroom/TAG subtotals, and TAG displayOrder sorting
-  - **UI Components**: Created PropertyDrillDown component with TAG filtering, accordion-based hierarchical display, and summary statistics
-  - **API Endpoints**: Added `/api/tag-definitions` and `/api/property-profiles/:id/units/hierarchical` for TAG management
+  - **Database Schema**: 
+    - Added TAG, bedrooms, bathrooms, squareFeet fields to propertyUnits table
+    - Created composite indexes: (property_profile_id, bedrooms, tag) and (property_profile_id, optimization_priority, tag)
+    - Designed for efficient hierarchical queries with proper indexing strategy
+  - **TAG Definitions Table**: 
+    - Created tagDefinitions table with displayOrder field for consistent TAG sorting
+    - Composite index on (property_profile_id, display_order) for grouped sorting operations
+    - Supports custom TAG ordering per property profile
+  - **Storage Layer**: 
+    - Implemented 11 TAG-aware CRUD methods in IStorage interface
+    - Full implementation in both DrizzleStorage and MemStorageLegacy classes
+    - Hierarchical query capabilities: getUnitsHierarchyByProperty, getPropertyUnitsGroupedByTag
+  - **Optimization Logic**: 
+    - Built sortUnitsHierarchically helper function using TAG displayOrder
+    - Integrated into both legacy (/api/properties/:id/optimize) and session (/api/analysis-sessions/:sessionId/optimize) endpoints
+    - Sorts units by: Property (alphabetical) → Bedrooms (numerical) → TAG (displayOrder)
+  - **Excel Export**: 
+    - Created exportToExcelHierarchical function with 4-level hierarchy
+    - Property headers, bedroom subheaders, TAG groups, and individual units
+    - Subtotals at bedroom and property levels
+    - Fetches TAG displayOrder from API for consistent sorting
+  - **UI Components**: 
+    - Created PropertyDrillDown component with accordion-based hierarchical display
+    - Supports both single property and session (multi-property) modes
+    - TAG filtering with multi-select interface
+    - Summary statistics at all levels (property, bedroom, TAG)
+    - Responsive design with proper loading and error states
+  - **API Endpoints**: 
+    - GET `/api/tag-definitions` - Retrieve all TAG definitions with displayOrder
+    - GET `/api/property-profiles/:id/units/hierarchical` - Single property hierarchical data
+    - GET `/api/analysis-sessions/:sessionId/units/hierarchical` - Session-wide aggregated hierarchical data
+  - **Optimization Page Enhancement**:
+    - Added view toggle: Table View (existing) and Hierarchical View (new)
+    - Hierarchical view shows Session→Property→Bedroom→TAG→Units structure
+    - Excel export includes TAG data when exporting from hierarchical view
+    - Works correctly in both single property and session modes
 
 ### October 7, 2025
 - **Branding Update**: Changed application title from "Property Analytics Pro" to "Rent AI Optimization"
