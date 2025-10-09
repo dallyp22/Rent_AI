@@ -4038,6 +4038,38 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
+  // Get units in flat format for a property profile
+  app.get("/api/property-profiles/:id/units", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const propertyProfileId = req.params.id;
+      const userId = getAuthenticatedUserId(req);
+      
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      
+      if (!propertyProfile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      // Verify the profile belongs to the user
+      if (propertyProfile.userId && propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      
+      // Get all units for this property profile
+      const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      
+      res.json(units);
+      
+    } catch (error) {
+      console.error("[PROPERTY_PROFILE_UNITS] Error:", error);
+      res.status(500).json({ message: "Failed to get property units" });
+    }
+  });
+
   // Get units hierarchically for an analysis session (Session → Properties → Bedroom → TAG → Units)
   app.get("/api/analysis-sessions/:sessionId/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
     try {

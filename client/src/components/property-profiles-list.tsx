@@ -3,7 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Edit, Trash2, ExternalLink, Building2, Target, Users } from "lucide-react";
+import { Edit, Trash2, ExternalLink, Building2, Target, Users, Eye } from "lucide-react";
+import { Link } from "wouter";
 import type { PropertyProfile } from "@shared/schema";
 
 interface PropertyProfilesListProps {
@@ -132,9 +133,11 @@ export default function PropertyProfilesList({
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
                       <div>
-                        <div className="font-medium text-foreground" data-testid={`text-name-${profile.id}`}>
-                          {profile.name}
-                        </div>
+                        <Link href={`/property-profile/${profile.id}`}>
+                          <div className="font-medium text-foreground hover:text-primary cursor-pointer transition-colors" data-testid={`text-name-${profile.id}`}>
+                            {profile.name}
+                          </div>
+                        </Link>
                         <div className="flex items-center gap-2 mt-1">
                           {getPropertyTypeBadge(profile.profileType)}
                           {profile.propertyType && (
@@ -180,6 +183,17 @@ export default function PropertyProfilesList({
                   
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <Link href={`/property-profile/${profile.id}`}>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          title="View details"
+                          data-testid={`button-details-${profile.id}`}
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
                       <Button
                         variant="ghost"
                         size="sm"
