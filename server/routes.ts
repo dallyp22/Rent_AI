@@ -3811,6 +3811,90 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
+  // Create test property profile for authenticated user
+  app.post("/api/create-test-property", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+      
+      console.log(`[TEST_PROPERTY] Creating test property profile for userId: ${userId}`);
+      
+      // Create a property profile with predefined realistic data
+      const testPropertyData = {
+        name: "Main Property Portfolio",
+        address: "123 Main Street, City, State 12345",
+        url: "https://example-property.com", // Required field
+        profileType: "subject" as const, // This is the user's main property
+        city: "City",
+        state: "State",
+        propertyType: "Multifamily",
+        totalUnits: 50,
+        builtYear: 2010,
+        squareFootage: 45000,
+        parkingSpaces: 75,
+        amenities: [
+          "Swimming Pool",
+          "Fitness Center",
+          "Covered Parking",
+          "Laundry Facilities",
+          "Pet Friendly",
+          "24/7 Maintenance",
+          "Online Portal",
+          "Package Receiving"
+        ],
+        unitMix: {
+          studio: 5,
+          oneBedroom: 20,
+          twoBedroom: 15,
+          threeBedroom: 8,
+          fourPlusBedroom: 2
+        },
+        userId
+      };
+      
+      // Parse and validate the data
+      const validatedData = insertPropertyProfileSchema.parse(testPropertyData);
+      
+      // Create the property profile
+      const profile = await storage.createPropertyProfile({
+        ...validatedData,
+        userId
+      });
+      
+      console.log(`[TEST_PROPERTY] Successfully created test property profile with id: ${profile.id}`);
+      
+      res.status(201).json({
+        message: "Test property profile created successfully",
+        profile,
+        note: "You can now access the Unit Management page and import your Excel data for this property."
+      });
+    } catch (error) {
+      console.error("[TEST_PROPERTY] Error creating test property profile:", error);
+      
+      // Check if property already exists for this user
+      if (error instanceof Error && error.message.includes('duplicate')) {
+        return res.status(409).json({ 
+          message: "A test property already exists for this user. You can use the existing property or delete it first."
+        });
+      }
+      
+      // Return 400 for validation errors
+      if (error instanceof Error && error.name === 'ZodError') {
+        return res.status(400).json({ 
+          message: "Validation failed", 
+          errors: (error as any).issues || [{ message: error.message }]
+        });
+      }
+      
+      res.status(500).json({ 
+        message: "Failed to create test property profile",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   // Delete property profile
   app.delete("/api/property-profiles/:id", isAuthenticatedAny, async (req: any, res) => {
     try {
