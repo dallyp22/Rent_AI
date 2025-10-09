@@ -140,11 +140,39 @@ export const propertyUnits = pgTable("property_units", {
   propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id),
   unitNumber: text("unit_number").notNull(),
   unitType: text("unit_type").notNull(),
+  
+  // TAG-based identification and sorting
+  tag: text("tag"), // Unique configuration identifier (e.g., "Moscow", "1/1 FRANC")
+  bedrooms: integer("bedrooms"),
+  bathrooms: decimal("bathrooms", { precision: 3, scale: 1 }),
+  squareFeet: integer("square_feet"),
+  
+  // Pricing data
   currentRent: decimal("current_rent", { precision: 10, scale: 2 }).notNull(),
   recommendedRent: decimal("recommended_rent", { precision: 10, scale: 2 }),
+  marketRent: decimal("market_rent", { precision: 10, scale: 2 }),
+  optimalRent: decimal("optimal_rent", { precision: 10, scale: 2 }),
+  
+  // Status and availability
   status: text("status").notNull().default("occupied"), // vacant, occupied, notice_given
-  createdAt: timestamp("created_at").defaultNow()
-});
+  leaseEndDate: timestamp("lease_end_date"),
+  daysOnMarket: integer("days_on_market"),
+  
+  // Optimization metadata
+  rentPercentile: decimal("rent_percentile", { precision: 5, scale: 2 }),
+  optimizationPriority: integer("optimization_priority"), // 1-5, for sorting recommendations
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  // Indexes for hierarchical sorting: Property → Bedroom → TAG
+  propertyTagIdx: index("property_units_property_tag_idx").on(table.propertyProfileId, table.tag),
+  sortingIdx: index("property_units_sorting_idx").on(table.propertyProfileId, table.bedrooms, table.tag),
+  // Fixed: Include property_profile_id for property-scoped optimization queries
+  optimizationIdx: index("property_units_optimization_idx").on(table.propertyProfileId, table.optimizationPriority, table.tag),
+  // Index for property profile queries
+  propertyProfileIdx: index("property_units_property_profile_idx").on(table.propertyProfileId)
+}));
 
 export const optimizationReports = pgTable("optimization_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -212,6 +240,33 @@ export const scrapedUnits = pgTable("scraped_units", {
   status: text("status").default("available"), // available, occupied, pending
   createdAt: timestamp("created_at").defaultNow()
 });
+
+// TAG definitions for unit configuration standardization and sorting
+export const tagDefinitions = pgTable("tag_definitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tag: text("tag").unique().notNull(),
+  
+  // Categorization
+  category: text("category"), // 'location', 'unit_config', 'building', 'custom'
+  tagGroup: text("tag_group"), // e.g., 'Portland' for Portland.1, Portland.2, Portland.3
+  
+  // Sorting control - CRITICAL for hierarchical export
+  displayOrder: integer("display_order").notNull().default(999),
+  sortPriority: integer("sort_priority").notNull().default(0),
+  
+  // Metadata
+  description: text("description"),
+  bedroomCount: integer("bedroom_count"), // To validate unit assignments
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  categoryIdx: index("tag_definitions_category_idx").on(table.category),
+  // Composite index for grouped display ordering (filter by group, then sort)
+  groupSortIdx: index("tag_definitions_group_sort_idx").on(table.tagGroup, table.sortPriority, table.displayOrder),
+  sortIdx: index("tag_definitions_sort_idx").on(table.displayOrder),
+  tagIdx: index("tag_definitions_tag_idx").on(table.tag)
+}));
 
 // Session storage table - MANDATORY for Replit Auth
 export const sessions = pgTable(
@@ -331,7 +386,18 @@ export const insertSessionPropertyProfileSchema = createInsertSchema(sessionProp
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });
 export const insertPropertyAnalysisSchema = createInsertSchema(propertyAnalysis).omit({ id: true, createdAt: true });
 export const insertCompetitorPropertySchema = createInsertSchema(competitorProperties).omit({ id: true, createdAt: true });
-export const insertPropertyUnitSchema = createInsertSchema(propertyUnits).omit({ id: true, createdAt: true });
+export const insertPropertyUnitSchema = createInsertSchema(propertyUnits)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    // Allow decimal fields to accept both strings and numbers, then transform to string
+    bathrooms: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    currentRent: z.union([z.string(), z.number()]).transform(val => val?.toString()),
+    recommendedRent: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    marketRent: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    optimalRent: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    rentPercentile: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+  });
+export const insertTagDefinitionSchema = createInsertSchema(tagDefinitions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOptimizationReportSchema = createInsertSchema(optimizationReports).omit({ id: true, createdAt: true });
 export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({ id: true, createdAt: true, completedAt: true });
 export const insertScrapedPropertySchema = createInsertSchema(scrapedProperties).omit({ id: true, createdAt: true });
@@ -370,6 +436,8 @@ export type ScrapedProperty = typeof scrapedProperties.$inferSelect;
 export type InsertScrapedProperty = z.infer<typeof insertScrapedPropertySchema>;
 export type ScrapedUnit = typeof scrapedUnits.$inferSelect;
 export type InsertScrapedUnit = z.infer<typeof insertScrapedUnitSchema>;
+export type TagDefinition = typeof tagDefinitions.$inferSelect;
+export type InsertTagDefinition = z.infer<typeof insertTagDefinitionSchema>;
 
 // NEW: Portfolio management types
 export type SavedPortfolio = typeof savedPortfolios.$inferSelect;
