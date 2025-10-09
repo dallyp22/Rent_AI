@@ -1,14 +1,8 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -19,8 +13,6 @@ import {
   ChevronDown,
   Edit2,
   Trash2,
-  Save,
-  X,
   Search,
   Home,
   Bed,
@@ -48,6 +40,20 @@ interface UnitHierarchyViewProps {
   onRefresh: () => void;
 }
 
+// Types for flattened list items
+type FlattenedItemType = 'bedroom' | 'tag' | 'unit';
+
+interface FlattenedItem {
+  type: FlattenedItemType;
+  id: string;
+  level: number;
+  bedroom?: string;
+  tag?: string;
+  unit?: PropertyUnit;
+  unitCount?: number;
+  isExpanded?: boolean;
+}
+
 export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: UnitHierarchyViewProps) {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
@@ -55,6 +61,9 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
   const [expandedBedrooms, setExpandedBedrooms] = useState<Set<string>>(new Set());
   const [expandedTags, setExpandedTags] = useState<Set<string>>(new Set());
   const [editingUnit, setEditingUnit] = useState<PropertyUnit | null>(null);
+  
+  // Ref for the scrollable container
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Filter hierarchy based on search term
   const filteredHierarchy = useMemo(() => {
@@ -79,6 +88,78 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
     });
     return filtered;
   }, [data.hierarchy, searchTerm]);
+
+  // Create flattened list for virtualization
+  const flattenedItems = useMemo(() => {
+    const items: FlattenedItem[] = [];
+    
+    Object.entries(filteredHierarchy).forEach(([bedroom, tags]) => {
+      const bedroomKey = bedroom;
+      const totalUnitsInBedroom = Object.values(tags).reduce((sum, units) => sum + units.length, 0);
+      
+      // Add bedroom item
+      items.push({
+        type: 'bedroom',
+        id: bedroomKey,
+        level: 0,
+        bedroom,
+        unitCount: totalUnitsInBedroom,
+        isExpanded: expandedBedrooms.has(bedroomKey)
+      });
+      
+      // Only add children if bedroom is expanded
+      if (expandedBedrooms.has(bedroomKey)) {
+        Object.entries(tags).forEach(([tag, units]) => {
+          const tagKey = `${bedroomKey}-${tag}`;
+          
+          // Add tag item
+          items.push({
+            type: 'tag',
+            id: tagKey,
+            level: 1,
+            bedroom,
+            tag,
+            unitCount: units.length,
+            isExpanded: expandedTags.has(tagKey)
+          });
+          
+          // Only add units if tag is expanded
+          if (expandedTags.has(tagKey)) {
+            units.forEach((unit) => {
+              items.push({
+                type: 'unit',
+                id: unit.id!,
+                level: 2,
+                bedroom,
+                tag,
+                unit
+              });
+            });
+          }
+        });
+      }
+    });
+    
+    return items;
+  }, [filteredHierarchy, expandedBedrooms, expandedTags]);
+
+  // Setup virtualizer
+  const virtualizer = useVirtualizer({
+    count: flattenedItems.length,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: useCallback((index: number) => {
+      const item = flattenedItems[index];
+      if (!item) return 50;
+      
+      switch (item.type) {
+        case 'bedroom': return 56; // Height for bedroom row
+        case 'tag': return 52; // Height for tag row
+        case 'unit': return 72; // Height for unit card
+        default: return 50;
+      }
+    }, [flattenedItems]),
+    overscan: 10, // Render 10 items outside viewport for smoother scrolling
+  });
 
   // Delete unit mutation
   const deleteUnitMutation = useMutation({
@@ -122,16 +203,18 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
     }
   });
 
-  const handleSelectAll = (units: PropertyUnit[]) => {
+  const handleSelectAll = (bedroom: string, tag: string) => {
     const newSelected = new Set(selectedUnits);
+    const units = filteredHierarchy[bedroom]?.[tag] || [];
     units.forEach(unit => {
       if (unit.id) newSelected.add(unit.id);
     });
     setSelectedUnits(newSelected);
   };
 
-  const handleDeselectAll = (units: PropertyUnit[]) => {
+  const handleDeselectAll = (bedroom: string, tag: string) => {
     const newSelected = new Set(selectedUnits);
+    const units = filteredHierarchy[bedroom]?.[tag] || [];
     units.forEach(unit => {
       if (unit.id) newSelected.delete(unit.id);
     });
@@ -152,6 +235,11 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
     const newExpanded = new Set(expandedBedrooms);
     if (newExpanded.has(bedroom)) {
       newExpanded.delete(bedroom);
+      // Also collapse all tags under this bedroom
+      const tagKeysToRemove = Array.from(expandedTags).filter(key => key.startsWith(`${bedroom}-`));
+      const newExpandedTags = new Set(expandedTags);
+      tagKeysToRemove.forEach(key => newExpandedTags.delete(key));
+      setExpandedTags(newExpandedTags);
     } else {
       newExpanded.add(bedroom);
     }
@@ -192,8 +280,128 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
     return `${num} Bedrooms`;
   };
 
+  // Render a single virtual row
+  const renderVirtualRow = (item: FlattenedItem) => {
+    switch (item.type) {
+      case 'bedroom':
+        return (
+          <div 
+            className="flex items-center justify-between p-3 hover:bg-accent rounded-lg cursor-pointer border-b"
+            onClick={() => toggleBedroom(item.bedroom!)}
+            data-testid={`accordion-bedroom-${item.bedroom}`}
+          >
+            <div className="flex items-center gap-3">
+              {expandedBedrooms.has(item.bedroom!) ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              <Bed className="h-4 w-4" />
+              <span className="font-semibold">{getBedroomLabel(item.bedroom!)}</span>
+            </div>
+            <Badge variant="outline">{item.unitCount} units</Badge>
+          </div>
+        );
+        
+      case 'tag':
+        return (
+          <div 
+            className="flex items-center justify-between p-2 ml-8 hover:bg-accent rounded-lg cursor-pointer"
+            onClick={() => toggleTag(item.id)}
+            data-testid={`accordion-tag-${item.tag}`}
+          >
+            <div className="flex items-center gap-3">
+              {expandedTags.has(item.id) ? (
+                <ChevronDown className="h-4 w-4" />
+              ) : (
+                <ChevronRight className="h-4 w-4" />
+              )}
+              <Tag className="h-4 w-4" />
+              <span className="font-medium">{item.tag || "Untagged"}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{item.unitCount} units</Badge>
+              {expandedTags.has(item.id) && (
+                <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleSelectAll(item.bedroom!, item.tag!)}
+                    data-testid={`button-select-all-${item.tag}`}
+                  >
+                    Select All
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDeselectAll(item.bedroom!, item.tag!)}
+                    data-testid={`button-deselect-all-${item.tag}`}
+                  >
+                    Deselect All
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+        
+      case 'unit':
+        const unit = item.unit!;
+        return (
+          <div className="ml-16 mr-2">
+            <Card className="p-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Checkbox
+                    checked={selectedUnits.has(unit.id!)}
+                    onCheckedChange={() => toggleUnit(unit.id!)}
+                    data-testid={`checkbox-unit-${unit.unitNumber}`}
+                  />
+                  <div>
+                    <div className="font-medium">
+                      Unit {unit.unitNumber}
+                    </div>
+                    <div className="text-sm text-muted-foreground">
+                      {unit.bedrooms} BR | {unit.bathrooms} BA | 
+                      {unit.squareFootage ? ` ${unit.squareFootage} sqft | ` : " "}
+                      ${unit.currentRent}/mo
+                    </div>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setEditingUnit(unit)}
+                    data-testid={`button-edit-unit-${unit.unitNumber}`}
+                  >
+                    <Edit2 className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      if (confirm(`Delete Unit ${unit.unitNumber}?`)) {
+                        deleteUnitMutation.mutate(unit.id!);
+                      }
+                    }}
+                    data-testid={`button-delete-unit-${unit.unitNumber}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        );
+        
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col h-full space-y-4">
       {/* Search and Actions Bar */}
       <div className="flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative">
@@ -274,123 +482,39 @@ export default function UnitHierarchyView({ data, tagDefinitions, onRefresh }: U
         </Card>
       )}
 
-      {/* Hierarchical Display */}
-      <Accordion type="multiple" className="space-y-2">
-        {Object.entries(filteredHierarchy).map(([bedroom, tags]) => {
-          const bedroomKey = bedroom;
-          const isBedroomExpanded = expandedBedrooms.has(bedroomKey);
-          const totalUnitsInBedroom = Object.values(tags).reduce((sum, units) => sum + units.length, 0);
-
-          return (
-            <AccordionItem key={bedroomKey} value={bedroomKey}>
-              <AccordionTrigger
-                onClick={() => toggleBedroom(bedroomKey)}
-                data-testid={`accordion-bedroom-${bedroom}`}
+      {/* Virtualized Hierarchical Display */}
+      <div 
+        ref={scrollContainerRef}
+        className="flex-1 overflow-auto border rounded-lg bg-background"
+        style={{ height: 'calc(100vh - 350px)', minHeight: '400px' }}
+      >
+        <div
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const item = flattenedItems[virtualRow.index];
+            return (
+              <div
+                key={virtualRow.key}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  height: `${virtualRow.size}px`,
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
               >
-                <div className="flex items-center gap-4">
-                  <Bed className="h-4 w-4" />
-                  <span className="font-semibold">{getBedroomLabel(bedroom)}</span>
-                  <Badge variant="outline">{totalUnitsInBedroom} units</Badge>
-                </div>
-              </AccordionTrigger>
-              {isBedroomExpanded && (
-                <AccordionContent>
-                  <Accordion type="multiple" className="ml-4 space-y-1">
-                    {Object.entries(tags).map(([tag, units]) => {
-                      const tagKey = `${bedroomKey}-${tag}`;
-                      const isTagExpanded = expandedTags.has(tagKey);
-
-                      return (
-                        <AccordionItem key={tagKey} value={tagKey}>
-                          <AccordionTrigger
-                            onClick={() => toggleTag(tagKey)}
-                            data-testid={`accordion-tag-${tag}`}
-                          >
-                            <div className="flex items-center gap-4">
-                              <Tag className="h-4 w-4" />
-                              <span className="font-medium">{tag || "Untagged"}</span>
-                              <Badge variant="secondary">{units.length} units</Badge>
-                            </div>
-                          </AccordionTrigger>
-                          {isTagExpanded && (
-                            <AccordionContent>
-                              <div className="ml-4 space-y-2">
-                                <div className="flex gap-2 mb-2">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleSelectAll(units)}
-                                    data-testid={`button-select-all-${tag}`}
-                                  >
-                                    Select All
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => handleDeselectAll(units)}
-                                    data-testid={`button-deselect-all-${tag}`}
-                                  >
-                                    Deselect All
-                                  </Button>
-                                </div>
-                                {units.map((unit) => (
-                                  <Card key={unit.id} className="p-3">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-3">
-                                        <Checkbox
-                                          checked={selectedUnits.has(unit.id!)}
-                                          onCheckedChange={() => toggleUnit(unit.id!)}
-                                          data-testid={`checkbox-unit-${unit.unitNumber}`}
-                                        />
-                                        <div>
-                                          <div className="font-medium">
-                                            Unit {unit.unitNumber}
-                                          </div>
-                                          <div className="text-sm text-muted-foreground">
-                                            {unit.bedrooms} BR | {unit.bathrooms} BA | 
-                                            {unit.squareFootage ? ` ${unit.squareFootage} sqft | ` : " "}
-                                            ${unit.currentRent}/mo
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <div className="flex gap-1">
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => setEditingUnit(unit)}
-                                          data-testid={`button-edit-unit-${unit.unitNumber}`}
-                                        >
-                                          <Edit2 className="h-4 w-4" />
-                                        </Button>
-                                        <Button
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => {
-                                            if (confirm(`Delete Unit ${unit.unitNumber}?`)) {
-                                              deleteUnitMutation.mutate(unit.id!);
-                                            }
-                                          }}
-                                          data-testid={`button-delete-unit-${unit.unitNumber}`}
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  </Card>
-                                ))}
-                              </div>
-                            </AccordionContent>
-                          )}
-                        </AccordionItem>
-                      );
-                    })}
-                  </Accordion>
-                </AccordionContent>
-              )}
-            </AccordionItem>
-          );
-        })}
-      </Accordion>
+                {renderVirtualRow(item)}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Edit Dialog */}
       {editingUnit && (

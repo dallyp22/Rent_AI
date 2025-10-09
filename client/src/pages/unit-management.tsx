@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Download, Plus, TableIcon, TreeIcon, AlertCircle } from "lucide-react";
+import { Upload, Download, Plus, TableIcon, Trees, AlertCircle } from "lucide-react";
 import { PropertyProfile, PropertyUnit, TagDefinition } from "@shared/schema";
 import UnitHierarchyView from "@/components/unit-hierarchy-view";
 import UnitsTableView from "@/components/units-table-view";
@@ -202,16 +202,48 @@ export default function UnitManagement() {
         <Card>
           <CardContent className="pt-6">
             <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "hierarchical" | "table")}>
-              <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
-                <TabsTrigger value="hierarchical" data-testid="tab-hierarchical">
-                  <TreeIcon className="mr-2 h-4 w-4" />
-                  Hierarchical View
-                </TabsTrigger>
-                <TabsTrigger value="table" data-testid="tab-table">
-                  <TableIcon className="mr-2 h-4 w-4" />
-                  Table View
-                </TabsTrigger>
-              </TabsList>
+              <div className="flex justify-between items-center mb-4">
+                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+                  <TabsTrigger value="hierarchical" data-testid="tab-hierarchical">
+                    <Trees className="mr-2 h-4 w-4" />
+                    Hierarchical View
+                  </TabsTrigger>
+                  <TabsTrigger value="table" data-testid="tab-table">
+                    <TableIcon className="mr-2 h-4 w-4" />
+                    Table View
+                  </TabsTrigger>
+                </TabsList>
+                {process.env.NODE_ENV === 'development' && viewMode === "hierarchical" && (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(`/api/property-profiles/${selectedPropertyId}/units/test-large?count=3000`);
+                        if (response.ok) {
+                          const testData = await response.json();
+                          // Temporarily replace hierarchical data with test data
+                          queryClient.setQueryData(
+                            [`/api/property-profiles/${selectedPropertyId}/units/hierarchical`],
+                            testData
+                          );
+                          toast({
+                            title: "Test Data Loaded",
+                            description: "3000 test units loaded for virtualization testing"
+                          });
+                        }
+                      } catch (error) {
+                        toast({
+                          title: "Error loading test data",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                    data-testid="button-load-test-data"
+                  >
+                    Load 3000 Test Units
+                  </Button>
+                )}
+              </div>
 
               <TabsContent value="hierarchical" className="mt-6">
                 {loadingUnits ? (

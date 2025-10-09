@@ -6531,6 +6531,101 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
 
   // ============ Unit CRUD Routes ============
 
+  // GET /api/property-profiles/:id/units/test-large - Generate large test dataset for virtualization testing
+  app.get("/api/property-profiles/:id/units/test-large", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.id;
+      const count = parseInt(req.query.count as string) || 3000; // Default to 3000 units
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      // Generate test units
+      const testUnits: PropertyUnit[] = [];
+      const tags = ["Moscow", "Portland.1", "Portland.2", "Atlas", "Breaker", "Highline", "Rochester", "Sterling", "Vault", "Wire"];
+      const bedroomOptions = [0, 1, 2, 3, 4];
+      const bathroomOptions = [1, 1.5, 2, 2.5, 3];
+      
+      for (let i = 1; i <= count; i++) {
+        const bedrooms = bedroomOptions[Math.floor(Math.random() * bedroomOptions.length)];
+        const bathrooms = bathroomOptions[Math.floor(Math.random() * bathroomOptions.length)];
+        const tag = tags[Math.floor(Math.random() * tags.length)];
+        const baseRent = 1000 + (bedrooms * 400) + (bathrooms * 100);
+        const rentVariation = Math.floor(Math.random() * 500) - 250;
+        const sqft = 500 + (bedrooms * 200) + Math.floor(Math.random() * 200);
+        
+        testUnits.push({
+          id: `test-${i}`,
+          propertyProfileId,
+          unitNumber: `${1000 + i}`,
+          unitType: `${bedrooms}BR/${bathrooms}BA`,
+          currentRent: baseRent + rentVariation,
+          recommendedRent: baseRent + rentVariation + Math.floor(Math.random() * 200) - 100,
+          status: Math.random() > 0.1 ? "occupied" : "vacant",
+          tag,
+          bedrooms,
+          bathrooms,
+          squareFootage: sqft,
+          optimizationPriority: Math.floor(Math.random() * 5),
+          createdAt: new Date()
+        } as PropertyUnit);
+      }
+      
+      // Build hierarchy by bedrooms then tags
+      const hierarchy: { [bedroom: string]: { [tag: string]: PropertyUnit[] } } = {};
+      let totalUnits = 0;
+      const uniqueTags = new Set<string>();
+      const bedroomTypes = new Set<string>();
+      
+      testUnits.forEach((unit: PropertyUnit) => {
+        const bedroom = (unit.bedrooms || 0).toString();
+        const tagName = unit.tag || "Untagged";
+        
+        if (!hierarchy[bedroom]) {
+          hierarchy[bedroom] = {};
+          bedroomTypes.add(bedroom);
+        }
+        
+        if (!hierarchy[bedroom][tagName]) {
+          hierarchy[bedroom][tagName] = [];
+        }
+        
+        hierarchy[bedroom][tagName].push(unit);
+        uniqueTags.add(tagName);
+        totalUnits++;
+      });
+      
+      // Sort bedrooms numerically
+      const sortedHierarchy: typeof hierarchy = {};
+      Object.keys(hierarchy).sort((a, b) => parseInt(a) - parseInt(b)).forEach(key => {
+        sortedHierarchy[key] = hierarchy[key];
+      });
+      
+      res.json({
+        hierarchy: sortedHierarchy,
+        summary: {
+          totalUnits,
+          uniqueTags: uniqueTags.size,
+          bedroomTypes: bedroomTypes.size
+        }
+      });
+    } catch (error) {
+      console.error("Error generating test units:", error);
+      res.status(500).json({ 
+        message: "Failed to generate test units", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // GET /api/property-profiles/:id/units - List units for a property
   app.get("/api/property-profiles/:id/units", isAuthenticatedAny, async (req: any, res) => {
     try {
@@ -6553,6 +6648,71 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       console.error("Error fetching units:", error);
       res.status(500).json({ 
         message: "Failed to fetch units", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET /api/property-profiles/:id/units/hierarchical - Get units organized by bedroom and tag hierarchy
+  app.get("/api/property-profiles/:id/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.id;
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      
+      // Build hierarchy by bedrooms then tags
+      const hierarchy: { [bedroom: string]: { [tag: string]: PropertyUnit[] } } = {};
+      let totalUnits = 0;
+      const uniqueTags = new Set<string>();
+      const bedroomTypes = new Set<string>();
+      
+      units.forEach((unit: PropertyUnit) => {
+        const bedroom = (unit.bedrooms || 0).toString();
+        const tag = unit.tag || "Untagged";
+        
+        if (!hierarchy[bedroom]) {
+          hierarchy[bedroom] = {};
+          bedroomTypes.add(bedroom);
+        }
+        
+        if (!hierarchy[bedroom][tag]) {
+          hierarchy[bedroom][tag] = [];
+        }
+        
+        hierarchy[bedroom][tag].push(unit);
+        uniqueTags.add(tag);
+        totalUnits++;
+      });
+      
+      // Sort bedrooms numerically
+      const sortedHierarchy: typeof hierarchy = {};
+      Object.keys(hierarchy).sort((a, b) => parseInt(a) - parseInt(b)).forEach(key => {
+        sortedHierarchy[key] = hierarchy[key];
+      });
+      
+      res.json({
+        hierarchy: sortedHierarchy,
+        summary: {
+          totalUnits,
+          uniqueTags: uniqueTags.size,
+          bedroomTypes: bedroomTypes.size
+        }
+      });
+    } catch (error) {
+      console.error("Error fetching unit hierarchy:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch unit hierarchy", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
