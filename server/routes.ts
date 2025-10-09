@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type PropertyUnit, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
 import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
@@ -7438,12 +7438,13 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       worksheet.columns = [
         { header: 'Unit Number', key: 'unitNumber', width: 15 },
         { header: 'Unit Type', key: 'unitType', width: 15 },
+        { header: 'Bedrooms', key: 'bedrooms', width: 10 },
+        { header: 'Bathrooms', key: 'bathrooms', width: 10 },
+        { header: 'Square Footage', key: 'squareFootage', width: 15 },
         { header: 'Current Rent', key: 'currentRent', width: 15 },
         { header: 'Recommended Rent', key: 'recommendedRent', width: 15 },
         { header: 'Status', key: 'status', width: 15 },
         { header: 'TAG', key: 'tag', width: 20 },
-        { header: 'Bedrooms', key: 'bedrooms', width: 10 },
-        { header: 'Bathrooms', key: 'bathrooms', width: 10 },
         { header: 'Optimization Priority', key: 'optimizationPriority', width: 20 }
       ];
 
@@ -7452,12 +7453,13 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
         worksheet.addRow({
           unitNumber: unit.unitNumber,
           unitType: unit.unitType,
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          squareFootage: unit.squareFootage || '',
           currentRent: unit.currentRent,
           recommendedRent: unit.recommendedRent,
           status: unit.status,
           tag: unit.tag,
-          bedrooms: unit.bedrooms,
-          bathrooms: unit.bathrooms,
           optimizationPriority: unit.optimizationPriority
         });
       });

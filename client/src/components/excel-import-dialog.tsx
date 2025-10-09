@@ -102,7 +102,7 @@ export default function ExcelImportDialog({
           <DialogTitle>Import Units from Excel</DialogTitle>
           <DialogDescription>
             Upload an Excel file with unit data. The file should have columns for:
-            Unit, Tags, Beds, Baths, Sqft, Property, Address, Unit Type, Current Rent, Status
+            Unit, Tags, Beds, Baths, Square Footage, Property, Address, Unit Type, Current Rent, Status
           </DialogDescription>
         </DialogHeader>
 
@@ -197,7 +197,7 @@ export default function ExcelImportDialog({
                 <div>• Tags → TAG Identifier</div>
                 <div>• Beds → Number of Bedrooms</div>
                 <div>• Baths → Number of Bathrooms</div>
-                <div>• Sqft → Square Footage</div>
+                <div>• Square Footage → Square Footage</div>
                 <div>• Property → Property Name</div>
                 <div>• Address → Property Address</div>
                 <div>• Unit Type → Unit Type</div>
