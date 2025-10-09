@@ -6,6 +6,16 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
+### October 9, 2025
+- **TAG-Based Hierarchical Sorting**: Enhanced platform to support Property → Bedroom → TAG drill-down for Nustyle portfolio (17 properties, 3,000 units, 353 TAGs)
+  - **Database Schema**: Added TAG, bedrooms, bathrooms, squareFeet fields to propertyUnits table with composite indexes for efficient hierarchical queries
+  - **TAG Definitions Table**: Created tagDefinitions table with displayOrder field for consistent TAG sorting across the platform
+  - **Storage Layer**: Implemented TAG-aware CRUD methods and hierarchical query capabilities in both DrizzleStorage and MemStorageLegacy
+  - **Optimization Logic**: Built hierarchical sorting (Property → Bedroom → TAG) in optimization endpoints using TAG displayOrder
+  - **Excel Export**: Enhanced export function with hierarchical structure, property/bedroom/TAG subtotals, and TAG displayOrder sorting
+  - **UI Components**: Created PropertyDrillDown component with TAG filtering, accordion-based hierarchical display, and summary statistics
+  - **API Endpoints**: Added `/api/tag-definitions` and `/api/property-profiles/:id/units/hierarchical` for TAG management
+
 ### October 7, 2025
 - **Branding Update**: Changed application title from "Property Analytics Pro" to "Rent AI Optimization"
 - **Navigation Improvement**: Updated sidebar navigation text from "Property Input" to "Select Properties" for clarity

@@ -4009,6 +4009,80 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       res.status(500).json({ message: "Failed to get property profile scraping status" });
     }
   });
+
+  // Get units hierarchically for a property profile (Property → Bedroom → TAG → Units)
+  app.get("/api/property-profiles/:id/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const propertyProfileId = req.params.id;
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      
+      if (!propertyProfile) {
+        return res.status(404).json({ message: "Property profile not found" });
+      }
+      
+      // Get hierarchical unit structure
+      const hierarchy = await storage.getUnitsHierarchyByProperty(propertyProfileId);
+      
+      // Transform to include property information
+      const response = {
+        propertyId: propertyProfile.id,
+        propertyName: propertyProfile.name,
+        hierarchy
+      };
+      
+      res.json(response);
+      
+    } catch (error) {
+      console.error("[PROPERTY_PROFILE_HIERARCHICAL_UNITS] Error:", error);
+      res.status(500).json({ message: "Failed to get hierarchical units" });
+    }
+  });
+
+  // Get units hierarchically for an analysis session (Session → Properties → Bedroom → TAG → Units)
+  app.get("/api/analysis-sessions/:sessionId/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const { sessionId } = req.params;
+      
+      // Get session to verify it exists
+      const session = await storage.getAnalysisSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ message: "Session not found" });
+      }
+      
+      // Verify ownership
+      const userId = getAuthenticatedUserId(req);
+      if (session.userId && session.userId !== userId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      
+      // Get all property profiles in session
+      const profiles = await storage.getPropertyProfilesInSession(sessionId);
+      
+      // Aggregate hierarchical data from all properties
+      const properties = [];
+      
+      for (const profile of profiles) {
+        const hierarchy = await storage.getUnitsHierarchyByProperty(profile.id);
+        properties.push({
+          propertyId: profile.id,
+          propertyName: profile.name,
+          hierarchy
+        });
+      }
+      
+      const response = {
+        sessionId: session.id,
+        sessionName: session.name,
+        properties
+      };
+      
+      res.json(response);
+      
+    } catch (error) {
+      console.error("[SESSION_HIERARCHICAL_UNITS] Error:", error);
+      res.status(500).json({ message: "Failed to get session hierarchical units" });
+    }
+  });
   
   // Scrape all properties in an analysis session (NON-BLOCKING)
   app.post("/api/analysis-sessions/:sessionId/scrape", isAuthenticatedAny, async (req: any, res) => {

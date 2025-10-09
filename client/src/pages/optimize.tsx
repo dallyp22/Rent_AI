@@ -17,13 +17,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
-import { FileSpreadsheet, Save, Building2, Home, BarChart3 } from "lucide-react";
+import { FileSpreadsheet, Save, Building2, Home, BarChart3, List, FolderTree } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import OptimizationControls from "@/components/optimization-controls";
 import { OptimizationProgressModal } from "@/components/optimization-progress-modal";
-import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
+import { PropertyDrillDown } from "@/components/property-drill-down";
+import { exportToExcel, exportToExcelHierarchical, type ExcelExportData } from "@/lib/excel-export";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyUnit, OptimizationReport, AnalysisSession, PropertyProfile, PropertyAnalysis } from "@shared/schema";
 
@@ -130,6 +131,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [currentModifiedPrices, setCurrentModifiedPrices] = useState<Record<string, number>>({});
   const [showOptimizationModal, setShowOptimizationModal] = useState(false);
   const [optimizationStage, setOptimizationStage] = useState(1);
+  const [viewMode, setViewMode] = useState<"table" | "hierarchical">("table");
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
@@ -551,6 +553,9 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             return {
               propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
+              tag: (unit as any).tag || undefined,
+              bedrooms: (unit as any).bedrooms || undefined,
+              bathrooms: (unit as any).bathrooms || undefined,
               unitType: unit.unitType,
               squareFootage: (unit as any).squareFootage || undefined,
               currentRent: currentRent,
@@ -625,6 +630,9 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             return {
               propertyName: property.propertyName || property.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
+              tag: (unit as any).tag || undefined,
+              bedrooms: (unit as any).bedrooms || undefined,
+              bathrooms: (unit as any).bathrooms || undefined,
               unitType: unit.unitType,
               squareFootage: (unit as any).squareFootage || undefined,
               currentRent: currentRent,
@@ -671,7 +679,12 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         };
       }
 
-      await exportToExcel(exportData);
+      // Use hierarchical export if in hierarchical view mode
+      if (viewMode === 'hierarchical') {
+        await exportToExcelHierarchical(exportData);
+      } else {
+        await exportToExcel(exportData);
+      }
       
       toast({
         title: "Export Successful",
@@ -917,14 +930,51 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           </Button>
         </div>
 
-        {/* Optimization Table */}
+        {/* View Toggle */}
+        {optimizationQuery.data && (
+          <Card className="mb-4">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium">View:</span>
+                <RadioGroup value={viewMode} onValueChange={(value) => setViewMode(value as "table" | "hierarchical")} className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="table" id="view-table" data-testid="view-toggle-table" />
+                    <Label htmlFor="view-table" className="flex items-center gap-2 cursor-pointer">
+                      <List className="h-4 w-4" />
+                      Table View
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="hierarchical" id="view-hierarchical" data-testid="view-toggle-hierarchical" />
+                    <Label htmlFor="view-hierarchical" className="flex items-center gap-2 cursor-pointer">
+                      <FolderTree className="h-4 w-4" />
+                      Hierarchical View
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Optimization Table or Hierarchical View */}
         {optimizationQuery.data ? (
-          <OptimizationTable
-            units={deduplicatedUnits}
-            report={optimizationQuery.data.report}
-            onApplyChanges={handleApplyChanges}
-            onPricesChange={setCurrentModifiedPrices}
-          />
+          viewMode === 'table' ? (
+            <OptimizationTable
+              units={deduplicatedUnits}
+              report={optimizationQuery.data.report}
+              onApplyChanges={handleApplyChanges}
+              onPricesChange={setCurrentModifiedPrices}
+            />
+          ) : (
+            <div data-testid="hierarchical-view-container">
+              <PropertyDrillDown 
+                propertyProfileId={!isSessionMode ? params.id : undefined}
+                sessionId={isSessionMode ? sessionId : undefined}
+                showFilters={true}
+              />
+            </div>
+          )
         ) : (
           <div className="text-center py-8" data-testid="no-data-state">
             <div className="text-muted-foreground mb-4">
