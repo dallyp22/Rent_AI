@@ -52,10 +52,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
   // Update unit mutation
   const updateUnitMutation = useMutation({
     mutationFn: async (data: { id: string; updates: Partial<PropertyUnit> }) => {
-      return apiRequest(`/api/units/${data.id}`, {
-        method: "PUT",
-        body: JSON.stringify(data.updates)
-      });
+      return apiRequest("PUT", `/api/units/${data.id}`, data.updates);
     },
     onSuccess: () => {
       toast({ title: "Unit updated successfully" });
@@ -73,9 +70,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
   // Delete unit mutation
   const deleteUnitMutation = useMutation({
     mutationFn: async (unitId: string) => {
-      return apiRequest(`/api/units/${unitId}`, {
-        method: "DELETE"
-      });
+      return apiRequest("DELETE", `/api/units/${unitId}`);
     },
     onSuccess: () => {
       toast({ title: "Unit deleted successfully" });
@@ -92,10 +87,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
   // Bulk update mutation
   const bulkUpdateMutation = useMutation({
     mutationFn: async (updates: { units: Array<{ id: string; tag: string }> }) => {
-      return apiRequest("/api/units/bulk", {
-        method: "PUT",
-        body: JSON.stringify(updates)
-      });
+      return apiRequest("PUT", "/api/units/bulk", updates);
     },
     onSuccess: () => {
       toast({ title: "Units updated successfully" });
@@ -422,7 +414,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
                   ) : (
                     <Badge variant={
                       unit.status === "vacant" ? "destructive" :
-                      unit.status === "notice_given" ? "warning" :
+                      unit.status === "notice_given" ? "outline" :
                       "default"
                     }>
                       {unit.status || "occupied"}

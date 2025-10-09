@@ -147,6 +147,7 @@ export const propertyUnits = pgTable("property_units", {
   tag: varchar("tag", { length: 255 }), // TAG identifiers like "Moscow", "Portland.1"
   bedrooms: integer("bedrooms"), // for bedroom count grouping
   bathrooms: decimal("bathrooms", { precision: 3, scale: 1 }), // for bathroom count
+  squareFootage: integer("square_footage"), // square footage of the unit
   optimizationPriority: integer("optimization_priority").default(0), // priority for optimization
   createdAt: timestamp("created_at").defaultNow()
 }, (table) => ({
