@@ -6,6 +6,17 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
+### October 9, 2025 (Final Update)
+- **Excel Import Feature**: Created comprehensive data import functionality
+  - New route `/import-data` with drag-and-drop file upload interface
+  - Supports Excel files with columns: Unit, Tags, Beds, Baths, Sqft, Property, Address, Unit Type
+  - Automatically creates property profiles if they don't exist
+  - Imports all unit data including TAGs, bedrooms, bathrooms, and square footage
+  - Creates TAG definitions with display order for consistent sorting
+  - Successfully imported user's portfolio: 17 properties, 2,998 units, 353 unique TAGs
+  - Idempotent import process (can be run multiple times safely)
+  - Import summary shows created/updated properties and units
+
 ### October 9, 2025 (Evening Update)
 - **Property Detail Page**: Created comprehensive property detail view for data validation
   - New route `/property-profile/:id` accessible from Property Profiles list
