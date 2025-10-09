@@ -935,6 +935,50 @@ function parseNumber(value: any): number | undefined {
   return undefined;
 }
 
+// Helper function for hierarchical sorting (Property → Bedroom → TAG)
+async function sortUnitsHierarchically(units: any[], storageInstance: typeof storage): Promise<any[]> {
+  // Get all tag definitions with displayOrder
+  const tagDefinitions = await storageInstance.getAllTagDefinitions();
+  
+  // Create a tag-to-order map for quick lookup
+  const tagOrderMap = new Map<string, number>();
+  for (const tagDef of tagDefinitions) {
+    tagOrderMap.set(tagDef.tag, tagDef.displayOrder);
+  }
+  
+  // Sort units hierarchically
+  return units.sort((a, b) => {
+    // Primary sort: propertyName (alphabetical)
+    const propA = a.propertyName || '';
+    const propB = b.propertyName || '';
+    if (propA !== propB) {
+      return propA.localeCompare(propB);
+    }
+    
+    // Secondary sort: bedrooms (numerical, 0-4+)
+    const bedroomsA = a.bedrooms ?? 999; // Put units without bedrooms at the end
+    const bedroomsB = b.bedrooms ?? 999;
+    if (bedroomsA !== bedroomsB) {
+      return bedroomsA - bedroomsB;
+    }
+    
+    // Tertiary sort: tag (by displayOrder from tagDefinitions)
+    const tagA = a.tag || '';
+    const tagB = b.tag || '';
+    
+    // Get display orders (default to 999 if tag not found)
+    const orderA = tagOrderMap.get(tagA) ?? 999;
+    const orderB = tagOrderMap.get(tagB) ?? 999;
+    
+    if (orderA !== orderB) {
+      return orderA - orderB;
+    }
+    
+    // If display orders are the same, sort by tag name alphabetically
+    return tagA.localeCompare(tagB);
+  });
+}
+
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Auth middleware - MUST be first
@@ -962,6 +1006,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
+    }
+  });
+  
+  // Get tag definitions for Excel export sorting
+  app.get('/api/tag-definitions', async (req, res) => {
+    try {
+      const tagDefinitions = await storage.getAllTagDefinitions();
+      res.json(tagDefinitions);
+    } catch (error) {
+      console.error("Error fetching tag definitions:", error);
+      res.status(500).json({ message: "Failed to fetch tag definitions" });
     }
   });
   
@@ -1608,11 +1663,18 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
             unitType: scrapedUnit.unitType,
             currentRent: scrapedUnit.rent || "0",
-            status: scrapedUnit.status || "occupied"
+            status: scrapedUnit.status || "occupied",
+            tag: scrapedUnit.floorPlanName || scrapedUnit.unitType, // Extract TAG from floorPlanName
+            bedrooms: scrapedUnit.bedrooms,
+            bathrooms: scrapedUnit.bathrooms?.toString()
           });
           // Enrich unit with scraped data fields for optimization
           units.push({
             ...unit,
+            propertyName: property?.propertyName || '',
+            tag: scrapedUnit.floorPlanName || scrapedUnit.unitType,
+            bedrooms: scrapedUnit.bedrooms,
+            bathrooms: scrapedUnit.bathrooms?.toString(),
             squareFootage: scrapedUnit.squareFootage,
             availabilityDate: scrapedUnit.availabilityDate
           });
@@ -1620,11 +1682,20 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       } else {
         // Fall back to existing PropertyUnits only if no scraped data
         units = await storage.getPropertyUnits(propertyId);
+        // Add propertyName to units for sorting
+        units = units.map(unit => ({
+          ...unit,
+          propertyName: property?.propertyName || ''
+        }));
       }
       
       if (!property || units.length === 0) {
         return res.status(404).json({ message: "Property or units not found" });
       }
+      
+      // Apply hierarchical sorting (Property → Bedroom → TAG)
+      units = await sortUnitsHierarchically(units, storage);
+      console.log(`[OPTIMIZE] Applied hierarchical sorting to ${units.length} units`);
 
       // Convert parameters to readable format for AI
       const goalDisplayMap: Record<string, string> = {
@@ -4567,6 +4638,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             currentRent: unit.rent?.toString() || '0',
             recommendedRent: null, // Will be set by optimization
             status: unit.status || 'available',
+            tag: unit.floorPlanName || unit.unitType, // Extract TAG from floorPlanName
             bedrooms: unit.bedrooms || 0,
             bathrooms: unit.bathrooms?.toString() || '0',
             squareFootage: unit.squareFootage || 0,
@@ -4610,6 +4682,12 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           suggestion: "Ensure properties have units data available"
         });
       }
+      
+      // Apply hierarchical sorting (Property → Bedroom → TAG)
+      const sortedUnits = await sortUnitsHierarchically(allUnits, storage);
+      allUnits.length = 0;
+      allUnits.push(...sortedUnits);
+      console.log(`[SESSION_OPTIMIZE] Applied hierarchical sorting to ${allUnits.length} units`);
 
       // Generate AI-powered portfolio optimization recommendations
       const goalDisplayMap: Record<string, string> = {
