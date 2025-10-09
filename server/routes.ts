@@ -8,7 +8,7 @@ import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, re
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
-import * as ExcelJS from "exceljs";
+import ExcelJS from "exceljs";
 import multer from "multer";
 
 // Using GPT-4o as the latest available model
