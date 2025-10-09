@@ -7150,81 +7150,171 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
         return res.status(400).json({ message: "No file uploaded" });
       }
 
+      console.log(`📊 [EXCEL_IMPORT] Starting Excel import for user: ${userId}`);
+      console.log(`📊 [EXCEL_IMPORT] File size: ${req.file.size} bytes`);
+      console.log(`📊 [EXCEL_IMPORT] File mimetype: ${req.file.mimetype}`);
+
       // Parse Excel file
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(req.file.buffer);
-      
-      const worksheet = workbook.getWorksheet(1);
-      if (!worksheet) {
-        return res.status(400).json({ message: "No worksheet found in Excel file" });
+      try {
+        await workbook.xlsx.load(req.file.buffer);
+        console.log(`📊 [EXCEL_IMPORT] Workbook loaded successfully`);
+      } catch (loadError) {
+        console.error(`📊 [EXCEL_IMPORT] Failed to load workbook:`, loadError);
+        return res.status(400).json({ message: "Failed to load Excel file. Please ensure it's a valid Excel file (.xlsx)" });
       }
+      
+      // Get the first worksheet (more flexible than using worksheet name)
+      let worksheet = workbook.getWorksheet(1);
+      
+      // If getWorksheet(1) doesn't work, try to get the first worksheet differently
+      if (!worksheet) {
+        const worksheetNames = workbook.worksheets.map(ws => ws.name);
+        console.log(`📊 [EXCEL_IMPORT] Available worksheets:`, worksheetNames);
+        
+        if (workbook.worksheets.length > 0) {
+          worksheet = workbook.worksheets[0];
+          console.log(`📊 [EXCEL_IMPORT] Using first worksheet: ${worksheet.name}`);
+        }
+      }
+      
+      if (!worksheet) {
+        console.error(`📊 [EXCEL_IMPORT] No worksheet found in Excel file`);
+        return res.status(400).json({ 
+          message: "No worksheet found in Excel file. Please ensure your Excel file has at least one worksheet with data." 
+        });
+      }
+
+      console.log(`📊 [EXCEL_IMPORT] Using worksheet: ${worksheet.name}`);
+      console.log(`📊 [EXCEL_IMPORT] Worksheet dimensions - Rows: ${worksheet.rowCount}, Columns: ${worksheet.columnCount}`);
+      console.log(`📊 [EXCEL_IMPORT] Actual row count: ${worksheet.actualRowCount}, Actual column count: ${worksheet.actualColumnCount}`);
 
       // Get user's property profiles
       const userProperties = await storage.getPropertyProfilesByUser(userId);
+      console.log(`📊 [EXCEL_IMPORT] User has ${userProperties.length} property profiles`);
       
       // Create a map for easy property name lookup (case-insensitive)
       const propertyMap = new Map<string, string>();
       userProperties.forEach(prop => {
-        propertyMap.set(prop.name.trim().toLowerCase(), prop.id);
+        const normalizedName = prop.name.trim().toLowerCase();
+        propertyMap.set(normalizedName, prop.id);
+        console.log(`📊 [EXCEL_IMPORT] Property mapped: "${normalizedName}" -> ${prop.id}`);
       });
 
       // Parse the Excel file
       const unitsByProperty = new Map<string, any[]>();
       const unmatchedProperties = new Set<string>();
       let headerRow: string[] = [];
+      let headerRowNumber = -1;
       let totalUnitsRead = 0;
+      let totalRowsProcessed = 0;
+      let emptyRowsSkipped = 0;
+      let rowsWithMissingData = 0;
+      const debugInfo: any[] = [];
       
+      // First, find the header row (might not be row 1)
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) {
-          // Header row
-          headerRow = row.values as string[];
-          headerRow = headerRow.slice(1); // Remove first empty element
-        } else {
-          // Data row
+        if (headerRowNumber === -1) {
+          const values = row.values as any[];
+          const nonEmptyValues = values.filter(v => v !== null && v !== undefined && v !== '');
+          
+          // Check if this looks like a header row (has multiple non-empty cells)
+          if (nonEmptyValues.length >= 3) {
+            // Check if it contains expected header keywords
+            const rowAsString = nonEmptyValues.join(' ').toLowerCase();
+            if (rowAsString.includes('unit') || rowAsString.includes('property') || 
+                rowAsString.includes('rent') || rowAsString.includes('bed') || 
+                rowAsString.includes('type')) {
+              headerRowNumber = rowNumber;
+              headerRow = values.map(v => v ? v.toString() : '');
+              // Remove first element if it's undefined (Excel sometimes adds it)
+              if (headerRow[0] === '' || headerRow[0] === undefined) {
+                headerRow = headerRow.slice(1);
+              }
+              console.log(`📊 [EXCEL_IMPORT] Found header row at row ${rowNumber}`);
+              console.log(`📊 [EXCEL_IMPORT] Headers found:`, headerRow);
+            }
+          }
+        }
+      });
+
+      if (headerRowNumber === -1) {
+        console.error(`📊 [EXCEL_IMPORT] No header row found in Excel file`);
+        return res.status(400).json({ 
+          message: "No header row found in Excel file. Please ensure your Excel file has headers like 'Property', 'Unit', 'Type', 'Rent', etc." 
+        });
+      }
+
+      // Now process data rows
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber > headerRowNumber) {
+          totalRowsProcessed++;
           const rowValues = row.values as any[];
+          
+          // Check if row is empty
+          const nonEmptyValues = rowValues.filter(v => v !== null && v !== undefined && v !== '');
+          if (nonEmptyValues.length === 0) {
+            emptyRowsSkipped++;
+            return; // Skip empty rows
+          }
+          
           const unit: any = {};
           let propertyName = '';
+          const rowDebug: any = { rowNumber, values: {} };
           
           // Map Excel columns to unit fields
           headerRow.forEach((header, index) => {
             const value = rowValues[index + 1]; // Excel rows are 1-indexed
-            if (value !== undefined && value !== null) {
-              const headerLower = header?.toString().toLowerCase().trim();
+            if (header && value !== undefined && value !== null && value !== '') {
+              const headerLower = header.toString().toLowerCase().trim();
+              const cleanValue = value.toString().trim();
               
-              // Map columns based on requirements
-              if (headerLower === 'unit' || headerLower === 'unit number') {
-                unit.unitNumber = value.toString();
-              } else if (headerLower === 'tags' || headerLower === 'tag' || headerLower === 'tag identifier') {
-                unit.tag = value.toString();
-              } else if (headerLower === 'beds' || headerLower === 'bedrooms' || headerLower === 'number of bedrooms') {
-                unit.bedrooms = parseInt(value.toString()) || 0;
-              } else if (headerLower === 'baths' || headerLower === 'bathrooms' || headerLower === 'number of bathrooms') {
-                unit.bathrooms = value.toString();
-              } else if (headerLower === 'sqft' || headerLower === 'square footage' || headerLower === 'squarefootage') {
-                unit.squareFootage = parseInt(value.toString()) || null;
-              } else if (headerLower === 'property' || headerLower === 'property name') {
-                propertyName = value.toString().trim();
-              } else if (headerLower === 'unit type' || headerLower === 'type') {
-                unit.unitType = value.toString();
-              } else if (headerLower === 'current rent' || headerLower === 'monthly rent' || headerLower === 'rent') {
-                unit.currentRent = value.toString();
-              } else if (headerLower === 'status' || headerLower === 'unit status') {
-                unit.status = value.toString();
-              } else if (headerLower === 'recommended rent' || headerLower === 'recommended') {
-                unit.recommendedRent = value.toString();
-              } else if (headerLower === 'priority' || headerLower === 'optimization priority') {
-                unit.optimizationPriority = parseInt(value.toString()) || 0;
+              // Store for debugging
+              rowDebug.values[header] = cleanValue;
+              
+              // More flexible column matching with multiple variations
+              if (headerLower.includes('unit') && (headerLower.includes('number') || headerLower.includes('#') || headerLower === 'unit')) {
+                unit.unitNumber = cleanValue;
+              } else if (headerLower.includes('tag')) {
+                unit.tag = cleanValue;
+              } else if (headerLower.includes('bed')) {
+                unit.bedrooms = parseInt(cleanValue) || 0;
+              } else if (headerLower.includes('bath')) {
+                unit.bathrooms = cleanValue;
+              } else if (headerLower.includes('sq') || headerLower.includes('square') || headerLower.includes('footage')) {
+                unit.squareFootage = parseInt(cleanValue.replace(/,/g, '')) || null;
+              } else if (headerLower.includes('property') || headerLower === 'building' || headerLower === 'complex') {
+                propertyName = cleanValue;
+              } else if (headerLower.includes('type') && !headerLower.includes('property')) {
+                unit.unitType = cleanValue;
+              } else if ((headerLower.includes('current') && headerLower.includes('rent')) || 
+                        (headerLower === 'rent' || headerLower === 'monthly rent')) {
+                // Remove $ and commas from rent values
+                unit.currentRent = cleanValue.replace(/[$,]/g, '');
+              } else if (headerLower.includes('status')) {
+                unit.status = cleanValue;
+              } else if (headerLower.includes('recommended')) {
+                unit.recommendedRent = cleanValue.replace(/[$,]/g, '');
+              } else if (headerLower.includes('priority')) {
+                unit.optimizationPriority = parseInt(cleanValue) || 0;
               }
-              // Note: Address column is for reference only, not stored in unit
             }
           });
+          
+          // Add debug info for first few rows
+          if (debugInfo.length < 5) {
+            rowDebug.parsedUnit = { ...unit, propertyName };
+            debugInfo.push(rowDebug);
+          }
           
           // Validate required fields and property matching
           if (unit.unitNumber && unit.unitType && unit.currentRent && propertyName) {
             // Try to match property name (case-insensitive)
-            const propertyId = propertyMap.get(propertyName.toLowerCase());
+            const normalizedPropertyName = propertyName.toLowerCase();
+            const propertyId = propertyMap.get(normalizedPropertyName);
             
             if (propertyId) {
+              console.log(`📊 [EXCEL_IMPORT] Matched property "${propertyName}" to ID ${propertyId}`);
               // Add propertyProfileId to the unit
               unit.propertyProfileId = propertyId;
               
@@ -7235,17 +7325,44 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
               unitsByProperty.get(propertyId)!.push(unit);
               totalUnitsRead++;
             } else {
+              console.log(`📊 [EXCEL_IMPORT] Could not match property "${propertyName}"`);
               unmatchedProperties.add(propertyName);
             }
+          } else {
+            rowsWithMissingData++;
+            const missing = [];
+            if (!unit.unitNumber) missing.push('unitNumber');
+            if (!unit.unitType) missing.push('unitType');
+            if (!unit.currentRent) missing.push('currentRent');
+            if (!propertyName) missing.push('propertyName');
+            console.log(`📊 [EXCEL_IMPORT] Row ${rowNumber} missing required fields:`, missing);
           }
         }
       });
 
+      console.log(`📊 [EXCEL_IMPORT] Processing complete:`);
+      console.log(`📊 [EXCEL_IMPORT]   - Total rows processed: ${totalRowsProcessed}`);
+      console.log(`📊 [EXCEL_IMPORT]   - Empty rows skipped: ${emptyRowsSkipped}`);
+      console.log(`📊 [EXCEL_IMPORT]   - Rows with missing data: ${rowsWithMissingData}`);
+      console.log(`📊 [EXCEL_IMPORT]   - Units successfully read: ${totalUnitsRead}`);
+      console.log(`📊 [EXCEL_IMPORT]   - Properties matched: ${unitsByProperty.size}`);
+      console.log(`📊 [EXCEL_IMPORT]   - Unmatched properties:`, Array.from(unmatchedProperties));
+
       if (unitsByProperty.size === 0) {
         return res.status(400).json({ 
-          message: "No valid units found for any properties",
+          message: totalUnitsRead === 0 
+            ? "No valid units found in the Excel file. Please check that your file has the required columns: Property, Unit Number, Unit Type, and Current Rent."
+            : "Could not match any properties from the Excel file to your existing properties. Please ensure property names match exactly.",
           unmatchedProperties: Array.from(unmatchedProperties),
-          totalUnitsRead
+          totalUnitsRead,
+          totalRowsProcessed,
+          emptyRowsSkipped,
+          rowsWithMissingData,
+          debugInfo: {
+            headerRow,
+            sampleRows: debugInfo,
+            availableProperties: userProperties.map(p => p.name)
+          }
         });
       }
 
