@@ -45,7 +45,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
   const [selectedUnits, setSelectedUnits] = useState<Set<string>>(new Set());
   const [sortBy, setSortBy] = useState<string>("unitNumber");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
-  const [filterTag, setFilterTag] = useState<string>("");
+  const [filterTag, setFilterTag] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -112,7 +112,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
 
   // Filter and sort units
   const filteredUnits = units.filter(unit => 
-    !filterTag || unit.tag === filterTag
+    filterTag === "all" || unit.tag === filterTag
   );
 
   const sortedUnits = [...filteredUnits].sort((a, b) => {
@@ -194,7 +194,7 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
             <SelectValue placeholder="Filter by TAG" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">All TAGs</SelectItem>
+            <SelectItem value="all">All TAGs</SelectItem>
             {tagDefinitions.map(tag => (
               <SelectItem key={tag.tag} value={tag.tag}>
                 {tag.tag}
@@ -334,15 +334,16 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
                 <TableCell>
                   {editingId === unit.id ? (
                     <Select
-                      value={editData.tag || ""}
-                      onValueChange={(value) => setEditData({ ...editData, tag: value })}
+                      value={editData.tag || "untagged"}
+                      onValueChange={(value) => setEditData({ ...editData, tag: value === "untagged" ? "" : value })}
                     >
                       <SelectTrigger className="w-32">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="untagged">Untagged</SelectItem>
                         {tagDefinitions.map(tag => (
-                          <SelectItem key={tag.tag} value={tag.tag}>
+                          <SelectItem key={tag.tag} value={tag.tag || `tag-${tag.id}`}>
                             {tag.tag}
                           </SelectItem>
                         ))}
