@@ -7,6 +7,12 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 ## Recent Changes
 
 ### October 9, 2025
+- **Square Footage Field Added**: Added squareFootage field to propertyUnits for better pricing analysis
+  - Added squareFootage column (varchar) to propertyUnits table
+  - Integrated into Table View with display and inline editing
+  - Updated Excel import to detect "Square Footage", "Sq Ft", "SqFt", "Size" columns
+  - Added Square Footage column to Excel exports (positioned after Bathrooms)
+  - Full backward compatibility - defaults to empty string if not provided
 - **TAG-Based Unit Management System**: Implemented comprehensive hierarchical unit management
   - Enhanced propertyUnits table with TAG, bedrooms, bathrooms, and optimization priority fields
   - Created tagDefinitions table for managing TAG display order
