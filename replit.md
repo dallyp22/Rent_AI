@@ -6,6 +6,16 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
+### October 9, 2025 (Evening Update)
+- **Property Detail Page**: Created comprehensive property detail view for data validation
+  - New route `/property-profile/:id` accessible from Property Profiles list
+  - Header section displays property metadata (name, address, type, total units, built year)
+  - Data completeness indicators showing units missing TAGs, bedrooms, bathrooms, square footage
+  - Toggle between Hierarchical View (Property → Bedroom → TAG → Units) and Table View
+  - Table view includes sortable columns, search functionality, and highlights incomplete data
+  - Back navigation to Property Profiles list
+  - Both views support reviewing and validating unit-level data outside optimization workflow
+
 ### October 9, 2025
 - **TAG-Based Hierarchical Sorting**: Enhanced platform to support Property → Bedroom → TAG drill-down for Nustyle portfolio (17 properties, 3,000 units, 353 TAGs)
   - **Database Schema**: 
