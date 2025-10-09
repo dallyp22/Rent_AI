@@ -1,13 +1,15 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
+import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
 import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
 import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
+import multer from "multer";
+import ExcelJS from "exceljs";
 
 // Using GPT-4o as the latest available model
 const openai = new OpenAI({ 
@@ -6531,6 +6533,205 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       console.error("Error getting optimization reports for session:", error);
       res.status(500).json({ 
         message: "Failed to get optimization reports for session", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // Configure multer for file uploads
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 10 * 1024 * 1024, // 10MB limit
+    },
+    fileFilter: (req, file, cb) => {
+      // Only accept Excel files
+      if (file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+          file.mimetype === 'application/vnd.ms-excel' ||
+          file.originalname.endsWith('.xlsx') ||
+          file.originalname.endsWith('.xls')) {
+        cb(null, true);
+      } else {
+        cb(new Error('Only Excel files (.xlsx, .xls) are allowed'));
+      }
+    }
+  });
+
+  // Excel Import Endpoint
+  app.post("/api/import-excel", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      console.log('[IMPORT] Starting Excel import for user:', userId);
+      console.log('[IMPORT] File name:', req.file.originalname);
+      console.log('[IMPORT] File size:', req.file.size);
+
+      // Parse Excel file
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      const worksheet = workbook.worksheets[0];
+
+      if (!worksheet) {
+        return res.status(400).json({ message: "Excel file has no worksheets" });
+      }
+
+      // Process rows and group by property
+      const propertiesMap = new Map<string, any[]>();
+      const tagSet = new Set<string>();
+      let rowCount = 0;
+
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) return; // Skip header row
+        
+        // Extract cell values
+        const unit = row.getCell(1).value?.toString() || '';
+        const tags = row.getCell(2).value?.toString() || '';
+        const beds = Number(row.getCell(3).value) || 0;
+        const baths = Number(row.getCell(4).value) || 0;
+        const sqft = Number(row.getCell(5).value) || 0;
+        const property = row.getCell(6).value?.toString() || '';
+        const address = row.getCell(7).value?.toString() || '';
+        const unitType = row.getCell(8).value?.toString() || '';
+        
+        // Skip empty rows
+        if (!property || !address) return;
+        
+        // Group by property
+        const key = `${property}|${address}`;
+        if (!propertiesMap.has(key)) {
+          propertiesMap.set(key, []);
+        }
+        
+        // Add unit data
+        propertiesMap.get(key)!.push({
+          unit,
+          tags,
+          beds,
+          baths,
+          sqft,
+          unitType
+        });
+        
+        // Collect tags
+        if (tags) {
+          tagSet.add(tags);
+        }
+        
+        rowCount++;
+      });
+
+      if (rowCount === 0) {
+        return res.status(400).json({ message: "No valid data rows found in Excel file" });
+      }
+
+      console.log(`[IMPORT] Found ${rowCount} units across ${propertiesMap.size} properties`);
+      console.log(`[IMPORT] Found ${tagSet.size} unique tags`);
+
+      // Import results
+      const importSummary = {
+        propertiesProcessed: 0,
+        propertiesCreated: 0,
+        propertiesUpdated: 0,
+        unitsImported: 0,
+        tagsCreated: 0,
+        errors: [] as string[]
+      };
+
+      // Create or update TAG definitions
+      let displayOrder = 1;
+      for (const tag of Array.from(tagSet)) {
+        try {
+          await storage.upsertTagDefinition({
+            tag,
+            category: 'unit_config',
+            displayOrder: displayOrder++,
+            sortPriority: 1,
+            description: `Imported from Excel: ${tag}`
+          });
+          importSummary.tagsCreated++;
+        } catch (error) {
+          console.error(`[IMPORT] Error creating tag ${tag}:`, error);
+          importSummary.errors.push(`Failed to create tag: ${tag}`);
+        }
+      }
+
+      // Process each property
+      for (const [propertyKey, units] of Array.from(propertiesMap)) {
+        const [propertyName, propertyAddress] = propertyKey.split('|');
+        
+        try {
+          // Check if property profile exists
+          let propertyProfile = await storage.getPropertyProfileByNameAndAddress(userId, propertyName, propertyAddress);
+          
+          if (!propertyProfile) {
+            // Create new property profile
+            console.log(`[IMPORT] Creating new property profile: ${propertyName}`);
+            propertyProfile = await storage.createPropertyProfile({
+              userId,
+              name: propertyName,
+              address: propertyAddress,
+              url: `https://placeholder.com/${propertyName.replace(/\s+/g, '-').toLowerCase()}`, // Placeholder URL
+              profileType: 'subject',
+              totalUnits: units.length
+            });
+            importSummary.propertiesCreated++;
+          } else {
+            // Update existing property profile
+            console.log(`[IMPORT] Property profile already exists: ${propertyName}`);
+            await storage.updatePropertyProfile(propertyProfile.id, {
+              totalUnits: units.length
+            });
+            importSummary.propertiesUpdated++;
+          }
+          
+          importSummary.propertiesProcessed++;
+          
+          // Clear existing units for this property profile
+          await storage.clearPropertyUnitsByProfile(propertyProfile.id);
+          
+          // Import all units for this property
+          for (const unitData of units) {
+            try {
+              await storage.createPropertyUnit({
+                propertyProfileId: propertyProfile.id,
+                unitNumber: unitData.unit || `Unit-${Math.random().toString(36).substr(2, 9)}`,
+                unitType: unitData.unitType || 'Unknown',
+                tag: unitData.tags || null,
+                bedrooms: unitData.beds,
+                bathrooms: unitData.baths,
+                squareFeet: unitData.sqft,
+                currentRent: "0", // Default to 0
+                status: 'occupied' // Default status
+              });
+              importSummary.unitsImported++;
+            } catch (error) {
+              console.error(`[IMPORT] Error importing unit for ${propertyName}:`, error);
+              importSummary.errors.push(`Failed to import unit for ${propertyName}: ${unitData.unit}`);
+            }
+          }
+        } catch (error) {
+          console.error(`[IMPORT] Error processing property ${propertyName}:`, error);
+          importSummary.errors.push(`Failed to process property: ${propertyName}`);
+        }
+      }
+
+      console.log('[IMPORT] Import completed:', importSummary);
+      
+      res.json({
+        success: true,
+        summary: importSummary
+      });
+    } catch (error) {
+      console.error('[IMPORT] Excel import error:', error);
+      res.status(500).json({ 
+        message: "Failed to import Excel file", 
         error: error instanceof Error ? error.message : String(error) 
       });
     }

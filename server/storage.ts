@@ -83,6 +83,7 @@ export interface IStorage {
   getPropertyProfilesByType(profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
   getPropertyProfilesByUser(userId: string): Promise<PropertyProfile[]>;
   getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]>;
+  getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined>;
   updatePropertyProfile(id: string, updates: Partial<PropertyProfile>): Promise<PropertyProfile | undefined>;
   deletePropertyProfile(id: string): Promise<boolean>;
   
@@ -335,6 +336,29 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[ERROR DRIZZLE_STORAGE] Error getting property profiles by user and type:', error);
       throw new Error(`Failed to get property profiles by user and type: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined> {
+    try {
+      console.log('[DEBUG DRIZZLE_STORAGE] getPropertyProfileByNameAndAddress called with userId:', userId, 'name:', name, 'address:', address);
+      
+      const [profile] = await db.select()
+        .from(propertyProfiles)
+        .where(and(
+          eq(propertyProfiles.userId, userId),
+          eq(propertyProfiles.name, name),
+          eq(propertyProfiles.address, address),
+          sql`${propertyProfiles.userId} IS NOT NULL`,
+          sql`${propertyProfiles.userId} != ''`
+        ));
+      
+      console.log('[DEBUG DRIZZLE_STORAGE] Found profile:', profile ? 'yes' : 'no');
+      
+      return profile;
+    } catch (error) {
+      console.error('[ERROR DRIZZLE_STORAGE] Error getting property profile by name and address:', error);
+      throw new Error(`Failed to get property profile by name and address: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -2439,6 +2463,14 @@ export class MemStorageLegacy implements IStorage {
   async getPropertyProfilesByUserAndType(userId: string, profileType: 'subject' | 'competitor'): Promise<PropertyProfile[]> {
     return Array.from(this.propertyProfiles.values()).filter(
       profile => profile.userId === userId && profile.profileType === profileType
+    );
+  }
+
+  async getPropertyProfileByNameAndAddress(userId: string, name: string, address: string): Promise<PropertyProfile | undefined> {
+    return Array.from(this.propertyProfiles.values()).find(
+      profile => profile.userId === userId && 
+                 profile.name === name && 
+                 profile.address === address
     );
   }
 

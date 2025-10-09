@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight } from "lucide-react";
+import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileUp } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
@@ -55,6 +55,13 @@ export default function Sidebar() {
           name: "Selection Matrix", 
           href: "/property-selection-matrix", 
           icon: Grid3X3,
+          enabled: true,
+          requiresAuth: true
+        },
+        { 
+          name: "Import Data", 
+          href: "/import-data", 
+          icon: FileUp,
           enabled: true,
           requiresAuth: true
         },

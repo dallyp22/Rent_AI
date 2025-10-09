@@ -11,6 +11,7 @@ import PropertyProfiles from "@/pages/property-profiles";
 import PropertyDetail from "@/pages/property-detail";
 import PortfolioDashboard from "@/pages/portfolio-dashboard";
 import PropertySelectionMatrix from "@/pages/property-selection-matrix";
+import ImportData from "@/pages/import-data";
 import Summarize from "@/pages/summarize";
 import Analyze from "@/pages/analyze";
 import Optimize from "@/pages/optimize";
@@ -47,6 +48,12 @@ function Router() {
       <Route path="/property-selection-matrix">
         <ProtectedRoute>
           <PropertySelectionMatrix />
+        </ProtectedRoute>
+      </Route>
+      
+      <Route path="/import-data">
+        <ProtectedRoute>
+          <ImportData />
         </ProtectedRoute>
       </Route>
       
