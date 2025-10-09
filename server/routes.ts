@@ -7138,6 +7138,153 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
+  // POST /api/import-excel-portfolio - Import units for multiple properties from Excel
+  app.post("/api/import-excel-portfolio", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ message: "No file uploaded" });
+      }
+
+      // Parse Excel file
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(req.file.buffer);
+      
+      const worksheet = workbook.getWorksheet(1);
+      if (!worksheet) {
+        return res.status(400).json({ message: "No worksheet found in Excel file" });
+      }
+
+      // Get user's property profiles
+      const userProperties = await storage.getPropertyProfilesByUser(userId);
+      
+      // Create a map for easy property name lookup (case-insensitive)
+      const propertyMap = new Map<string, string>();
+      userProperties.forEach(prop => {
+        propertyMap.set(prop.name.trim().toLowerCase(), prop.id);
+      });
+
+      // Parse the Excel file
+      const unitsByProperty = new Map<string, any[]>();
+      const unmatchedProperties = new Set<string>();
+      let headerRow: string[] = [];
+      let totalUnitsRead = 0;
+      
+      worksheet.eachRow((row, rowNumber) => {
+        if (rowNumber === 1) {
+          // Header row
+          headerRow = row.values as string[];
+          headerRow = headerRow.slice(1); // Remove first empty element
+        } else {
+          // Data row
+          const rowValues = row.values as any[];
+          const unit: any = {};
+          let propertyName = '';
+          
+          // Map Excel columns to unit fields
+          headerRow.forEach((header, index) => {
+            const value = rowValues[index + 1]; // Excel rows are 1-indexed
+            if (value !== undefined && value !== null) {
+              const headerLower = header?.toString().toLowerCase().trim();
+              
+              // Map columns based on requirements
+              if (headerLower === 'unit' || headerLower === 'unit number') {
+                unit.unitNumber = value.toString();
+              } else if (headerLower === 'tags' || headerLower === 'tag' || headerLower === 'tag identifier') {
+                unit.tag = value.toString();
+              } else if (headerLower === 'beds' || headerLower === 'bedrooms' || headerLower === 'number of bedrooms') {
+                unit.bedrooms = parseInt(value.toString()) || 0;
+              } else if (headerLower === 'baths' || headerLower === 'bathrooms' || headerLower === 'number of bathrooms') {
+                unit.bathrooms = value.toString();
+              } else if (headerLower === 'sqft' || headerLower === 'square footage' || headerLower === 'squarefootage') {
+                unit.squareFootage = parseInt(value.toString()) || null;
+              } else if (headerLower === 'property' || headerLower === 'property name') {
+                propertyName = value.toString().trim();
+              } else if (headerLower === 'unit type' || headerLower === 'type') {
+                unit.unitType = value.toString();
+              } else if (headerLower === 'current rent' || headerLower === 'monthly rent' || headerLower === 'rent') {
+                unit.currentRent = value.toString();
+              } else if (headerLower === 'status' || headerLower === 'unit status') {
+                unit.status = value.toString();
+              } else if (headerLower === 'recommended rent' || headerLower === 'recommended') {
+                unit.recommendedRent = value.toString();
+              } else if (headerLower === 'priority' || headerLower === 'optimization priority') {
+                unit.optimizationPriority = parseInt(value.toString()) || 0;
+              }
+              // Note: Address column is for reference only, not stored in unit
+            }
+          });
+          
+          // Validate required fields and property matching
+          if (unit.unitNumber && unit.unitType && unit.currentRent && propertyName) {
+            // Try to match property name (case-insensitive)
+            const propertyId = propertyMap.get(propertyName.toLowerCase());
+            
+            if (propertyId) {
+              // Add propertyProfileId to the unit
+              unit.propertyProfileId = propertyId;
+              
+              // Group units by property
+              if (!unitsByProperty.has(propertyId)) {
+                unitsByProperty.set(propertyId, []);
+              }
+              unitsByProperty.get(propertyId)!.push(unit);
+              totalUnitsRead++;
+            } else {
+              unmatchedProperties.add(propertyName);
+            }
+          }
+        }
+      });
+
+      if (unitsByProperty.size === 0) {
+        return res.status(400).json({ 
+          message: "No valid units found for any properties",
+          unmatchedProperties: Array.from(unmatchedProperties),
+          totalUnitsRead
+        });
+      }
+
+      // Import units using the storage method
+      const importResult = await storage.importPortfolioUnits(userId, unitsByProperty);
+      
+      // Calculate total units imported
+      const totalUnitsImported = importResult.propertyResults.reduce((sum, result) => sum + result.unitsImported, 0);
+      
+      // Calculate success rate
+      const successfulProperties = importResult.propertyResults.filter(r => r.errors.length === 0).length;
+      const successRate = Math.round((successfulProperties / importResult.totalPropertiesProcessed) * 100);
+      
+      res.json({
+        success: successRate > 0,
+        message: `Successfully imported ${totalUnitsImported} units across ${successfulProperties} properties`,
+        totalPropertiesProcessed: importResult.totalPropertiesProcessed,
+        totalUnitsImported,
+        successRate: `${successRate}%`,
+        propertyResults: importResult.propertyResults,
+        unmatchedProperties: Array.from(unmatchedProperties),
+        summary: {
+          propertiesMatched: unitsByProperty.size,
+          propertiesProcessed: importResult.totalPropertiesProcessed,
+          propertiesSuccessful: successfulProperties,
+          propertiesFailed: importResult.totalPropertiesProcessed - successfulProperties,
+          totalUnitsInFile: totalUnitsRead,
+          totalUnitsImported
+        }
+      });
+    } catch (error) {
+      console.error("Error importing portfolio Excel file:", error);
+      res.status(500).json({ 
+        message: "Failed to import portfolio Excel file", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // GET /api/export-excel/:propertyId - Export units to Excel file
   app.get("/api/export-excel/:propertyId", isAuthenticatedAny, async (req: any, res) => {
     try {

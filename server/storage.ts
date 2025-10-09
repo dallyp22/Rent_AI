@@ -134,6 +134,17 @@ export interface IStorage {
   bulkUpdatePropertyUnits(updates: { id: string; updates: Partial<PropertyUnit> }[]): Promise<PropertyUnit[]>;
   bulkDeletePropertyUnits(ids: string[]): Promise<boolean>;
   
+  // Portfolio-wide unit import
+  importPortfolioUnits(userId: string, unitsByProperty: Map<string, InsertPropertyUnit[]>): Promise<{
+    totalPropertiesProcessed: number;
+    propertyResults: Array<{
+      propertyProfileId: string;
+      propertyName: string;
+      unitsImported: number;
+      errors: string[];
+    }>;
+  }>;
+  
   // TAG Definitions
   createTagDefinition(tagDef: InsertTagDefinition): Promise<TagDefinition>;
   getTagDefinition(id: string): Promise<TagDefinition | undefined>;
@@ -1377,6 +1388,74 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error bulk deleting property units:', error);
       throw new Error(`Failed to bulk delete property units: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async importPortfolioUnits(userId: string, unitsByProperty: Map<string, InsertPropertyUnit[]>): Promise<{
+    totalPropertiesProcessed: number;
+    propertyResults: Array<{
+      propertyProfileId: string;
+      propertyName: string;
+      unitsImported: number;
+      errors: string[];
+    }>;
+  }> {
+    const results: Array<{
+      propertyProfileId: string;
+      propertyName: string;
+      unitsImported: number;
+      errors: string[];
+    }> = [];
+
+    try {
+      console.log(`[DRIZZLE_STORAGE] Starting portfolio import for user ${userId}, processing ${unitsByProperty.size} properties`);
+
+      for (const [propertyProfileId, units] of unitsByProperty) {
+        const errors: string[] = [];
+        let unitsImported = 0;
+        let propertyName = 'Unknown Property';
+
+        try {
+          // Get property profile to verify ownership and get name
+          const propertyProfile = await this.getPropertyProfile(propertyProfileId);
+          
+          if (!propertyProfile) {
+            errors.push(`Property profile not found: ${propertyProfileId}`);
+            results.push({ propertyProfileId, propertyName, unitsImported, errors });
+            continue;
+          }
+
+          propertyName = propertyProfile.name;
+
+          // Verify user owns this property
+          if (propertyProfile.userId !== userId) {
+            errors.push(`Access denied to property: ${propertyName}`);
+            results.push({ propertyProfileId, propertyName, unitsImported, errors });
+            continue;
+          }
+
+          // Replace units for this property
+          const importedUnits = await this.replacePropertyUnitsByProfile(propertyProfileId, units);
+          unitsImported = importedUnits.length;
+          
+          console.log(`[DRIZZLE_STORAGE] Successfully imported ${unitsImported} units for property ${propertyName}`);
+        } catch (error) {
+          console.error(`[DRIZZLE_STORAGE] Error importing units for property ${propertyProfileId}:`, error);
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
+
+        results.push({ propertyProfileId, propertyName, unitsImported, errors });
+      }
+
+      console.log(`[DRIZZLE_STORAGE] Portfolio import complete. Processed ${results.length} properties`);
+      
+      return {
+        totalPropertiesProcessed: results.length,
+        propertyResults: results
+      };
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error during portfolio import:', error);
+      throw new Error(`Portfolio import failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -2925,6 +3004,95 @@ export class MemStorageLegacy implements IStorage {
     
     console.log(`[MEM_STORAGE] Replacement complete: ${insertedUnits.length} units now exist for profile ${propertyProfileId}`);
     return insertedUnits;
+  }
+
+  async deletePropertyUnit(id: string): Promise<boolean> {
+    return this.propertyUnits.delete(id);
+  }
+
+  async bulkUpdatePropertyUnits(updates: { id: string; updates: Partial<PropertyUnit> }[]): Promise<PropertyUnit[]> {
+    const results: PropertyUnit[] = [];
+    for (const update of updates) {
+      const updatedUnit = await this.updatePropertyUnit(update.id, update.updates);
+      if (updatedUnit) {
+        results.push(updatedUnit);
+      }
+    }
+    return results;
+  }
+
+  async bulkDeletePropertyUnits(ids: string[]): Promise<boolean> {
+    if (ids.length === 0) return true;
+    let deletedAny = false;
+    for (const id of ids) {
+      if (this.propertyUnits.delete(id)) {
+        deletedAny = true;
+      }
+    }
+    return deletedAny;
+  }
+
+  async importPortfolioUnits(userId: string, unitsByProperty: Map<string, InsertPropertyUnit[]>): Promise<{
+    totalPropertiesProcessed: number;
+    propertyResults: Array<{
+      propertyProfileId: string;
+      propertyName: string;
+      unitsImported: number;
+      errors: string[];
+    }>;
+  }> {
+    const results: Array<{
+      propertyProfileId: string;
+      propertyName: string;
+      unitsImported: number;
+      errors: string[];
+    }> = [];
+
+    console.log(`[MEM_STORAGE] Starting portfolio import for user ${userId}, processing ${unitsByProperty.size} properties`);
+
+    for (const [propertyProfileId, units] of unitsByProperty) {
+      const errors: string[] = [];
+      let unitsImported = 0;
+      let propertyName = 'Unknown Property';
+
+      try {
+        // Get property profile to verify ownership and get name
+        const propertyProfile = await this.getPropertyProfile(propertyProfileId);
+        
+        if (!propertyProfile) {
+          errors.push(`Property profile not found: ${propertyProfileId}`);
+          results.push({ propertyProfileId, propertyName, unitsImported, errors });
+          continue;
+        }
+
+        propertyName = propertyProfile.name;
+
+        // Verify user owns this property
+        if (propertyProfile.userId !== userId) {
+          errors.push(`Access denied to property: ${propertyName}`);
+          results.push({ propertyProfileId, propertyName, unitsImported, errors });
+          continue;
+        }
+
+        // Replace units for this property
+        const importedUnits = await this.replacePropertyUnitsByProfile(propertyProfileId, units);
+        unitsImported = importedUnits.length;
+        
+        console.log(`[MEM_STORAGE] Successfully imported ${unitsImported} units for property ${propertyName}`);
+      } catch (error) {
+        console.error(`[MEM_STORAGE] Error importing units for property ${propertyProfileId}:`, error);
+        errors.push(error instanceof Error ? error.message : String(error));
+      }
+
+      results.push({ propertyProfileId, propertyName, unitsImported, errors });
+    }
+
+    console.log(`[MEM_STORAGE] Portfolio import complete. Processed ${results.length} properties`);
+    
+    return {
+      totalPropertiesProcessed: results.length,
+      propertyResults: results
+    };
   }
 
   async createOptimizationReport(insertReport: InsertOptimizationReport): Promise<OptimizationReport> {
