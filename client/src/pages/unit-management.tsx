@@ -8,13 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Download, Plus, TableIcon, Trees, AlertCircle } from "lucide-react";
+import { Upload, Download, Plus, TableIcon, Trees, AlertCircle, Building2 } from "lucide-react";
 import { PropertyProfile, PropertyUnit, TagDefinition } from "@shared/schema";
 import UnitHierarchyView from "@/components/unit-hierarchy-view";
 import UnitsTableView from "@/components/units-table-view";
 import UnitEditDialog from "@/components/unit-edit-dialog";
 import TagManagement from "@/components/tag-management";
 import ExcelImportDialog from "@/components/excel-import-dialog";
+import ExcelImportPortfolioDialog from "@/components/excel-import-portfolio-dialog";
 import ExcelExportButton from "@/components/excel-export-button";
 
 export default function UnitManagement() {
@@ -23,6 +24,7 @@ export default function UnitManagement() {
   const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
   const [showAddUnit, setShowAddUnit] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showImportPortfolio, setShowImportPortfolio] = useState(false);
   const [showTagManagement, setShowTagManagement] = useState(false);
 
   // Fetch user's properties
@@ -103,12 +105,23 @@ export default function UnitManagement() {
     });
   };
 
+  const handlePortfolioImportComplete = () => {
+    refetchUnits();
+    refetchHierarchical();
+    refetchTags();
+    setShowImportPortfolio(false);
+    toast({
+      title: "Portfolio Import Complete",
+      description: "Units have been successfully imported for your portfolio."
+    });
+  };
+
   const handleTagsUpdated = () => {
     refetchTags();
     refetchHierarchical();
   };
 
-  const selectedProperty = properties.find(p => p.id === selectedPropertyId);
+  const selectedProperty = properties.find((p: PropertyProfile) => p.id === selectedPropertyId);
   const units = unitsData?.units || [];
   const totalUnits = units.length;
 
@@ -123,6 +136,10 @@ export default function UnitManagement() {
         <div className="flex gap-2">
           <Button variant="outline" onClick={() => setShowTagManagement(true)} data-testid="button-manage-tags">
             Manage TAGs
+          </Button>
+          <Button variant="outline" onClick={() => setShowImportPortfolio(true)} data-testid="button-import-portfolio">
+            <Building2 className="mr-2 h-4 w-4" />
+            Import Portfolio
           </Button>
           <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import">
             <Upload className="mr-2 h-4 w-4" />
@@ -295,6 +312,13 @@ export default function UnitManagement() {
           propertyProfileId={selectedPropertyId}
           onImportComplete={handleImportComplete}
           onClose={() => setShowImport(false)}
+        />
+      )}
+
+      {showImportPortfolio && (
+        <ExcelImportPortfolioDialog
+          onImportComplete={handlePortfolioImportComplete}
+          onClose={() => setShowImportPortfolio(false)}
         />
       )}
 
