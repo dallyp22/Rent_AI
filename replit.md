@@ -6,6 +6,16 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
+### October 9, 2025
+- **TAG-Based Unit Management System**: Implemented comprehensive hierarchical unit management
+  - Enhanced propertyUnits table with TAG, bedrooms, bathrooms, and optimization priority fields
+  - Created tagDefinitions table for managing TAG display order
+  - Added Unit Management page with hierarchical (Property → Bedroom → TAG → Units) and table views
+  - Implemented inline editing, bulk operations, and TAG reordering functionality
+  - Added Excel import/export with hierarchical formatting and TAG support
+  - Integrated virtualization for handling 3000+ units efficiently
+  - Full CRUD operations for units with data completeness tracking
+
 ### October 7, 2025
 - **Branding Update**: Changed application title from "Property Analytics Pro" to "Rent AI Optimization"
 - **Navigation Improvement**: Updated sidebar navigation text from "Property Input" to "Select Properties" for clarity
