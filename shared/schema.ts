@@ -143,8 +143,45 @@ export const propertyUnits = pgTable("property_units", {
   currentRent: decimal("current_rent", { precision: 10, scale: 2 }).notNull(),
   recommendedRent: decimal("recommended_rent", { precision: 10, scale: 2 }),
   status: text("status").notNull().default("occupied"), // vacant, occupied, notice_given
+  // TAG-based hierarchical fields
+  tag: varchar("tag", { length: 255 }), // TAG identifiers like "Moscow", "Portland.1"
+  bedrooms: integer("bedrooms"), // for bedroom count grouping
+  bathrooms: decimal("bathrooms", { precision: 3, scale: 1 }), // for bathroom count
+  optimizationPriority: integer("optimization_priority").default(0), // priority for optimization
   createdAt: timestamp("created_at").defaultNow()
-});
+}, (table) => ({
+  // Indexes for performance
+  propertyIdIdx: index("property_units_property_id_idx").on(table.propertyId),
+  propertyProfileIdIdx: index("property_units_property_profile_id_idx").on(table.propertyProfileId),
+  statusIdx: index("property_units_status_idx").on(table.status),
+  // TAG-based hierarchical composite indexes
+  tagIdx: index("property_units_tag_idx").on(table.tag),
+  tagPropertyIdx: index("property_units_tag_property_idx").on(table.propertyProfileId, table.tag),
+  bedroomsBathroomsIdx: index("property_units_bedrooms_bathrooms_idx").on(table.bedrooms, table.bathrooms),
+  optimizationIdx: index("property_units_optimization_idx").on(table.propertyProfileId, table.optimizationPriority),
+  // Composite index for hierarchical queries
+  hierarchyIdx: index("property_units_hierarchy_idx").on(table.propertyProfileId, table.tag, table.bedrooms, table.bathrooms)
+}));
+
+// TAG definitions table for managing TAG display order
+export const tagDefinitions = pgTable("tag_definitions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id).notNull(),
+  tag: varchar("tag", { length: 255 }).notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  // Indexes for sorted TAG retrieval
+  propertyProfileIdIdx: index("tag_definitions_property_profile_id_idx").on(table.propertyProfileId),
+  tagIdx: index("tag_definitions_tag_idx").on(table.tag),
+  displayOrderIdx: index("tag_definitions_display_order_idx").on(table.displayOrder),
+  // Composite index for sorted retrieval by property and order
+  sortedRetrievalIdx: index("tag_definitions_sorted_idx").on(table.propertyProfileId, table.displayOrder),
+  // Unique constraint on (propertyProfileId, tag)
+  uniquePropertyTag: unique("tag_definitions_property_tag_unique").on(table.propertyProfileId, table.tag)
+}));
 
 export const optimizationReports = pgTable("optimization_reports", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -331,7 +368,14 @@ export const insertSessionPropertyProfileSchema = createInsertSchema(sessionProp
 export const insertPropertySchema = createInsertSchema(properties).omit({ id: true, createdAt: true });
 export const insertPropertyAnalysisSchema = createInsertSchema(propertyAnalysis).omit({ id: true, createdAt: true });
 export const insertCompetitorPropertySchema = createInsertSchema(competitorProperties).omit({ id: true, createdAt: true });
-export const insertPropertyUnitSchema = createInsertSchema(propertyUnits).omit({ id: true, createdAt: true });
+export const insertPropertyUnitSchema = createInsertSchema(propertyUnits).omit({ id: true, createdAt: true })
+  .extend({
+    // Allow decimal fields to accept both strings and numbers
+    currentRent: z.union([z.string(), z.number()]).transform(val => val?.toString()),
+    recommendedRent: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+    bathrooms: z.union([z.string(), z.number()]).transform(val => val?.toString()).optional().nullable(),
+  });
+export const insertTagDefinitionSchema = createInsertSchema(tagDefinitions).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertOptimizationReportSchema = createInsertSchema(optimizationReports).omit({ id: true, createdAt: true });
 export const insertScrapingJobSchema = createInsertSchema(scrapingJobs).omit({ id: true, createdAt: true, completedAt: true });
 export const insertScrapedPropertySchema = createInsertSchema(scrapedProperties).omit({ id: true, createdAt: true });
@@ -362,6 +406,8 @@ export type CompetitorProperty = typeof competitorProperties.$inferSelect;
 export type InsertCompetitorProperty = z.infer<typeof insertCompetitorPropertySchema>;
 export type PropertyUnit = typeof propertyUnits.$inferSelect;
 export type InsertPropertyUnit = z.infer<typeof insertPropertyUnitSchema>;
+export type TagDefinition = typeof tagDefinitions.$inferSelect;
+export type InsertTagDefinition = z.infer<typeof insertTagDefinitionSchema>;
 export type OptimizationReport = typeof optimizationReports.$inferSelect;
 export type InsertOptimizationReport = z.infer<typeof insertOptimizationReportSchema>;
 export type ScrapingJob = typeof scrapingJobs.$inferSelect;
