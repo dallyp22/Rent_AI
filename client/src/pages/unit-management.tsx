@@ -122,7 +122,7 @@ export default function UnitManagement() {
   };
 
   const selectedProperty = properties.find((p: PropertyProfile) => p.id === selectedPropertyId);
-  const units = unitsData?.units || [];
+  const units = unitsData || [];
   const totalUnits = units.length;
 
   return (

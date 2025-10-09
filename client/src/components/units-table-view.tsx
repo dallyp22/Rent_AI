@@ -188,8 +188,8 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
           <SelectContent>
             <SelectItem value="all">All TAGs</SelectItem>
             {tagDefinitions.map(tag => (
-              <SelectItem key={tag.tag} value={tag.tag}>
-                {tag.tag}
+              <SelectItem key={tag.id} value={tag.tag || `untagged-${tag.id}`}>
+                {tag.tag || `Untagged ${tag.id}`}
               </SelectItem>
             ))}
             <SelectItem value="null">Untagged</SelectItem>
@@ -335,8 +335,8 @@ export default function UnitsTableView({ units, tagDefinitions, onRefresh }: Uni
                       <SelectContent>
                         <SelectItem value="untagged">Untagged</SelectItem>
                         {tagDefinitions.map(tag => (
-                          <SelectItem key={tag.tag} value={tag.tag || `tag-${tag.id}`}>
-                            {tag.tag}
+                          <SelectItem key={tag.id} value={tag.tag || `untagged-${tag.id}`}>
+                            {tag.tag || `Untagged ${tag.id}`}
                           </SelectItem>
                         ))}
                       </SelectContent>

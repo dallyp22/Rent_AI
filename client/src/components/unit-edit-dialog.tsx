@@ -72,7 +72,7 @@ export default function UnitEditDialog({
       bathrooms: parseFloat(unit?.bathrooms || "0") || 0,
       squareFootage: unit?.squareFootage || undefined,
       currentRent: unit?.currentRent || "",
-      status: unit?.status || "occupied"
+      status: (unit?.status || "occupied") as "occupied" | "vacant" | "notice_given"
     }
   });
 
@@ -82,14 +82,16 @@ export default function UnitEditDialog({
         ? `/api/units/${unit.id}`
         : `/api/property-profiles/${propertyProfileId}/units`;
       
-      return apiRequest(endpoint, {
-        method: isEdit ? "PUT" : "POST",
-        body: JSON.stringify({
+      const response = await apiRequest(
+        isEdit ? "PUT" : "POST",
+        endpoint,
+        {
           ...data,
           propertyProfileId,
           bathrooms: data.bathrooms?.toString()
-        })
-      });
+        }
+      );
+      return response.json();
     },
     onSuccess: () => {
       toast({ 
@@ -108,16 +110,18 @@ export default function UnitEditDialog({
 
   const createTagMutation = useMutation({
     mutationFn: async (tagName: string) => {
-      return apiRequest("/api/tag-definitions", {
-        method: "POST",
-        body: JSON.stringify({
+      const response = await apiRequest(
+        "POST",
+        "/api/tag-definitions",
+        {
           propertyProfileId,
           tag: tagName,
           displayOrder: tagDefinitions.length
-        })
-      });
+        }
+      );
+      return response.json();
     },
-    onSuccess: (newTag) => {
+    onSuccess: async (newTag) => {
       setIsCreatingNewTag(false);
       setNewTagName("");
       form.setValue("tag", newTag.tag);
@@ -195,15 +199,18 @@ export default function UnitEditDialog({
                         </Button>
                       </div>
                     ) : (
-                      <Select value={field.value} onValueChange={field.onChange}>
+                      <Select 
+                        value={field.value || "no-tag"} 
+                        onValueChange={(value) => field.onChange(value === "no-tag" ? "" : value)}
+                      >
                         <SelectTrigger data-testid="select-tag">
                           <SelectValue placeholder="Select a TAG" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">No TAG</SelectItem>
+                          <SelectItem value="no-tag">No TAG</SelectItem>
                           {tagDefinitions.map(tag => (
-                            <SelectItem key={tag.tag} value={tag.tag}>
-                              {tag.tag}
+                            <SelectItem key={tag.id} value={tag.tag || `untagged-${tag.id}`}>
+                              {tag.tag || `Untagged ${tag.id}`}
                             </SelectItem>
                           ))}
                           <Button
