@@ -6,6 +6,14 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
+### October 10, 2025
+- **TAG Field Added to Optimization Output**: Integrated TAG field into optimization table and Excel export
+  - Added TAG column between Unit and Property columns in optimization table display
+  - Updated Excel export to include TAG field in same position for consistency
+  - TAG data flows from propertyUnits table through optimization process to export
+  - Enables users to identify unit configurations during pricing review
+  - Fixed database issue: Consolidated 732 units from "Atlas " to "The Atlas Apartments" property
+
 ### October 9, 2025
 - **Square Footage Field Added**: Added squareFootage field to propertyUnits for better pricing analysis
   - Added squareFootage column (varchar) to propertyUnits table
