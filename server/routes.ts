@@ -4645,31 +4645,52 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         
         // Get propertyUnits to fetch tag field
         const propertyUnits = await storage.getPropertyUnitsByProfile(profile.id);
+        console.log(`[SESSION_OPTIMIZE_TAG] Property ${profile.name} (ID: ${profile.id}): Found ${propertyUnits.length} propertyUnits with TAG data`);
+        
+        // Create TAG mapping and log TAG values
         const unitTagMap = new Map(propertyUnits.map(u => [u.unitNumber, u.tag]));
+        console.log(`[SESSION_OPTIMIZE_TAG] Created unitTagMap with ${unitTagMap.size} entries`);
+        
+        // Log sample TAG mappings for debugging
+        if (unitTagMap.size > 0) {
+          const sampleMappings = Array.from(unitTagMap.entries()).slice(0, 5);
+          console.log(`[SESSION_OPTIMIZE_TAG] Sample TAG mappings:`, sampleMappings.map(([unitNum, tag]) => `Unit ${unitNum}: TAG="${tag || 'null'}"`).join(', '));
+        }
         
         // Transform scraped units to match property unit format
         // IMPORTANT: Only include units with valid unit numbers (filter out null/undefined unit numbers)
         const transformedUnits = propertyScrapedUnits
           .filter((unit: any) => unit.unitNumber && unit.unitNumber !== null && unit.unitNumber !== undefined)
-          .map((unit: any) => ({
-            id: unit.id,
-            propertyProfileId: profile.id, // Map to the profile
-            propertyId: profile.id, // For compatibility
-            unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
-            unitType: unit.unitType,
-            tag: unitTagMap.get(unit.unitNumber) || null, // Include TAG field from propertyUnits
-            currentRent: unit.rent?.toString() || '0',
-            recommendedRent: null, // Will be set by optimization
-            status: unit.status || 'available',
-            bedrooms: unit.bedrooms || 0,
-            bathrooms: unit.bathrooms?.toString() || '0',
-            squareFootage: unit.squareFootage || 0,
-            propertyName: profile.name,
-            propertyAddress: profile.address,
-            propertyType: profile.propertyType,
-            builtYear: profile.builtYear,
-            totalUnits: profile.totalUnits
-          }));
+          .map((unit: any) => {
+            const tagValue = unitTagMap.get(unit.unitNumber) || null;
+            
+            // Log TAG match status for each unit
+            if (tagValue) {
+              console.log(`[SESSION_OPTIMIZE_TAG] Unit ${unit.unitNumber}: Found TAG="${tagValue}"`);
+            } else {
+              console.log(`[SESSION_OPTIMIZE_TAG] Unit ${unit.unitNumber}: No TAG found (will use null)`);
+            }
+            
+            return {
+              id: unit.id,
+              propertyProfileId: profile.id, // Map to the profile
+              propertyId: profile.id, // For compatibility
+              unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
+              unitType: unit.unitType,
+              tag: tagValue, // Include TAG field from propertyUnits
+              currentRent: unit.rent?.toString() || '0',
+              recommendedRent: null, // Will be set by optimization
+              status: unit.status || 'available',
+              bedrooms: unit.bedrooms || 0,
+              bathrooms: unit.bathrooms?.toString() || '0',
+              squareFootage: unit.squareFootage || 0,
+              propertyName: profile.name,
+              propertyAddress: profile.address,
+              propertyType: profile.propertyType,
+              builtYear: profile.builtYear,
+              totalUnits: profile.totalUnits
+            };
+          });
         
         allUnits.push(...transformedUnits);
         
@@ -4747,7 +4768,7 @@ Optimization Parameters:
 - Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
 
 Current Unit Portfolio (${allUnits.length} units):
-${allUnits.map(unit => `Unit Number: ${unit.unitNumber} - Type: ${unit.bedrooms}BR/${unit.bathrooms}BA - Current Rent: $${unit.currentRent} - Status: ${unit.status}${unit.squareFootage ? ` - Sqft: ${unit.squareFootage}` : ''}`).join('\n')}
+${allUnits.map(unit => `Unit Number: ${unit.unitNumber} - Type: ${unit.bedrooms}BR/${unit.bathrooms}BA - Current Rent: $${unit.currentRent} - Status: ${unit.status}${unit.squareFootage ? ` - Sqft: ${unit.squareFootage}` : ''}${unit.tag ? ` - TAG: ${unit.tag}` : ''}`).join('\n')}
 
 Market Context:
 - Consider current market conditions for similar properties
@@ -4890,6 +4911,20 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
       }
       
       console.log(`[SESSION_OPTIMIZE] Created ${updatedUnits.length} optimized unit recommendations`);
+      
+      // Log TAG values in final optimized units
+      console.log(`[SESSION_OPTIMIZE_TAG] Final optimized units with TAG values:`);
+      const unitsWithTags = updatedUnits.filter(u => u.tag);
+      const unitsWithoutTags = updatedUnits.filter(u => !u.tag);
+      console.log(`[SESSION_OPTIMIZE_TAG]   - Units with TAG: ${unitsWithTags.length}`);
+      console.log(`[SESSION_OPTIMIZE_TAG]   - Units without TAG: ${unitsWithoutTags.length}`);
+      
+      // Log sample units with TAG values
+      if (unitsWithTags.length > 0) {
+        const sampleUnits = unitsWithTags.slice(0, 3);
+        console.log(`[SESSION_OPTIMIZE_TAG] Sample units with TAG:`, 
+          sampleUnits.map(u => `Unit ${u.unitNumber}: TAG="${u.tag}"`).join(', '));
+      }
 
       // Create optimization report for the session
       const portfolioSummary = {
