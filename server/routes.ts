@@ -4684,43 +4684,70 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         
         console.log(`[SESSION_OPTIMIZE] Subject property ${profile.name}: found ${propertyScrapedUnits.length} scraped units`);
         
-        // Get propertyUnits to fetch tag field
+        // Get propertyUnits to fetch internal data (TAGs, bedrooms, bathrooms, squareFootage)
         const propertyUnits = await storage.getPropertyUnitsByProfile(profile.id);
-        console.log(`[SESSION_OPTIMIZE_TAG] Property ${profile.name} (ID: ${profile.id}): Found ${propertyUnits.length} propertyUnits with TAG data`);
+        console.log(`[SESSION_OPTIMIZE_MERGE] Property ${profile.name} (ID: ${profile.id}): Found ${propertyUnits.length} propertyUnits with internal data`);
         
-        // Debug: Log the actual propertyUnits data to see TAG values
+        // Debug: Log the actual propertyUnits data to see all fields
         if (propertyUnits.length > 0) {
-          console.log(`[SESSION_OPTIMIZE_TAG] Sample propertyUnits from DB:`, 
+          console.log(`[SESSION_OPTIMIZE_MERGE] Sample propertyUnits from DB:`, 
             propertyUnits.slice(0, 3).map(u => ({
               unitNumber: u.unitNumber,
               tag: u.tag,
+              bedrooms: u.bedrooms,
+              bathrooms: u.bathrooms,
+              squareFootage: u.squareFootage,
               propertyProfileId: u.propertyProfileId
             }))
           );
         }
         
-        // Create TAG mapping and log TAG values
-        const unitTagMap = new Map(propertyUnits.map(u => [u.unitNumber, u.tag]));
-        console.log(`[SESSION_OPTIMIZE_TAG] Created unitTagMap with ${unitTagMap.size} entries`);
+        // Create comprehensive unit data map (not just TAGs)
+        const unitInternalDataMap = new Map(propertyUnits.map(u => [u.unitNumber, {
+          tag: u.tag,
+          bedrooms: u.bedrooms,
+          bathrooms: u.bathrooms,
+          squareFootage: u.squareFootage,
+          optimizationPriority: u.optimizationPriority
+        }]));
+        console.log(`[SESSION_OPTIMIZE_MERGE] Created unitInternalDataMap with ${unitInternalDataMap.size} entries`);
         
-        // Log sample TAG mappings for debugging
-        if (unitTagMap.size > 0) {
-          const sampleMappings = Array.from(unitTagMap.entries()).slice(0, 5);
-          console.log(`[SESSION_OPTIMIZE_TAG] Sample TAG mappings:`, sampleMappings.map(([unitNum, tag]) => `Unit ${unitNum}: TAG="${tag || 'null'}"`).join(', '));
+        // Log statistics about internal data
+        let unitsWithTags = 0;
+        let unitsWithBedrooms = 0;
+        let unitsWithBathrooms = 0;
+        let unitsWithSqft = 0;
+        
+        for (const [unitNum, data] of unitInternalDataMap.entries()) {
+          if (data.tag) unitsWithTags++;
+          if (data.bedrooms) unitsWithBedrooms++;
+          if (data.bathrooms) unitsWithBathrooms++;
+          if (data.squareFootage) unitsWithSqft++;
         }
         
-        // Transform scraped units to match property unit format
+        console.log(`[SESSION_OPTIMIZE_MERGE] Internal data statistics:
+          - Units with TAGs: ${unitsWithTags}/${unitInternalDataMap.size}
+          - Units with bedrooms: ${unitsWithBedrooms}/${unitInternalDataMap.size}
+          - Units with bathrooms: ${unitsWithBathrooms}/${unitInternalDataMap.size}
+          - Units with squareFootage: ${unitsWithSqft}/${unitInternalDataMap.size}`);
+        
+        // Transform scraped units and merge with internal propertyUnits data
         // IMPORTANT: Only include units with valid unit numbers (filter out null/undefined unit numbers)
+        let matchedUnitsCount = 0;
+        let unmatchedUnitsCount = 0;
+        
         const transformedUnits = propertyScrapedUnits
           .filter((unit: any) => unit.unitNumber && unit.unitNumber !== null && unit.unitNumber !== undefined)
           .map((unit: any) => {
-            const tagValue = unitTagMap.get(unit.unitNumber) || null;
+            const internalData = unitInternalDataMap.get(unit.unitNumber);
             
-            // Log TAG match status for each unit
-            if (tagValue) {
-              console.log(`[SESSION_OPTIMIZE_TAG] Unit ${unit.unitNumber}: Found TAG="${tagValue}"`);
+            // Track matching statistics
+            if (internalData) {
+              matchedUnitsCount++;
+              console.log(`[SESSION_OPTIMIZE_MERGE] Unit ${unit.unitNumber}: MATCHED - Merging internal data (TAG="${internalData.tag || 'null'}", bed=${internalData.bedrooms || 'null'}, bath=${internalData.bathrooms || 'null'}, sqft=${internalData.squareFootage || 'null'})`);
             } else {
-              console.log(`[SESSION_OPTIMIZE_TAG] Unit ${unit.unitNumber}: No TAG found (will use null)`);
+              unmatchedUnitsCount++;
+              console.log(`[SESSION_OPTIMIZE_MERGE] Unit ${unit.unitNumber}: NO MATCH - Using scraped data only`);
             }
             
             return {
@@ -4729,20 +4756,33 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               propertyId: profile.id, // For compatibility
               unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
               unitType: unit.unitType,
-              tag: tagValue, // Include TAG field from propertyUnits
-              currentRent: unit.rent?.toString() || '0',
+              // Merge internal data - prioritize propertyUnits data over scraped data
+              tag: internalData?.tag || null, // TAG from propertyUnits
+              bedrooms: internalData?.bedrooms || unit.bedrooms || 0, // Prioritize internal bedrooms
+              bathrooms: internalData?.bathrooms?.toString() || unit.bathrooms?.toString() || '0', // Prioritize internal bathrooms
+              squareFootage: internalData?.squareFootage || unit.squareFootage || 0, // Prioritize internal squareFootage
+              // Keep scraped market data for current rent
+              currentRent: unit.rent?.toString() || '0', // Always use scraped rent as current market price
               recommendedRent: null, // Will be set by optimization
               status: unit.status || 'available',
-              bedrooms: unit.bedrooms || 0,
-              bathrooms: unit.bathrooms?.toString() || '0',
-              squareFootage: unit.squareFootage || 0,
+              // Property-level data from profile
               propertyName: profile.name,
               propertyAddress: profile.address,
               propertyType: profile.propertyType,
               builtYear: profile.builtYear,
-              totalUnits: profile.totalUnits
+              totalUnits: profile.totalUnits,
+              // Include optimization priority if available
+              optimizationPriority: internalData?.optimizationPriority || 0
             };
           });
+        
+        // Log merge summary for this property
+        console.log(`[SESSION_OPTIMIZE_MERGE] Property ${profile.name} merge summary:
+          - Total scraped units processed: ${propertyScrapedUnits.length}
+          - Valid units (with unit numbers): ${transformedUnits.length}
+          - Units matched with propertyUnits: ${matchedUnitsCount}
+          - Units without propertyUnits match: ${unmatchedUnitsCount}
+          - Match rate: ${transformedUnits.length > 0 ? ((matchedUnitsCount / transformedUnits.length) * 100).toFixed(1) : 0}%`);
         
         allUnits.push(...transformedUnits);
         
@@ -4768,8 +4808,22 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         stats.avg = Math.round(stats.sum / stats.count);
       }
       
-      console.log('[SESSION_OPTIMIZE] Market averages calculated from', competitorUnits.length, 'competitor units');
-      console.log('[SESSION_OPTIMIZE] Total units across portfolio:', allUnits.length);
+      // Log final merge summary across all properties
+      let totalMatchedUnits = 0;
+      let totalUnitsWithTags = 0;
+      for (const [profileId, data] of propertyUnitMap.entries()) {
+        const unitsWithTags = data.units.filter(u => u.tag).length;
+        totalUnitsWithTags += unitsWithTags;
+        totalMatchedUnits += data.units.length;
+      }
+      
+      console.log(`[SESSION_OPTIMIZE_MERGE] ====== FINAL MERGE SUMMARY ======`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] Total subject properties processed: ${subjectProfiles.length}`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] Total units across portfolio: ${allUnits.length}`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] Total units with TAGs from propertyUnits: ${totalUnitsWithTags}`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] TAG coverage: ${allUnits.length > 0 ? ((totalUnitsWithTags / allUnits.length) * 100).toFixed(1) : 0}%`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] Market averages calculated from: ${competitorUnits.length} competitor units`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] =================================`);
 
       if (allUnits.length === 0) {
         return res.status(400).json({ 
