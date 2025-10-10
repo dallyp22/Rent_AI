@@ -1599,27 +1599,61 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       // If we have scraped units, always sync them (not just when units.length === 0)
       if (scrapedUnits.length > 0) {
-        console.log(`Syncing ${scrapedUnits.length} scraped units for optimization`);
+        console.log(`[OPTIMIZE_TAG] Syncing ${scrapedUnits.length} scraped units for optimization`);
+        
+        // STEP 1: Get existing propertyUnits to preserve TAG data
+        const existingUnits = await storage.getPropertyUnits(propertyId);
+        console.log(`[OPTIMIZE_TAG] Property ${propertyId}: Found ${existingUnits.length} existing propertyUnits with TAG data`);
+        
+        // Create a Map of unitNumber → tag for TAG preservation
+        const unitTagMap = new Map(existingUnits.map(u => [u.unitNumber, u.tag]));
+        console.log(`[OPTIMIZE_TAG] Created unitTagMap with ${unitTagMap.size} entries`);
+        
+        // Log sample TAG mappings for debugging
+        if (unitTagMap.size > 0) {
+          const sampleMappings = Array.from(unitTagMap.entries()).slice(0, 5);
+          console.log(`[OPTIMIZE_TAG] Sample TAG mappings:`, sampleMappings.map(([unitNum, tag]) => `Unit ${unitNum}: TAG="${tag || 'null'}"`).join(', '));
+        }
+        
         // Clear existing PropertyUnits
         await storage.clearPropertyUnits(propertyId);
-        // Create new PropertyUnits from ALL scraped units
+        
+        // Create new PropertyUnits from ALL scraped units with preserved TAGs
         units = [];
         for (const scrapedUnit of scrapedUnits) {
+          const unitNumber = scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`;
+          const tagValue = unitTagMap.get(unitNumber) || null;
+          
+          // Log TAG preservation status
+          if (tagValue) {
+            console.log(`[OPTIMIZE_TAG] Unit ${unitNumber}: Restoring TAG="${tagValue}"`);
+          } else {
+            console.log(`[OPTIMIZE_TAG] Unit ${unitNumber}: No TAG found (will use null)`);
+          }
+          
           const unit = await storage.createPropertyUnit({
             propertyId,
-            unitNumber: scrapedUnit.unitNumber || scrapedUnit.floorPlanName || `Unit-${scrapedUnit.id.substring(0, 6)}`,
+            unitNumber,
             unitType: scrapedUnit.unitType,
+            tag: tagValue, // Include preserved TAG value
             currentRent: scrapedUnit.rent || "0",
             status: scrapedUnit.status || "occupied"
           });
+          
           // Enrich unit with scraped data fields for optimization
           units.push({
             ...unit,
-            tag: unit.tag, // Ensure tag field is preserved
+            tag: tagValue, // Ensure tag field is preserved from the mapping
             squareFootage: scrapedUnit.squareFootage,
             availabilityDate: scrapedUnit.availabilityDate
           });
         }
+        
+        console.log(`[OPTIMIZE_TAG] Final optimized units with TAG values:`);
+        const unitsWithTag = units.filter(u => u.tag).length;
+        const unitsWithoutTag = units.filter(u => !u.tag).length;
+        console.log(`[OPTIMIZE_TAG]   - Units with TAG: ${unitsWithTag}`);
+        console.log(`[OPTIMIZE_TAG]   - Units without TAG: ${unitsWithoutTag}`);
       } else {
         // Fall back to existing PropertyUnits only if no scraped data
         units = await storage.getPropertyUnits(propertyId);
