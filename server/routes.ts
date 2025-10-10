@@ -74,31 +74,27 @@ class ScrapingJobProcessor {
         // Parse the results
         const parsedData = parseDirectPropertyData(scrapingResult);
         
-        // Update property profile with scraped data
+        // IMPORTANT: Update property profile METADATA (amenities, builtYear, totalUnits)
+        // This updates property-level information but NOT individual units
+        // The unit-level data goes to scrapedUnits table only
         await storage.updatePropertyProfile(job.propertyProfileId!, {
           amenities: parsedData.property.amenities.length > 0 ? parsedData.property.amenities : propertyProfile.amenities,
           builtYear: parsedData.property.builtYear || propertyProfile.builtYear,
           totalUnits: parsedData.property.totalUnits || propertyProfile.totalUnits
         });
+        console.log(`[JOB_PROCESSOR] Updated property profile metadata for ${job.propertyProfileId}`);
         
-        // Prepare units array for atomic replacement
-        const unitsToReplace = parsedData.units
-          .filter(unitData => unitData.unitType)
-          .map(unitData => ({
-            propertyProfileId: job.propertyProfileId!,
-            unitNumber: unitData.unitNumber || `${unitData.unitType}-${Math.random().toString(36).substr(2, 9)}`,
-            unitType: unitData.unitType,
-            tag: unitData.floorPlanName || null,  // Map floor plan name to TAG field
-            currentRent: unitData.rent ? unitData.rent.toString() : "0",
-            status: "available" as const
-          }));
+        // IMPORTANT: WE DO NOT UPDATE propertyUnits TABLE DURING SCRAPING
+        // The propertyUnits table contains user-managed internal data (TAGs, custom classifications)
+        // We only update the scrapedUnits table with external market data
+        // The optimization process will later merge these two data sources intelligently
         
-        console.log(`[JOB_PROCESSOR] Replacing units for property profile ${job.propertyProfileId} with ${unitsToReplace.length} new units`);
+        // Previously, this code would replace all units in propertyUnits, causing loss of user's TAG data
+        // const unitsToReplace = parsedData.units...
+        // await storage.replacePropertyUnitsByProfile(job.propertyProfileId!, unitsToReplace);
         
-        // Atomically replace all units for this property profile
-        const replacedUnits = await storage.replacePropertyUnitsByProfile(job.propertyProfileId!, unitsToReplace);
-        
-        console.log(`[JOB_PROCESSOR] Successfully replaced units for property profile ${job.propertyProfileId}, now has ${replacedUnits.length} units`);
+        // Instead, we only update the scrapedUnits table below (see lines 104-127)
+        console.log(`[JOB_PROCESSOR] Skipping propertyUnits update to preserve user's TAG data for profile ${job.propertyProfileId}`);
         
         // Create scraped property record
         const scrapedProperty = await storage.createScrapedProperty({
@@ -109,7 +105,9 @@ class ScrapingJobProcessor {
           isSubjectProperty: propertyProfile.profileType === 'subject'
         });
         
-        // Replace scraped units using write-path replacement (architect recommendation)
+        // CRITICAL: Update scrapedUnits table with latest market data
+        // This replaces all scraped units for this property with fresh data from the scraping
+        // The scrapedUnits table contains external market data (prices, availability, etc.)
         const unitsToInsert = parsedData.units
           .filter(unitData => unitData.unitType)
           .map(unitData => ({
@@ -125,6 +123,7 @@ class ScrapingJobProcessor {
           }));
         
         await storage.replaceScrapedUnitsForProperty(scrapedProperty.id, unitsToInsert);
+        console.log(`[JOB_PROCESSOR] Updated scrapedUnits table with ${unitsToInsert.length} units for property ${scrapedProperty.id}`);
 
         // Update job status to completed
         await storage.updateScrapingJob(jobId, {
