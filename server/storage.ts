@@ -1339,8 +1339,27 @@ export class DrizzleStorage implements IStorage {
       // Insert new units if any
       let insertedUnits: PropertyUnit[] = [];
       if (units.length > 0) {
+        // Log the data being inserted to track squareFootage
+        console.log(`[DRIZZLE_STORAGE] Inserting units with data:`, units.slice(0, 2).map(u => ({
+          unitNumber: u.unitNumber,
+          squareFootage: u.squareFootage,
+          unitType: u.unitType,
+          currentRent: u.currentRent,
+          propertyProfileId: u.propertyProfileId
+        })));
+        
         insertedUnits = await db.insert(propertyUnits).values(units).returning();
         console.log(`[DRIZZLE_STORAGE] Inserted ${insertedUnits.length} new units for profile ${propertyProfileId}`);
+        
+        // Log the inserted data to verify squareFootage was saved
+        if (insertedUnits.length > 0) {
+          console.log(`[DRIZZLE_STORAGE] Sample inserted unit:`, {
+            unitNumber: insertedUnits[0].unitNumber,
+            squareFootage: insertedUnits[0].squareFootage,
+            unitType: insertedUnits[0].unitType,
+            currentRent: insertedUnits[0].currentRent
+          });
+        }
       }
       
       console.log(`[DRIZZLE_STORAGE] Replacement complete: ${insertedUnits.length} units now exist for profile ${propertyProfileId}`);

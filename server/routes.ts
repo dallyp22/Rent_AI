@@ -7327,7 +7327,9 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
               } else if (headerLower.includes('bath')) {
                 unit.bathrooms = cleanValue;
               } else if (headerLower.includes('sq') || headerLower.includes('square') || headerLower.includes('footage')) {
-                unit.squareFootage = parseInt(cleanValue.replace(/,/g, '')) || null;
+                const sqftValue = parseInt(cleanValue.replace(/,/g, '')) || null;
+                unit.squareFootage = sqftValue;
+                console.log(`📊 [EXCEL_IMPORT] Row ${rowNumber}: Detected Sqft column "${header}" with value "${cleanValue}", parsed as: ${sqftValue}`);
               } else if (headerLower.includes('property') || headerLower === 'building' || headerLower === 'complex') {
                 propertyName = cleanValue;
               } else if (headerLower.includes('type') && !headerLower.includes('property')) {
@@ -7368,6 +7370,17 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
               console.log(`📊 [EXCEL_IMPORT] Matched property "${propertyName}" to ID ${propertyId}`);
               // Add propertyProfileId to the unit
               unit.propertyProfileId = propertyId;
+              
+              // Log the complete unit data including squareFootage
+              console.log(`📊 [EXCEL_IMPORT] Unit data for ${unit.unitNumber}:`, {
+                unitNumber: unit.unitNumber,
+                unitType: unit.unitType,
+                squareFootage: unit.squareFootage,
+                currentRent: unit.currentRent,
+                bedrooms: unit.bedrooms,
+                bathrooms: unit.bathrooms,
+                tag: unit.tag
+              });
               
               // Group units by property
               if (!unitsByProperty.has(propertyId)) {
@@ -7417,6 +7430,21 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
         });
       }
 
+      // Log units data before importing to track squareFootage
+      console.log(`📊 [EXCEL_IMPORT] About to import units for ${unitsByProperty.size} properties`);
+      for (const [propId, units] of unitsByProperty) {
+        console.log(`📊 [EXCEL_IMPORT] Property ${propId} has ${units.length} units`);
+        // Log first unit to check if squareFootage is present
+        if (units.length > 0) {
+          console.log(`📊 [EXCEL_IMPORT] Sample unit data:`, {
+            unitNumber: units[0].unitNumber,
+            squareFootage: units[0].squareFootage,
+            unitType: units[0].unitType,
+            currentRent: units[0].currentRent
+          });
+        }
+      }
+      
       // Import units using the storage method
       const importResult = await storage.importPortfolioUnits(userId, unitsByProperty);
       
