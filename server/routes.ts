@@ -4672,6 +4672,13 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       }
 
       for (const profile of subjectProfiles) {
+        // Debug: Log the profile details to verify ID matching
+        console.log(`[SESSION_OPTIMIZE_TAG] Processing profile:`, {
+          id: profile.id,
+          name: profile.name,
+          url: profile.url
+        });
+        
         // Find matching scraped units for this subject property by URL (more reliable than name)
         const propertyScrapedUnits = profile.url ? unitsByPropertyUrl.get(profile.url) || [] : [];
         
@@ -4680,6 +4687,17 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         // Get propertyUnits to fetch tag field
         const propertyUnits = await storage.getPropertyUnitsByProfile(profile.id);
         console.log(`[SESSION_OPTIMIZE_TAG] Property ${profile.name} (ID: ${profile.id}): Found ${propertyUnits.length} propertyUnits with TAG data`);
+        
+        // Debug: Log the actual propertyUnits data to see TAG values
+        if (propertyUnits.length > 0) {
+          console.log(`[SESSION_OPTIMIZE_TAG] Sample propertyUnits from DB:`, 
+            propertyUnits.slice(0, 3).map(u => ({
+              unitNumber: u.unitNumber,
+              tag: u.tag,
+              propertyProfileId: u.propertyProfileId
+            }))
+          );
+        }
         
         // Create TAG mapping and log TAG values
         const unitTagMap = new Map(propertyUnits.map(u => [u.unitNumber, u.tag]));
