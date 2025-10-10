@@ -7208,6 +7208,144 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
+  // GET /api/property-profiles/:propertyId/market-comparison - Compare internal units with market data
+  app.get("/api/property-profiles/:propertyId/market-comparison", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const propertyProfileId = req.params.propertyId;
+
+      // Verify user owns this property profile
+      const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+      if (!propertyProfile || propertyProfile.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to property profile" });
+      }
+
+      // Get internal units (user's managed data)
+      const internalUnits = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      console.log(`[MARKET_COMPARISON] Found ${internalUnits.length} internal units for property ${propertyProfileId}`);
+
+      // Get the most recent scraping job for this property
+      const scrapingJobs = await storage.getScrapingJobsByProfile(propertyProfileId);
+      const latestCompletedJob = scrapingJobs.find(job => job.status === 'completed');
+
+      if (!latestCompletedJob) {
+        console.log(`[MARKET_COMPARISON] No completed scraping jobs found for property ${propertyProfileId}`);
+        return res.json({
+          hasMarketData: false,
+          message: "No market data available. Property hasn't been scraped yet.",
+          comparisons: []
+        });
+      }
+
+      // Check if data is stale (older than 30 days)
+      const jobDate = new Date(latestCompletedJob.completedAt || latestCompletedJob.createdAt);
+      const daysSinceUpdate = Math.floor((Date.now() - jobDate.getTime()) / (1000 * 60 * 60 * 24));
+      const isStale = daysSinceUpdate > 30;
+
+      // Get scraped properties from the latest job
+      const scrapedProperties = await storage.getScrapedPropertiesByJob(latestCompletedJob.id);
+      if (scrapedProperties.length === 0) {
+        console.log(`[MARKET_COMPARISON] No scraped properties found for job ${latestCompletedJob.id}`);
+        return res.json({
+          hasMarketData: false,
+          message: "No market data available.",
+          comparisons: []
+        });
+      }
+
+      // Get scraped units for the property
+      const scrapedUnits = await storage.getScrapedUnitsByProperty(scrapedProperties[0].id);
+      console.log(`[MARKET_COMPARISON] Found ${scrapedUnits.length} scraped units for property`);
+
+      // Build comparison map
+      const comparisons = [];
+
+      // Create a map of scraped units by unit type and approximate size for matching
+      const scrapedUnitMap = new Map();
+      scrapedUnits.forEach(scrapedUnit => {
+        // Create a key based on unit characteristics for matching
+        const bedrooms = scrapedUnit.bedrooms || 0;
+        const bathrooms = scrapedUnit.bathrooms ? parseFloat(scrapedUnit.bathrooms.toString()) : 0;
+        const key = `${bedrooms}BR_${bathrooms}BA`;
+        
+        if (!scrapedUnitMap.has(key)) {
+          scrapedUnitMap.set(key, []);
+        }
+        scrapedUnitMap.get(key).push(scrapedUnit);
+      });
+
+      // Compare internal units with market data
+      for (const internalUnit of internalUnits) {
+        const internalRent = parseFloat(internalUnit.currentRent?.toString() || '0');
+        
+        // Try to find matching scraped units
+        const bedrooms = internalUnit.bedrooms || 0;
+        const bathrooms = internalUnit.bathrooms ? parseFloat(internalUnit.bathrooms.toString()) : 0;
+        const key = `${bedrooms}BR_${bathrooms}BA`;
+        
+        const matchingScrapedUnits = scrapedUnitMap.get(key) || [];
+        
+        if (matchingScrapedUnits.length > 0) {
+          // Calculate average market rent for this unit type
+          const marketRents = matchingScrapedUnits
+            .filter(u => u.rent)
+            .map(u => parseFloat(u.rent?.toString() || '0'))
+            .filter(r => r > 0);
+          
+          if (marketRents.length > 0) {
+            const avgMarketRent = marketRents.reduce((sum, r) => sum + r, 0) / marketRents.length;
+            const difference = avgMarketRent - internalRent;
+            const percentDifference = internalRent > 0 ? (difference / internalRent) * 100 : 0;
+            
+            // Only include if there's a meaningful difference (>1%)
+            if (Math.abs(percentDifference) > 1) {
+              comparisons.push({
+                unitId: internalUnit.id,
+                unitNumber: internalUnit.unitNumber,
+                unitType: internalUnit.unitType,
+                bedrooms: internalUnit.bedrooms,
+                bathrooms: internalUnit.bathrooms,
+                squareFootage: internalUnit.squareFootage,
+                tag: internalUnit.tag,
+                internalRent,
+                marketRent: Math.round(avgMarketRent),
+                difference: Math.round(difference),
+                percentDifference: Math.round(percentDifference * 10) / 10,
+                marketDataCount: marketRents.length,
+                status: internalUnit.status
+              });
+            }
+          }
+        }
+      }
+
+      // Sort by absolute percent difference (largest differences first)
+      comparisons.sort((a, b) => Math.abs(b.percentDifference) - Math.abs(a.percentDifference));
+
+      res.json({
+        hasMarketData: true,
+        isStale,
+        daysSinceUpdate,
+        lastUpdated: jobDate.toISOString(),
+        totalInternalUnits: internalUnits.length,
+        totalMarketUnits: scrapedUnits.length,
+        unitsWithDifferences: comparisons.length,
+        comparisons
+      });
+
+    } catch (error) {
+      console.error("Error fetching market comparison:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch market comparison", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   // ============ Excel Import/Export Routes ============
 
   // POST /api/import-excel - Import units from Excel file

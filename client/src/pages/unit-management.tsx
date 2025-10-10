@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Upload, Download, Plus, TableIcon, Trees, AlertCircle, Building2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Upload, Download, Plus, TableIcon, Trees, AlertCircle, Building2, TrendingUp, TrendingDown, Info, Calendar, RefreshCw } from "lucide-react";
 import { PropertyProfile, PropertyUnit, TagDefinition } from "@shared/schema";
 import UnitHierarchyView from "@/components/unit-hierarchy-view";
 import UnitsTableView from "@/components/units-table-view";
@@ -21,7 +22,7 @@ import ExcelExportButton from "@/components/excel-export-button";
 export default function UnitManagement() {
   const { toast } = useToast();
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"hierarchical" | "table">("hierarchical");
+  const [viewMode, setViewMode] = useState<"hierarchical" | "table" | "market-comparison">("hierarchical");
   const [showAddUnit, setShowAddUnit] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showImportPortfolio, setShowImportPortfolio] = useState(false);
@@ -86,6 +87,17 @@ export default function UnitManagement() {
       return response.json();
     },
     enabled: !!selectedPropertyId
+  });
+
+  // Fetch market comparison data
+  const { data: marketComparison, isLoading: loadingMarketData, refetch: refetchMarketComparison } = useQuery({
+    queryKey: selectedPropertyId ? [`/api/property-profiles/${selectedPropertyId}/market-comparison`] : null,
+    queryFn: async () => {
+      const response = await fetch(`/api/property-profiles/${selectedPropertyId}/market-comparison`);
+      if (!response.ok) throw new Error("Failed to fetch market comparison");
+      return response.json();
+    },
+    enabled: !!selectedPropertyId && viewMode === "market-comparison"
   });
 
   const handleUnitSaved = () => {
@@ -218,9 +230,9 @@ export default function UnitManagement() {
       {selectedPropertyId && (
         <Card>
           <CardContent className="pt-6">
-            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "hierarchical" | "table")}>
+            <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "hierarchical" | "table" | "market-comparison")}>
               <div className="flex justify-between items-center mb-4">
-                <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+                <TabsList className="grid w-full grid-cols-3 max-w-[600px]">
                   <TabsTrigger value="hierarchical" data-testid="tab-hierarchical">
                     <Trees className="mr-2 h-4 w-4" />
                     Hierarchical View
@@ -228,6 +240,10 @@ export default function UnitManagement() {
                   <TabsTrigger value="table" data-testid="tab-table">
                     <TableIcon className="mr-2 h-4 w-4" />
                     Table View
+                  </TabsTrigger>
+                  <TabsTrigger value="market-comparison" data-testid="tab-market-comparison">
+                    <TrendingUp className="mr-2 h-4 w-4" />
+                    Market Comparison
                   </TabsTrigger>
                 </TabsList>
                 {process.env.NODE_ENV === 'development' && viewMode === "hierarchical" && (
@@ -290,6 +306,193 @@ export default function UnitManagement() {
                   />
                 ) : (
                   <div className="text-center py-8 text-muted-foreground">No units found</div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="market-comparison" className="mt-6">
+                {loadingMarketData ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading market comparison...</div>
+                ) : !marketComparison || !marketComparison.hasMarketData ? (
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      <div className="font-semibold">No Market Data Available</div>
+                      <div className="mt-1">
+                        {marketComparison?.message || "This property hasn't been scraped yet. Scrape the property first to see market comparisons."}
+                      </div>
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Market Data Status */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="text-sm text-muted-foreground">
+                          Last updated: {new Date(marketComparison.lastUpdated).toLocaleDateString()}
+                          {marketComparison.isStale && (
+                            <Badge variant="outline" className="ml-2">
+                              <Calendar className="mr-1 h-3 w-3" />
+                              {marketComparison.daysSinceUpdate} days old
+                            </Badge>
+                          )}
+                        </div>
+                        {marketComparison.unitsWithDifferences > 0 && (
+                          <Badge variant="secondary">
+                            {marketComparison.unitsWithDifferences} units with price differences
+                          </Badge>
+                        )}
+                      </div>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => {
+                          // TODO: Trigger re-scraping
+                          toast({
+                            title: "Feature Coming Soon",
+                            description: "Re-scraping functionality will be available soon.",
+                          });
+                        }}
+                        data-testid="button-rescrape"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Re-scrape Data
+                      </Button>
+                    </div>
+
+                    {/* Stale Data Warning */}
+                    {marketComparison.isStale && (
+                      <Alert className="border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">
+                        <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+                        <AlertDescription>
+                          <div className="font-semibold text-yellow-900 dark:text-yellow-100">Market Data is Outdated</div>
+                          <div className="text-yellow-800 dark:text-yellow-200">
+                            The market data was last updated {marketComparison.daysSinceUpdate} days ago. Consider re-scraping for the most current prices.
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+
+                    {/* Comparison Table */}
+                    {marketComparison.comparisons.length > 0 ? (
+                      <div className="rounded-md border">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b bg-muted/50">
+                              <th className="text-left p-3 font-medium">Unit Number</th>
+                              <th className="text-left p-3 font-medium">Type</th>
+                              <th className="text-left p-3 font-medium">TAG</th>
+                              <th className="text-right p-3 font-medium">Internal Rent</th>
+                              <th className="text-right p-3 font-medium">Market Rent</th>
+                              <th className="text-right p-3 font-medium">Difference</th>
+                              <th className="text-center p-3 font-medium">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <TooltipProvider>
+                              {marketComparison.comparisons.map((comparison: any) => {
+                                const isHigherThanMarket = comparison.difference < 0;
+                                const isSignificant = Math.abs(comparison.percentDifference) > 5;
+                                
+                                return (
+                                  <tr 
+                                    key={comparison.unitId}
+                                    className={`border-b hover:bg-muted/30 transition-colors ${isSignificant ? 'bg-yellow-50/50 dark:bg-yellow-950/20' : ''}`}
+                                    data-testid={`row-comparison-${comparison.unitNumber}`}
+                                  >
+                                    <td className="p-3 font-medium">{comparison.unitNumber}</td>
+                                    <td className="p-3">
+                                      {comparison.unitType}
+                                      <div className="text-xs text-muted-foreground">
+                                        {comparison.bedrooms ? `${comparison.bedrooms}BR` : ''} 
+                                        {comparison.bathrooms ? `/${comparison.bathrooms}BA` : ''}
+                                        {comparison.squareFootage ? ` · ${comparison.squareFootage} sq ft` : ''}
+                                      </div>
+                                    </td>
+                                    <td className="p-3">
+                                      {comparison.tag && (
+                                        <Badge variant="outline">{comparison.tag}</Badge>
+                                      )}
+                                    </td>
+                                    <td className="p-3 text-right font-mono">
+                                      ${comparison.internalRent.toLocaleString()}
+                                    </td>
+                                    <td className="p-3 text-right font-mono">
+                                      ${comparison.marketRent.toLocaleString()}
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Info className="inline-block ml-1 h-3 w-3 text-muted-foreground cursor-help" />
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <div className="text-xs">
+                                            Based on {comparison.marketDataCount} market unit{comparison.marketDataCount > 1 ? 's' : ''}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <div className="flex items-center justify-end gap-2">
+                                        {isHigherThanMarket ? (
+                                          <TrendingDown className="h-4 w-4 text-green-600" />
+                                        ) : (
+                                          <TrendingUp className="h-4 w-4 text-red-600" />
+                                        )}
+                                        <div>
+                                          <div className={`font-medium ${isHigherThanMarket ? 'text-green-600' : 'text-red-600'}`}>
+                                            {comparison.percentDifference > 0 ? '+' : ''}{comparison.percentDifference}%
+                                          </div>
+                                          <div className="text-xs text-muted-foreground">
+                                            ${Math.abs(comparison.difference).toLocaleString()}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <Button
+                                            size="sm"
+                                            variant={isSignificant ? "default" : "outline"}
+                                            onClick={() => {
+                                              // Open edit dialog with suggested market price
+                                              // This would require updating the UnitEditDialog component
+                                              toast({
+                                                title: "Update Unit Price",
+                                                description: `Suggested market price for unit ${comparison.unitNumber}: $${comparison.marketRent}`,
+                                              });
+                                            }}
+                                            data-testid={`button-update-${comparison.unitNumber}`}
+                                          >
+                                            Update
+                                          </Button>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <div className="text-xs">
+                                            {isHigherThanMarket 
+                                              ? "Your rent is above market rate"
+                                              : "Your rent is below market rate"}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </TooltipProvider>
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <Alert>
+                        <Info className="h-4 w-4" />
+                        <AlertDescription>
+                          <div className="font-semibold">All Prices Match Market Rates</div>
+                          <div className="mt-1">
+                            Your internal pricing is aligned with current market rates. No significant differences found.
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                  </div>
                 )}
               </TabsContent>
             </Tabs>
