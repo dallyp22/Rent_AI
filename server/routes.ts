@@ -1615,6 +1615,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           // Enrich unit with scraped data fields for optimization
           units.push({
             ...unit,
+            tag: unit.tag, // Ensure tag field is preserved
             squareFootage: scrapedUnit.squareFootage,
             availabilityDate: scrapedUnit.availabilityDate
           });
@@ -1711,6 +1712,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
           });
           updatedUnits.push({
             ...updatedUnit,
+            tag: updatedUnit?.tag || (unit as any).tag || null, // Include TAG field
             squareFootage: (unit as any).squareFootage || undefined, // Include squareFootage from enriched unit
             availabilityDate: (unit as any).availabilityDate || undefined, // Include availabilityDate from enriched unit
             confidenceLevel: recommendation.confidenceLevel,
@@ -1724,6 +1726,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         if (!updatedUnits.find(u => u.id === unit.id)) {
           updatedUnits.push({
             ...unit,
+            tag: unit.tag || null, // Include TAG field for all units
             recommendedRent: unit.currentRent, // Default to current if no recommendation
             confidenceLevel: "Low",
             reasoning: "No optimization recommended - maintain current pricing"
@@ -4640,6 +4643,10 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         
         console.log(`[SESSION_OPTIMIZE] Subject property ${profile.name}: found ${propertyScrapedUnits.length} scraped units`);
         
+        // Get propertyUnits to fetch tag field
+        const propertyUnits = await storage.getPropertyUnitsByProfile(profile.id);
+        const unitTagMap = new Map(propertyUnits.map(u => [u.unitNumber, u.tag]));
+        
         // Transform scraped units to match property unit format
         // IMPORTANT: Only include units with valid unit numbers (filter out null/undefined unit numbers)
         const transformedUnits = propertyScrapedUnits
@@ -4650,6 +4657,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
             propertyId: profile.id, // For compatibility
             unitNumber: unit.unitNumber, // Always use actual unit number (no fallback)
             unitType: unit.unitType,
+            tag: unitTagMap.get(unit.unitNumber) || null, // Include TAG field from propertyUnits
             currentRent: unit.rent?.toString() || '0',
             recommendedRent: null, // Will be set by optimization
             status: unit.status || 'available',
@@ -4795,6 +4803,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
               propertyName: unit.propertyName,
               propertyProfileId: unit.propertyProfileId,
               unitNumber: unit.unitNumber,
+              tag: unit.tag, // Include TAG field in fallback recommendations
               currentRent: currentRent,
               recommendedRent: recommendedRent,
               marketAverage: currentRent * 1.05,
@@ -4858,6 +4867,7 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
             propertyProfileId: unit.propertyProfileId,
             unitNumber: unit.unitNumber, // Use actual unit number from scraped data
             unitType: unit.unitType,
+            tag: unit.tag, // Include TAG field in optimized response
             currentRent: recommendation.currentRent?.toString() || unit.currentRent,
             recommendedRent: recommendation.recommendedRent?.toString(),
             marketAverage: recommendation.marketAverage,
