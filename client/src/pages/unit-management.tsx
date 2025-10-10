@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Upload, Download, Plus, TableIcon, Trees, AlertCircle, Building2, TrendingUp, TrendingDown, Info, Calendar, RefreshCw } from "lucide-react";
+import { Upload, Download, Plus, TableIcon, Trees, AlertCircle, Building2, TrendingUp, TrendingDown, Info, Calendar, RefreshCw, ChevronUp, ChevronDown } from "lucide-react";
 import { PropertyProfile, PropertyUnit, TagDefinition } from "@shared/schema";
 import UnitHierarchyView from "@/components/unit-hierarchy-view";
 import UnitsTableView from "@/components/units-table-view";
@@ -19,6 +19,9 @@ import ExcelImportDialog from "@/components/excel-import-dialog";
 import ExcelImportPortfolioDialog from "@/components/excel-import-portfolio-dialog";
 import ExcelExportButton from "@/components/excel-export-button";
 
+type SortDirection = 'asc' | 'desc' | null;
+type SortColumn = 'unitNumber' | 'unitType' | 'tag' | 'bedrooms' | 'bathrooms' | 'squareFootage' | 'internalRent' | 'marketRent' | 'difference' | 'percentDifference' | 'dataAge';
+
 export default function UnitManagement() {
   const { toast } = useToast();
   const [selectedPropertyId, setSelectedPropertyId] = useState<string | null>(null);
@@ -27,6 +30,8 @@ export default function UnitManagement() {
   const [showImport, setShowImport] = useState(false);
   const [showImportPortfolio, setShowImportPortfolio] = useState(false);
   const [showTagManagement, setShowTagManagement] = useState(false);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('percentDifference');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Fetch user's properties
   const { data: properties = [], isLoading: loadingProperties } = useQuery({
@@ -136,6 +141,108 @@ export default function UnitManagement() {
   const selectedProperty = properties.find((p: PropertyProfile) => p.id === selectedPropertyId);
   const units = unitsData || [];
   const totalUnits = units.length;
+
+  // Sorting function for market comparison table
+  const handleSort = (column: SortColumn) => {
+    if (sortColumn === column) {
+      // Toggle through: asc -> desc -> null -> asc
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortDirection(null);
+        setSortColumn('percentDifference'); // Reset to default
+      } else {
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Generic sorting function
+  const sortComparisons = (comparisons: any[]) => {
+    if (!sortDirection) return comparisons;
+
+    return [...comparisons].sort((a, b) => {
+      let aVal: any;
+      let bVal: any;
+
+      switch (sortColumn) {
+        case 'unitNumber':
+          // Try to sort numerically if possible, otherwise alphabetically
+          aVal = parseInt(a.unitNumber) || a.unitNumber;
+          bVal = parseInt(b.unitNumber) || b.unitNumber;
+          break;
+        case 'unitType':
+          aVal = a.unitType || '';
+          bVal = b.unitType || '';
+          break;
+        case 'tag':
+          aVal = a.tag || '';
+          bVal = b.tag || '';
+          break;
+        case 'bedrooms':
+          aVal = a.bedrooms || 0;
+          bVal = b.bedrooms || 0;
+          break;
+        case 'bathrooms':
+          aVal = parseFloat(a.bathrooms) || 0;
+          bVal = parseFloat(b.bathrooms) || 0;
+          break;
+        case 'squareFootage':
+          aVal = a.squareFootage || 0;
+          bVal = b.squareFootage || 0;
+          break;
+        case 'internalRent':
+          aVal = a.internalRent || 0;
+          bVal = b.internalRent || 0;
+          break;
+        case 'marketRent':
+          aVal = a.marketRent || 0;
+          bVal = b.marketRent || 0;
+          break;
+        case 'difference':
+          aVal = Math.abs(a.difference) || 0;
+          bVal = Math.abs(b.difference) || 0;
+          break;
+        case 'percentDifference':
+          aVal = Math.abs(a.percentDifference) || 0;
+          bVal = Math.abs(b.percentDifference) || 0;
+          break;
+        case 'dataAge':
+          aVal = a.marketDataCount || 0;
+          bVal = b.marketDataCount || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      // Handle string vs number comparison
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
+        return sortDirection === 'asc' 
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      } else {
+        // Numeric comparison
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
+    });
+  };
+
+  // Helper to render sort indicator
+  const SortIndicator = ({ column }: { column: SortColumn }) => {
+    if (sortColumn !== column) return null;
+    
+    return (
+      <span className="ml-1 inline-flex">
+        {sortDirection === 'asc' && <ChevronUp className="h-4 w-4" />}
+        {sortDirection === 'desc' && <ChevronDown className="h-4 w-4" />}
+      </span>
+    );
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -378,18 +485,93 @@ export default function UnitManagement() {
                         <table className="w-full">
                           <thead>
                             <tr className="border-b bg-muted/50">
-                              <th className="text-left p-3 font-medium">Unit Number</th>
-                              <th className="text-left p-3 font-medium">Type</th>
-                              <th className="text-left p-3 font-medium">TAG</th>
-                              <th className="text-right p-3 font-medium">Internal Rent</th>
-                              <th className="text-right p-3 font-medium">Market Rent</th>
-                              <th className="text-right p-3 font-medium">Difference</th>
+                              <th 
+                                className="text-left p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('unitNumber')}
+                              >
+                                <div className="flex items-center">
+                                  Unit
+                                  <SortIndicator column="unitNumber" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-left p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('tag')}
+                              >
+                                <div className="flex items-center">
+                                  TAG
+                                  <SortIndicator column="tag" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-left p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('bedrooms')}
+                              >
+                                <div className="flex items-center">
+                                  Beds
+                                  <SortIndicator column="bedrooms" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-left p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('bathrooms')}
+                              >
+                                <div className="flex items-center">
+                                  Baths
+                                  <SortIndicator column="bathrooms" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-right p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('internalRent')}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Internal Rent
+                                  <SortIndicator column="internalRent" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-right p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('marketRent')}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Market Rent
+                                  <SortIndicator column="marketRent" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-right p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('difference')}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Difference ($)
+                                  <SortIndicator column="difference" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-right p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('percentDifference')}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Difference (%)
+                                  <SortIndicator column="percentDifference" />
+                                </div>
+                              </th>
+                              <th 
+                                className="text-right p-3 font-medium cursor-pointer hover:bg-muted/70 transition-colors"
+                                onClick={() => handleSort('dataAge')}
+                              >
+                                <div className="flex items-center justify-end">
+                                  Data Age
+                                  <SortIndicator column="dataAge" />
+                                </div>
+                              </th>
                               <th className="text-center p-3 font-medium">Action</th>
                             </tr>
                           </thead>
                           <tbody>
                             <TooltipProvider>
-                              {marketComparison.comparisons.map((comparison: any) => {
+                              {sortComparisons(marketComparison.comparisons).map((comparison: any) => {
                                 const isHigherThanMarket = comparison.difference < 0;
                                 const isSignificant = Math.abs(comparison.percentDifference) > 5;
                                 
@@ -401,50 +583,52 @@ export default function UnitManagement() {
                                   >
                                     <td className="p-3 font-medium">{comparison.unitNumber}</td>
                                     <td className="p-3">
-                                      {comparison.unitType}
-                                      <div className="text-xs text-muted-foreground">
-                                        {comparison.bedrooms ? `${comparison.bedrooms}BR` : ''} 
-                                        {comparison.bathrooms ? `/${comparison.bathrooms}BA` : ''}
-                                        {comparison.squareFootage ? ` · ${comparison.squareFootage} sq ft` : ''}
-                                      </div>
-                                    </td>
-                                    <td className="p-3">
                                       {comparison.tag && (
                                         <Badge variant="outline">{comparison.tag}</Badge>
                                       )}
                                     </td>
-                                    <td className="p-3 text-right font-mono">
-                                      ${comparison.internalRent.toLocaleString()}
+                                    <td className="p-3 text-center">
+                                      {comparison.bedrooms || '-'}
+                                    </td>
+                                    <td className="p-3 text-center">
+                                      {comparison.bathrooms || '-'}
                                     </td>
                                     <td className="p-3 text-right font-mono">
-                                      ${comparison.marketRent.toLocaleString()}
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <Info className="inline-block ml-1 h-3 w-3 text-muted-foreground cursor-help" />
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                          <div className="text-xs">
-                                            Based on {comparison.marketDataCount} market unit{comparison.marketDataCount > 1 ? 's' : ''}
-                                          </div>
-                                        </TooltipContent>
-                                      </Tooltip>
+                                      ${comparison.internalRent?.toLocaleString() || '0'}
+                                    </td>
+                                    <td className="p-3 text-right font-mono">
+                                      ${comparison.marketRent?.toLocaleString() || '0'}
                                     </td>
                                     <td className="p-3 text-right">
-                                      <div className="flex items-center justify-end gap-2">
+                                      <div className={`font-mono ${isHigherThanMarket ? 'text-green-600' : 'text-red-600'}`}>
+                                        {comparison.difference > 0 ? '+' : ''}${Math.abs(comparison.difference).toLocaleString()}
+                                      </div>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <div className="flex items-center justify-end gap-1">
                                         {isHigherThanMarket ? (
                                           <TrendingDown className="h-4 w-4 text-green-600" />
                                         ) : (
                                           <TrendingUp className="h-4 w-4 text-red-600" />
                                         )}
-                                        <div>
-                                          <div className={`font-medium ${isHigherThanMarket ? 'text-green-600' : 'text-red-600'}`}>
-                                            {comparison.percentDifference > 0 ? '+' : ''}{comparison.percentDifference}%
-                                          </div>
-                                          <div className="text-xs text-muted-foreground">
-                                            ${Math.abs(comparison.difference).toLocaleString()}
-                                          </div>
+                                        <div className={`font-medium ${isHigherThanMarket ? 'text-green-600' : 'text-red-600'}`}>
+                                          {comparison.percentDifference > 0 ? '+' : ''}{comparison.percentDifference}%
                                         </div>
                                       </div>
+                                    </td>
+                                    <td className="p-3 text-right">
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="text-sm text-muted-foreground cursor-help">
+                                            {comparison.marketDataCount} unit{comparison.marketDataCount !== 1 ? 's' : ''}
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent>
+                                          <div className="text-xs">
+                                            Based on {comparison.marketDataCount} comparable market unit{comparison.marketDataCount !== 1 ? 's' : ''}
+                                          </div>
+                                        </TooltipContent>
+                                      </Tooltip>
                                     </td>
                                     <td className="p-3 text-center">
                                       <Tooltip>
