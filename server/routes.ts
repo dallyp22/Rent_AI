@@ -88,6 +88,7 @@ class ScrapingJobProcessor {
             propertyProfileId: job.propertyProfileId!,
             unitNumber: unitData.unitNumber || `${unitData.unitType}-${Math.random().toString(36).substr(2, 9)}`,
             unitType: unitData.unitType,
+            tag: unitData.floorPlanName || null,  // Map floor plan name to TAG field
             currentRent: unitData.rent ? unitData.rent.toString() : "0",
             status: "available" as const
           }));

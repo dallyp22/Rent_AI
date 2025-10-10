@@ -1326,10 +1326,19 @@ export class DrizzleStorage implements IStorage {
 
   async replacePropertyUnitsByProfile(propertyProfileId: string, units: InsertPropertyUnit[]): Promise<PropertyUnit[]> {
     try {
-      // Get existing units count for logging
+      // Get existing units to preserve TAG values
       const existingUnits = await db.select().from(propertyUnits)
         .where(eq(propertyUnits.propertyProfileId, propertyProfileId));
       console.log(`[DRIZZLE_STORAGE] Replacing ${existingUnits.length} existing units with ${units.length} new units for profile ${propertyProfileId}`);
+      
+      // Create a map of existing TAG values by unit number
+      const existingTagMap = new Map<string, string | null>();
+      for (const existingUnit of existingUnits) {
+        if (existingUnit.unitNumber && existingUnit.tag) {
+          existingTagMap.set(existingUnit.unitNumber, existingUnit.tag);
+        }
+      }
+      console.log(`[DRIZZLE_STORAGE] Preserved ${existingTagMap.size} TAG values from existing units`);
       
       // Execute delete and insert operations sequentially (no transaction support in Neon)
       // Delete existing units
@@ -1339,26 +1348,40 @@ export class DrizzleStorage implements IStorage {
       // Insert new units if any
       let insertedUnits: PropertyUnit[] = [];
       if (units.length > 0) {
-        // Log the data being inserted to track squareFootage
-        console.log(`[DRIZZLE_STORAGE] Inserting units with data:`, units.slice(0, 2).map(u => ({
+        // Apply preserved TAG values to new units
+        const unitsWithTags = units.map(unit => {
+          const preservedTag = existingTagMap.get(unit.unitNumber);
+          if (preservedTag) {
+            console.log(`[DRIZZLE_STORAGE] Preserving TAG "${preservedTag}" for unit ${unit.unitNumber}`);
+            return { ...unit, tag: preservedTag };
+          }
+          return unit;
+        });
+        
+        // Log the data being inserted to track squareFootage and TAG
+        console.log(`[DRIZZLE_STORAGE] Inserting units with data:`, unitsWithTags.slice(0, 2).map(u => ({
           unitNumber: u.unitNumber,
           squareFootage: u.squareFootage,
+          tag: u.tag,
           unitType: u.unitType,
           currentRent: u.currentRent,
           propertyProfileId: u.propertyProfileId
         })));
         
-        insertedUnits = await db.insert(propertyUnits).values(units).returning();
+        insertedUnits = await db.insert(propertyUnits).values(unitsWithTags).returning();
         console.log(`[DRIZZLE_STORAGE] Inserted ${insertedUnits.length} new units for profile ${propertyProfileId}`);
         
-        // Log the inserted data to verify squareFootage was saved
+        // Log the inserted data to verify squareFootage and TAG were saved
         if (insertedUnits.length > 0) {
+          const unitsWithTags = insertedUnits.filter(u => u.tag !== null && u.tag !== undefined);
           console.log(`[DRIZZLE_STORAGE] Sample inserted unit:`, {
             unitNumber: insertedUnits[0].unitNumber,
             squareFootage: insertedUnits[0].squareFootage,
+            tag: insertedUnits[0].tag,
             unitType: insertedUnits[0].unitType,
             currentRent: insertedUnits[0].currentRent
           });
+          console.log(`[DRIZZLE_STORAGE] Units with preserved TAGs: ${unitsWithTags.length}/${insertedUnits.length}`);
         }
       }
       
