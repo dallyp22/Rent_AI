@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign } from "lucide-react";
+import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign, ChevronUp, ChevronDown } from "lucide-react";
 import { formatCurrency, formatCurrencyChange, formatLargeCurrency } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
@@ -21,6 +21,9 @@ interface UnitWithDetails extends PropertyUnit {
   marketAverage?: string;
   propertyName?: string;
 }
+
+type SortDirection = 'asc' | 'desc' | null;
+type SortColumn = 'unit' | 'tag' | 'property' | 'type' | 'current' | 'aiRec' | 'marketAvg' | 'newPrice' | 'change' | 'annual' | null;
 
 // Memoized table row component for better performance
 const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getStatusBadge, formatCurrency, formatCurrencyChange }: any) => {
@@ -139,6 +142,8 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
   const [history, setHistory] = useState<Record<string, number>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [debounceTimeout, setDebounceTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [sortColumn, setSortColumn] = useState<SortColumn>('annual');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Initialize modified prices with recommended rents
   useEffect(() => {
@@ -366,6 +371,103 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
     }
   };
 
+  // Handle column header clicks for sorting
+  const handleColumnClick = (column: SortColumn) => {
+    if (!column) return;
+    
+    if (sortColumn === column) {
+      // Toggle through asc -> desc -> null
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else if (sortDirection === 'desc') {
+        setSortDirection(null);
+        setSortColumn(null);
+      }
+    } else {
+      // New column, start with asc
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Generic sorting function
+  const sortUnits = useMemo(() => {
+    if (!sortColumn || !sortDirection) {
+      return units;
+    }
+
+    const sorted = [...units].sort((a, b) => {
+      let aValue: any;
+      let bValue: any;
+
+      switch (sortColumn) {
+        case 'unit':
+          aValue = a.unitNumber || '';
+          bValue = b.unitNumber || '';
+          break;
+        case 'tag':
+          aValue = a.tag || '';
+          bValue = b.tag || '';
+          break;
+        case 'property':
+          aValue = (a as UnitWithDetails).propertyName || '';
+          bValue = (b as UnitWithDetails).propertyName || '';
+          break;
+        case 'type':
+          aValue = a.unitType || '';
+          bValue = b.unitType || '';
+          break;
+        case 'current':
+          aValue = parseFloat(a.currentRent);
+          bValue = parseFloat(b.currentRent);
+          break;
+        case 'aiRec':
+          aValue = a.recommendedRent ? parseFloat(a.recommendedRent) : parseFloat(a.currentRent);
+          bValue = b.recommendedRent ? parseFloat(b.recommendedRent) : parseFloat(b.currentRent);
+          break;
+        case 'marketAvg':
+          aValue = (a as UnitWithDetails).marketAverage ? parseFloat((a as UnitWithDetails).marketAverage!) : parseFloat(a.currentRent);
+          bValue = (b as UnitWithDetails).marketAverage ? parseFloat((b as UnitWithDetails).marketAverage!) : parseFloat(b.currentRent);
+          break;
+        case 'newPrice':
+          aValue = modifiedPrices[a.id] || (a.recommendedRent ? parseFloat(a.recommendedRent) : parseFloat(a.currentRent));
+          bValue = modifiedPrices[b.id] || (b.recommendedRent ? parseFloat(b.recommendedRent) : parseFloat(b.currentRent));
+          break;
+        case 'change':
+          const aNewPrice = modifiedPrices[a.id] || (a.recommendedRent ? parseFloat(a.recommendedRent) : parseFloat(a.currentRent));
+          const bNewPrice = modifiedPrices[b.id] || (b.recommendedRent ? parseFloat(b.recommendedRent) : parseFloat(b.currentRent));
+          aValue = aNewPrice - parseFloat(a.currentRent);
+          bValue = bNewPrice - parseFloat(b.currentRent);
+          break;
+        case 'annual':
+          const aNewPriceAnnual = modifiedPrices[a.id] || (a.recommendedRent ? parseFloat(a.recommendedRent) : parseFloat(a.currentRent));
+          const bNewPriceAnnual = modifiedPrices[b.id] || (b.recommendedRent ? parseFloat(b.recommendedRent) : parseFloat(b.currentRent));
+          aValue = (aNewPriceAnnual - parseFloat(a.currentRent)) * 12;
+          bValue = (bNewPriceAnnual - parseFloat(b.currentRent)) * 12;
+          break;
+        default:
+          return 0;
+      }
+
+      // Handle null/undefined values
+      if (aValue == null && bValue == null) return 0;
+      if (aValue == null) return 1;
+      if (bValue == null) return -1;
+
+      // Compare values
+      let comparison = 0;
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        comparison = aValue.localeCompare(bValue, undefined, { numeric: true });
+      } else {
+        comparison = aValue < bValue ? -1 : aValue > bValue ? 1 : 0;
+      }
+
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [units, sortColumn, sortDirection, modifiedPrices]);
+
 
   const getChangeIndicator = (currentRent: number, newRent: number) => {
     const change = newRent - currentRent;
@@ -590,22 +692,122 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
           <table className="w-full">
             <thead className="bg-background">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Unit</th>
-                <th className="px-4 py-3 text-left font-semibold">TAG</th>
-                <th className="px-4 py-3 text-left font-semibold">Property</th>
-                <th className="px-4 py-3 text-left font-semibold">Type</th>
-                <th className="px-4 py-3 text-left font-semibold">Current</th>
-                <th className="px-4 py-3 text-left font-semibold">AI Rec.</th>
-                <th className="px-4 py-3 text-left font-semibold">Market Avg</th>
-                <th className="px-4 py-3 text-left font-semibold">New Price</th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('unit')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Unit</span>
+                    {sortColumn === 'unit' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'unit' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'unit' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('tag')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>TAG</span>
+                    {sortColumn === 'tag' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'tag' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'tag' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('property')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Property</span>
+                    {sortColumn === 'property' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'property' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'property' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('type')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Type</span>
+                    {sortColumn === 'type' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'type' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'type' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('current')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Current</span>
+                    {sortColumn === 'current' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'current' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'current' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('aiRec')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>AI Rec.</span>
+                    {sortColumn === 'aiRec' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'aiRec' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'aiRec' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('marketAvg')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Market Avg</span>
+                    {sortColumn === 'marketAvg' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'marketAvg' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'marketAvg' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('newPrice')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>New Price</span>
+                    {sortColumn === 'newPrice' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'newPrice' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'newPrice' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Quick Adjust</th>
-                <th className="px-4 py-3 text-left font-semibold">Change</th>
-                <th className="px-4 py-3 text-left font-semibold">Annual</th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('change')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Change</span>
+                    {sortColumn === 'change' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'change' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'change' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('annual')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Annual</span>
+                    {sortColumn === 'annual' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'annual' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'annual' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {units.map((unit) => (
+              {sortUnits.map((unit) => (
                 <TableRow
                   key={unit.id}
                   unit={unit}
