@@ -6772,6 +6772,20 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       }
 
       const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      
+      // Debug logging for squareFootage verification
+      console.log(`[API] Fetched ${units.length} units for property profile ${propertyProfileId}`);
+      const unitsWithSqFt = units.filter(u => u.squareFootage !== null && u.squareFootage !== undefined);
+      console.log(`[API] ${unitsWithSqFt.length} units have squareFootage data`);
+      if (units.length > 0) {
+        console.log('[API] Sample unit data:', {
+          unitNumber: units[0].unitNumber,
+          squareFootage: units[0].squareFootage,
+          bedrooms: units[0].bedrooms,
+          bathrooms: units[0].bathrooms
+        });
+      }
+      
       res.json(units);
     } catch (error) {
       console.error("Error fetching units:", error);
@@ -6799,6 +6813,18 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       }
 
       const units = await storage.getPropertyUnitsByProfile(propertyProfileId);
+      
+      // Debug logging for squareFootage verification in hierarchical endpoint
+      console.log(`[API/Hierarchical] Fetched ${units.length} units for property profile ${propertyProfileId}`);
+      const unitsWithSqFt = units.filter(u => u.squareFootage !== null && u.squareFootage !== undefined);
+      console.log(`[API/Hierarchical] ${unitsWithSqFt.length} units have squareFootage data`);
+      if (units.length > 0 && units[0]) {
+        console.log('[API/Hierarchical] Sample unit with squareFootage:', {
+          unitNumber: units[0].unitNumber,
+          squareFootage: units[0].squareFootage,
+          tag: units[0].tag
+        });
+      }
       
       // Build hierarchy by bedrooms then tags
       const hierarchy: { [bedroom: string]: { [tag: string]: PropertyUnit[] } } = {};
@@ -7149,6 +7175,9 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
                 unit.bedrooms = parseInt(value.toString()) || 0;
               } else if (headerLower?.includes('bathroom')) {
                 unit.bathrooms = value.toString();
+              } else if (headerLower?.includes('square') && (headerLower?.includes('foot') || headerLower?.includes('ft'))) {
+                unit.squareFootage = parseInt(value.toString()) || null;
+                console.log(`[EXCEL_IMPORT] Unit ${unit.unitNumber} squareFootage: ${unit.squareFootage}`);
               } else if (headerLower?.includes('priority')) {
                 unit.optimizationPriority = parseInt(value.toString()) || 0;
               }
