@@ -40,6 +40,9 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
       <td className="px-4 py-3 font-medium" data-testid={`unit-number-${unit.unitNumber}`}>
         {unit.unitNumber}
       </td>
+      <td className="px-4 py-3" data-testid={`tag-${unit.unitNumber}`}>
+        {unit.tag || '-'}
+      </td>
       <td className="px-4 py-3" data-testid={`property-${unit.unitNumber}`}>
         {unitWithDetails.propertyName || '-'}
       </td>
@@ -588,6 +591,7 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
             <thead className="bg-background">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Unit</th>
+                <th className="px-4 py-3 text-left font-semibold">TAG</th>
                 <th className="px-4 py-3 text-left font-semibold">Property</th>
                 <th className="px-4 py-3 text-left font-semibold">Type</th>
                 <th className="px-4 py-3 text-left font-semibold">Current</th>

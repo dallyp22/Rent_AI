@@ -21,6 +21,7 @@ export interface ExcelExportData {
   units: Array<{
     propertyName?: string;
     unitNumber: string;
+    tag?: string;
     unitType: string;
     squareFootage?: number;
     currentRent: number;
@@ -61,6 +62,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   // Set column widths
   worksheet.columns = [
     { header: 'Unit Number', key: 'unitNumber', width: 15 },
+    { header: 'TAG', key: 'tag', width: 20 },
     { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
@@ -98,6 +100,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   // Add header row for units table
   const headerRow = worksheet.addRow([
     'Unit Number',
+    'TAG',
     'Property',
     'Unit Type',
     'Square Footage',
@@ -130,6 +133,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   data.units.forEach((unit) => {
     const row = worksheet.addRow([
       unit.unitNumber,
+      unit.tag || '-',
       unit.propertyName || '',
       unit.unitType,
       formatSquareFootage(unit.squareFootage),
@@ -142,8 +146,8 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     ]);
     
     // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(7); // Monthly Change column (shifted by 2: Property, Square Footage)
-    const impactCell = row.getCell(8); // Annual Impact column (shifted by 2: Property, Square Footage)
+    const changeCell = row.getCell(8); // Monthly Change column (now shifted by 3: TAG, Property, Square Footage)
+    const impactCell = row.getCell(9); // Annual Impact column (now shifted by 3: TAG, Property, Square Footage)
     
     if (unit.change > 0) {
       // Positive change - green
@@ -190,10 +194,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     });
     
     // Format currency cells
-    row.getCell(5).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 2: Property, Square Footage)
-    row.getCell(6).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 2: Property, Square Footage)
-    row.getCell(7).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 2: Property, Square Footage)
-    row.getCell(8).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 2: Property, Square Footage)
+    row.getCell(6).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 3: TAG, Property, Square Footage)
+    row.getCell(7).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 3: TAG, Property, Square Footage)
+    row.getCell(8).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 3: TAG, Property, Square Footage)
+    row.getCell(9).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 3: TAG, Property, Square Footage)
   });
   
   worksheet.addRow([]);
