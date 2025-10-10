@@ -6,7 +6,16 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
-### October 10, 2025
+### October 10, 2025 (Latest)
+- **Critical Data Architecture Fix**: Separated internal unit management from scraped market data
+  - Scraping no longer overwrites propertyUnits table (preserves TAGs and internal data)
+  - propertyUnits table = user's managed internal data (TAGs, custom fields)
+  - scrapedUnits table = external market data (current prices, availability)
+  - Optimization now merges both sources: TAGs from propertyUnits, prices from scrapedUnits
+  - Added Market Comparison view in Unit Management showing pricing discrepancies
+  - Prevents data loss when scraping - your TAGs are now safe!
+
+### October 10, 2025 
 - **Square Footage Data Fix**: Fixed squareFootage field persistence and display in Unit Management
   - Added comprehensive logging to track squareFootage values through Excel import process
   - Verified complete data pipeline from database → API → frontend for squareFootage field
