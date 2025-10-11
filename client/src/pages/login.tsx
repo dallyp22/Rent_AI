@@ -13,7 +13,7 @@ export default function LoginPage() {
   useEffect(() => {
     // If user is already authenticated, redirect to intended destination or dashboard
     if (isAuthenticated && !isLoading) {
-      const redirectPath = sessionStorage.getItem('auth_redirect_path') || '/portfolio-dashboard';
+      const redirectPath = sessionStorage.getItem('auth_redirect_path') || '/property-profiles';
       sessionStorage.removeItem('auth_redirect_path');
       navigate(redirectPath);
     }
