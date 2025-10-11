@@ -6,7 +6,17 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
-### October 10, 2025 (Latest)
+### October 11, 2025 (Latest)
+- **Settings Menu Implementation**: Reorganized sidebar navigation for improved focus on workflow
+  - Created dedicated Settings dropdown menu with gear icon
+  - Moved Property Profiles and Unit Management into Settings menu
+  - Removed Portfolio Dashboard completely from navigation 
+  - Updated auth redirects to use Property Profiles as default landing page
+  - Settings menu only appears for authenticated users
+  - Maintains clean separation between workflow phases (Select/Summarize/Analyze/Optimize) and administrative features
+  - Enhanced visual hierarchy with phase indicators and status icons
+
+### October 10, 2025
 - **Critical Data Architecture Fix**: Separated internal unit management from scraped market data
   - Scraping no longer overwrites propertyUnits table (preserves TAGs and internal data)
   - propertyUnits table = user's managed internal data (TAGs, custom fields)
