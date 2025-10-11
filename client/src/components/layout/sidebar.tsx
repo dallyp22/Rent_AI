@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet, Check, Circle, Dot, Settings, ChevronDown } from "lucide-react";
+import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet, Check, Circle, Dot, Settings, ChevronDown, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 
 interface NavigationItem {
   name: string;
@@ -14,18 +16,57 @@ interface NavigationItem {
   children?: NavigationItem[];
 }
 
+interface WorkflowState {
+  stage: 'select' | 'summarize' | 'analyze' | 'optimize';
+  filters?: any;
+  selectedCompetitors?: string[];
+  analysisParameters?: any;
+  optimizationSettings?: any;
+  timestamp: string;
+}
+
 export default function Sidebar() {
-  const [location] = useLocation();
+  const [location, setNavLocation] = useLocation();
   const { isAuthenticated, isLoading } = useAuth();
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set(["Select Properties"]));
   
-  // Extract property ID from current URL
-  const extractPropertyId = (path: string): string | null => {
-    const match = path.match(/\/(summarize|analyze|optimize)\/([^\/]+)/);
-    return match ? match[2] : null;
+  // Extract session ID from current URL (handles both session and legacy modes)
+  const extractSessionInfo = (path: string): { sessionId: string | null; isSessionMode: boolean } => {
+    // Check for session mode URLs: /session/{phase}/{sessionId}
+    const sessionMatch = path.match(/\/session\/(summarize|analyze|optimize)\/([^\/]+)/);
+    if (sessionMatch) {
+      return { sessionId: sessionMatch[2], isSessionMode: true };
+    }
+    
+    // Check for legacy mode URLs: /{phase}/{id}
+    const legacyMatch = path.match(/\/(summarize|analyze|optimize)\/([^\/]+)/);
+    if (legacyMatch) {
+      return { sessionId: legacyMatch[2], isSessionMode: false };
+    }
+    
+    return { sessionId: null, isSessionMode: false };
   };
   
-  const propertyId = extractPropertyId(location);
+  const { sessionId, isSessionMode } = extractSessionInfo(location);
+  
+  // Query workflow state when we have a session ID
+  const { data: workflowState, isLoading: workflowLoading } = useQuery<WorkflowState>({
+    queryKey: ['workflow-state', sessionId, isSessionMode],
+    queryFn: async () => {
+      if (!sessionId) return null;
+      const endpoint = isSessionMode 
+        ? `/api/analysis-sessions/${sessionId}/workflow`
+        : `/api/workflow/${sessionId}`;
+      
+      const response = await apiRequest('GET', endpoint);
+      if (response.ok) {
+        return response.json();
+      }
+      return null;
+    },
+    enabled: !!sessionId,
+    staleTime: 30000,
+  });
   
   // Determine current phase based on location
   const getCurrentPhase = (): 'select' | 'summarize' | 'analyze' | 'optimize' => {
@@ -37,7 +78,48 @@ export default function Sidebar() {
   
   const currentPhase = getCurrentPhase();
   
-  // Generate navigation with dynamic property IDs and auth requirements
+  // Determine which phases are accessible based on workflow state
+  const getPhaseAccessibility = () => {
+    const phases = {
+      select: true, // Always accessible
+      summarize: false,
+      analyze: false,
+      optimize: false
+    };
+    
+    // If we have a session ID, at minimum the summarize phase is accessible
+    if (sessionId) {
+      phases.summarize = true;
+      
+      // Check workflow state to determine if later phases are accessible
+      if (workflowState) {
+        const stageOrder = ['select', 'summarize', 'analyze', 'optimize'];
+        const currentStageIndex = stageOrder.indexOf(workflowState.stage);
+        
+        // Make all phases up to and including the current stage accessible
+        // Plus one phase ahead (so users can move forward)
+        phases.analyze = currentStageIndex >= 1; // Accessible after summarize starts
+        phases.optimize = currentStageIndex >= 2; // Accessible after analyze starts
+      } else if (!workflowLoading) {
+        // If no workflow state exists yet but we have a session, allow access to summarize
+        // This handles new sessions that haven't saved workflow state yet
+        phases.summarize = true;
+        // Allow progressive access based on current phase
+        if (currentPhase === 'summarize' || currentPhase === 'analyze' || currentPhase === 'optimize') {
+          phases.analyze = true;
+        }
+        if (currentPhase === 'analyze' || currentPhase === 'optimize') {
+          phases.optimize = true;
+        }
+      }
+    }
+    
+    return phases;
+  };
+  
+  const phaseAccessibility = getPhaseAccessibility();
+  
+  // Generate navigation with dynamic session-based URLs
   const navigation: NavigationItem[] = [
     { 
       name: "Select Properties", 
@@ -57,23 +139,29 @@ export default function Sidebar() {
     },
     { 
       name: "Summarize", 
-      href: propertyId ? `/summarize/${propertyId}` : null, 
+      href: sessionId 
+        ? (isSessionMode ? `/session/summarize/${sessionId}` : `/summarize/${sessionId}`)
+        : null, 
       icon: BarChart3,
-      enabled: !!propertyId,
+      enabled: phaseAccessibility.summarize,
       requiresAuth: true
     },
     { 
       name: "Analyze", 
-      href: propertyId ? `/analyze/${propertyId}` : null, 
+      href: sessionId && phaseAccessibility.analyze 
+        ? (isSessionMode ? `/session/analyze/${sessionId}` : `/analyze/${sessionId}`)
+        : null, 
       icon: TrendingUp,
-      enabled: !!propertyId,
+      enabled: phaseAccessibility.analyze,
       requiresAuth: true
     },
     { 
       name: "Optimize", 
-      href: propertyId ? `/optimize/${propertyId}` : null, 
+      href: sessionId && phaseAccessibility.optimize
+        ? (isSessionMode ? `/session/optimize/${sessionId}` : `/optimize/${sessionId}`)
+        : null, 
       icon: DollarSign,
-      enabled: !!propertyId,
+      enabled: phaseAccessibility.optimize,
       requiresAuth: true
     },
   ];
@@ -157,16 +245,21 @@ export default function Sidebar() {
                 );
               }
               
-              // If navigation is disabled (no property ID), render as disabled
+              // If navigation is disabled (no session ID or phase not yet accessible), render as disabled
               if (!navItem.enabled || (!navItem.href && !navItem.children)) {
                 return (
                   <div
                     key={navItem.name}
-                    className={`flex items-center px-3 py-2 rounded-md font-medium text-muted-foreground/50 cursor-not-allowed ${isChild ? 'ml-6' : ''}`}
-                    data-testid={`nav-link-${navItem.name.toLowerCase().replace(/\s+/g, '-')}`}
+                    className={`flex items-center px-3 py-2 rounded-md font-medium text-muted-foreground/30 cursor-not-allowed relative ${isChild ? 'ml-6' : ''}`}
+                    data-testid={`nav-link-${navItem.name.toLowerCase().replace(/\s+/g, '-')}-disabled`}
+                    title={!sessionId ? "Complete property selection first" : "Complete previous phases to unlock"}
                   >
-                    <Icon className="w-5 h-5 mr-3" />
-                    {navItem.name}
+                    <Icon className="w-5 h-5 mr-3 opacity-50" />
+                    <span className="opacity-60">{navItem.name}</span>
+                    {/* Visual indicator for locked phases */}
+                    {navItem.requiresAuth && !sessionId && (
+                      <Lock className="w-3 h-3 ml-auto opacity-40" />
+                    )}
                   </div>
                 );
               }
@@ -326,14 +419,43 @@ export default function Sidebar() {
                   </div>
                 )}
                 
-                {/* Phase label with status icon */}
-                <div className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-2`}>
-                  <StatusIcon className={`w-4 h-4 ${
-                    phaseStatus === 'completed' ? 'text-green-600 dark:text-green-400' :
-                    phaseStatus === 'current' ? phaseTextColors[itemPhase] :
+                {/* Phase label with status icon - clickable when phase is accessible */}
+                <div 
+                  className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-2 transition-all ${
+                    item.enabled && item.href 
+                      ? 'cursor-pointer hover:opacity-80' 
+                      : !sessionId 
+                        ? 'cursor-help opacity-50' 
+                        : 'cursor-not-allowed opacity-40'
+                  }`}
+                  onClick={() => {
+                    if (item.enabled && item.href) {
+                      setNavLocation(item.href);
+                    }
+                  }}
+                  title={
+                    !item.enabled 
+                      ? (!sessionId 
+                        ? "Start by selecting properties" 
+                        : `Complete ${itemPhase === 'analyze' ? 'summarization' : itemPhase === 'optimize' ? 'analysis' : 'previous phase'} to unlock`)
+                      : undefined
+                  }
+                  data-testid={`phase-label-${itemPhase}`}
+                >
+                  {workflowLoading && sessionId ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <StatusIcon className={`w-4 h-4 ${
+                      phaseStatus === 'completed' ? 'text-green-600 dark:text-green-400' :
+                      phaseStatus === 'current' ? phaseTextColors[itemPhase] :
+                      'text-muted-foreground'
+                    }`} />
+                  )}
+                  <span className={`${
+                    isPhaseActive ? phaseTextColors[itemPhase] : 
+                    item.enabled ? 'text-muted-foreground hover:text-foreground' : 
                     'text-muted-foreground'
-                  }`} />
-                  <span className={`${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
+                  }`}>
                     {phaseLabels[itemPhase]}
                   </span>
                 </div>
