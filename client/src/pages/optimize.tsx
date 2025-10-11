@@ -551,7 +551,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             return {
               propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
-              tag: unit.tag,
+              tag: unit.tag ?? undefined,
               unitType: unit.unitType,
               squareFootage: (unit as any).squareFootage || undefined,
               currentRent: currentRent,
@@ -626,7 +626,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             return {
               propertyName: property.propertyName || property.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
-              tag: unit.tag,
+              tag: unit.tag ?? undefined,
               unitType: unit.unitType,
               squareFootage: (unit as any).squareFootage || undefined,
               currentRent: currentRent,
