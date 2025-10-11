@@ -55,13 +55,6 @@ export default function Sidebar() {
           requiresAuth: true
         },
         { 
-          name: "Portfolio Dashboard", 
-          href: "/portfolio-dashboard", 
-          icon: PieChart,
-          enabled: true,
-          requiresAuth: true
-        },
-        { 
           name: "Selection Matrix", 
           href: "/property-selection-matrix", 
           icon: Grid3X3,
