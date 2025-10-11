@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet } from "lucide-react";
+import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet, Check, Circle, Dot } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
@@ -320,6 +320,24 @@ export default function Sidebar() {
               'optimize': 'Phase 4: Optimize'
             };
             
+            // Determine phase status
+            const getPhaseStatus = (phase: string): 'completed' | 'current' | 'upcoming' => {
+              const phases = ['select', 'summarize', 'analyze', 'optimize'];
+              const currentIndex = phases.indexOf(currentPhase);
+              const phaseIndex = phases.indexOf(phase);
+              
+              if (phaseIndex < currentIndex) return 'completed';
+              if (phaseIndex === currentIndex) return 'current';
+              return 'upcoming';
+            };
+            
+            const phaseStatus = getPhaseStatus(itemPhase);
+            
+            // Get status icon
+            const StatusIcon = phaseStatus === 'completed' ? Check : 
+                              phaseStatus === 'current' ? Dot :
+                              Circle;
+            
             return (
               <div key={item.name} className="relative">
                 {/* Phase indicator and wrapper */}
@@ -330,18 +348,27 @@ export default function Sidebar() {
                   </div>
                 )}
                 
-                {/* Phase label for all phases */}
-                <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
-                  {phaseLabels[itemPhase]}
+                {/* Phase label with status icon */}
+                <div className={`flex items-center gap-2 text-xs font-semibold uppercase tracking-wider mb-2`}>
+                  <StatusIcon className={`w-4 h-4 ${
+                    phaseStatus === 'completed' ? 'text-green-600 dark:text-green-400' :
+                    phaseStatus === 'current' ? phaseTextColors[itemPhase] :
+                    'text-muted-foreground'
+                  }`} />
+                  <span className={`${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
+                    {phaseLabels[itemPhase]}
+                  </span>
                 </div>
                 
-                <div className={`relative ${isPhaseActive ? 'rounded-lg p-2 -m-2 ' + phaseColors[itemPhase] : ''}`}>
+                <div className={`relative transition-all duration-200 ${
+                  isPhaseActive ? 'rounded-lg p-3 -mx-2 shadow-sm border ' + phaseColors[itemPhase] + ' ' + phaseBorderColors[itemPhase] : ''
+                }`}>
                   {/* Phase active indicator bar */}
                   {isPhaseActive && (
-                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l ${phaseBorderColors[itemPhase]}`} />
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l bg-current ${phaseTextColors[itemPhase]}`} />
                   )}
                   
-                  <div className={isPhaseActive ? 'ml-2' : ''}>
+                  <div className={isPhaseActive ? 'ml-3' : ''}>
                     {renderNavigationItem(item)}
                   </div>
                 </div>
