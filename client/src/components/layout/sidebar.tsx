@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet, Check, Circle, Dot } from "lucide-react";
+import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, Lock, LogIn, ChevronRight, FileSpreadsheet, Check, Circle, Dot, Settings, ChevronDown } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
@@ -48,23 +48,9 @@ export default function Sidebar() {
       requiresAuth: false,
       children: [
         { 
-          name: "Property Profiles", 
-          href: "/property-profiles", 
-          icon: Building2,
-          enabled: true,
-          requiresAuth: true
-        },
-        { 
           name: "Selection Matrix", 
           href: "/property-selection-matrix", 
           icon: Grid3X3,
-          enabled: true,
-          requiresAuth: true
-        },
-        { 
-          name: "Unit Management", 
-          href: "/unit-management", 
-          icon: FileSpreadsheet,
           enabled: true,
           requiresAuth: true
         },
@@ -369,6 +355,58 @@ export default function Sidebar() {
             );
           })}
         </div>
+        
+        {/* Settings Section */}
+        {isAuthenticated && (
+          <div className="mt-6 pt-4 border-t border-border">
+            <button
+              onClick={() => toggleExpanded('Settings')}
+              className="w-full flex items-center justify-between px-3 py-2 rounded-md font-medium transition-colors hover:bg-accent text-muted-foreground hover:text-foreground"
+              data-testid="settings-dropdown"
+            >
+              <div className="flex items-center">
+                <Settings className="w-5 h-5 mr-3" />
+                <span>Settings</span>
+              </div>
+              <ChevronDown 
+                className={`w-4 h-4 transition-transform ${
+                  expandedItems.has('Settings') ? 'rotate-180' : ''
+                }`} 
+              />
+            </button>
+            
+            {/* Settings dropdown items */}
+            {expandedItems.has('Settings') && (
+              <div className="mt-1 space-y-1">
+                <Link
+                  href="/property-profiles"
+                  className={`flex items-center px-3 py-2 rounded-md font-medium transition-colors ml-10 ${
+                    location === "/property-profiles"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid="nav-link-property-profiles"
+                >
+                  <Building2 className="w-5 h-5 mr-3" />
+                  Property Profiles
+                </Link>
+                
+                <Link
+                  href="/unit-management"
+                  className={`flex items-center px-3 py-2 rounded-md font-medium transition-colors ml-10 ${
+                    location === "/unit-management"
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid="nav-link-unit-management"
+                >
+                  <FileSpreadsheet className="w-5 h-5 mr-3" />
+                  Unit Management
+                </Link>
+              </div>
+            )}
+          </div>
+        )}
         
         {/* Auth Status Indicator */}
         {!isLoading && !isAuthenticated && (
