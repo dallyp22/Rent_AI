@@ -3,6 +3,7 @@ import { apiRequest } from "@/lib/queryClient";
 
 export interface WorkflowState {
   stage?: string;
+  highestStage?: string;
   selectedCompetitorIds?: string[];
   analysisSessionId?: string;
   filterCriteria?: any;
@@ -40,9 +41,25 @@ export function useWorkflowState(workflowId: string, isSessionMode?: boolean) {
 
   const saveState = async (updates: Partial<WorkflowState>): Promise<void> => {
     try {
+      // Track highest stage reached
+      let highestStage = state?.highestStage || state?.stage || 'select';
+      
+      // If stage is being updated, check if it's further along
+      if (updates.stage) {
+        const stageOrder = ['select', 'summarize', 'analyze', 'optimize'];
+        const currentHighestIndex = stageOrder.indexOf(highestStage);
+        const newStageIndex = stageOrder.indexOf(updates.stage);
+        
+        // Update highestStage only if the new stage is further along
+        if (newStageIndex > currentHighestIndex) {
+          highestStage = updates.stage;
+        }
+      }
+      
       const updatedState = {
         ...state,
         ...updates,
+        highestStage, // Always include highestStage
         timestamp: new Date().toISOString()
       };
       

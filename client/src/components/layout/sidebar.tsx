@@ -18,6 +18,7 @@ interface NavigationItem {
 
 interface WorkflowState {
   stage: 'select' | 'summarize' | 'analyze' | 'optimize';
+  highestStage?: 'select' | 'summarize' | 'analyze' | 'optimize';
   filters?: any;
   selectedCompetitors?: string[];
   analysisParameters?: any;
@@ -94,12 +95,13 @@ export default function Sidebar() {
       // Check workflow state to determine if later phases are accessible
       if (workflowState) {
         const stageOrder = ['select', 'summarize', 'analyze', 'optimize'];
-        const currentStageIndex = stageOrder.indexOf(workflowState.stage);
+        // Use highestStage if available, otherwise fall back to stage for backward compatibility
+        const highestReached = workflowState.highestStage || workflowState.stage || 'select';
+        const highestStageIndex = stageOrder.indexOf(highestReached);
         
-        // Make all phases up to and including the current stage accessible
-        // Plus one phase ahead (so users can move forward)
-        phases.analyze = currentStageIndex >= 1; // Accessible after summarize starts
-        phases.optimize = currentStageIndex >= 2; // Accessible after analyze starts
+        // Make all phases up to and including the highest stage reached accessible
+        phases.analyze = highestStageIndex >= 1; // Accessible if reached summarize or beyond
+        phases.optimize = highestStageIndex >= 2; // Accessible if reached analyze or beyond
       } else if (!workflowLoading) {
         // If no workflow state exists yet but we have a session, allow access to summarize
         // This handles new sessions that haven't saved workflow state yet
