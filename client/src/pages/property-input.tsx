@@ -1,17 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
-import PropertySidebar from "@/components/property-sidebar";
-import PropertyProfileForm, { PropertyProfileFormRef } from "@/components/property-profile-form";
+import PropertyCheckboxCard from "@/components/property-checkbox-card";
 import { ScrapingProgressModal } from "@/components/scraping-progress-modal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CheckCircle, AlertCircle, Database, Play, Building2, Plus, Lock, ShieldAlert } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CheckCircle, AlertCircle, Database, Play, Building2, Plus, Lock, ShieldAlert, Target, Users, CheckSquare, Square, ArrowRight } from "lucide-react";
 import { Link } from "wouter";
 import type { 
   InsertPropertyProfile, 
@@ -19,7 +19,7 @@ import type {
   InsertAnalysisSession,
   AnalysisSession 
 } from "@shared/schema";
-import { getPropertyProfileInvalidationKeys } from "@shared/query-keys";
+import { getPropertyProfileInvalidationKeys, PROPERTY_PROFILE_QUERY_KEYS } from "@shared/query-keys";
 
 // Property selection state management interface
 interface PropertySelectionState {
@@ -53,15 +53,41 @@ export default function PropertyInput() {
   // Scraping status tracking
   const [scrapingStatuses, setScrapingStatuses] = useState<Record<string, ScrapingStatus>>({});
   
-  // Form dialog state
-  const [isFormDialogOpen, setIsFormDialogOpen] = useState(false);
-  
   // Modal state for scraping progress
   const [showScrapingModal, setShowScrapingModal] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+
+  // Fetch subject properties
+  const { data: subjectProperties = [], isLoading: isLoadingSubjects } = useQuery<PropertyProfile[]>({
+    queryKey: PROPERTY_PROFILE_QUERY_KEYS.byType('subject'),
+  });
+
+  // Fetch competitor properties
+  const { data: competitorProperties = [], isLoading: isLoadingCompetitors } = useQuery<PropertyProfile[]>({
+    queryKey: PROPERTY_PROFILE_QUERY_KEYS.byType('competitor'),
+  });
+
+  const isLoading = isLoadingSubjects || isLoadingCompetitors;
+
+  // Calculate selection counts
+  const selectedSubjects = subjectProperties.filter(p => propertySelection.selectedPropertyIds.includes(p.id)).length;
+  const selectedCompetitors = competitorProperties.filter(p => propertySelection.selectedPropertyIds.includes(p.id)).length;
   
-  // Form reference for resetting
-  const formRef = useRef<PropertyProfileFormRef>(null);
+  const counts = {
+    subjects: selectedSubjects,
+    competitors: selectedCompetitors,
+    total: selectedSubjects + selectedCompetitors
+  };
+  
+  // Update selection counts in state when they change
+  useEffect(() => {
+    setPropertySelection(prev => ({
+      ...prev,
+      subjectCount: selectedSubjects,
+      competitorCount: selectedCompetitors,
+      totalCount: selectedSubjects + selectedCompetitors
+    }));
+  }, [selectedSubjects, selectedCompetitors]);
 
   // Handle 401 authentication errors
   const handleAuthError = (error: any, actionName: string) => {
@@ -84,53 +110,6 @@ export default function PropertyInput() {
     }
     return false;
   };
-
-  // Create property profile mutation
-  const createPropertyProfileMutation = useMutation({
-    mutationFn: async (data: InsertPropertyProfile): Promise<PropertyProfile> => {
-      const res = await apiRequest("POST", "/api/property-profiles", data);
-      return res.json();
-    },
-    onSuccess: (newProperty) => {
-      // Invalidate queries to refresh the sidebar using correct query keys
-      const invalidationKeys = getPropertyProfileInvalidationKeys(newProperty.profileType as 'subject' | 'competitor');
-      invalidationKeys.forEach(queryKey => {
-        queryClient.invalidateQueries({ queryKey });
-      });
-      
-      // Auto-select the newly created property
-      handlePropertySelectionChange(newProperty.id, true);
-      
-      // Start scraping for the new property if it has a URL
-      if (newProperty.url) {
-        startScrapingMutation.mutate(newProperty.id);
-      }
-      
-      // Reset form for next property creation
-      formRef.current?.resetForm();
-      
-      setIsFormDialogOpen(false);
-      
-      toast({
-        title: "Property Profile Created",
-        description: `${newProperty.name} has been added successfully and auto-selected.`,
-      });
-    },
-    onError: (error) => {
-      console.error("Error creating property profile:", error);
-      
-      // Handle 401 authentication errors
-      if (handleAuthError(error, "create property profiles")) {
-        return;
-      }
-      
-      toast({
-        title: "Creation Failed",
-        description: "Failed to create property profile. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
 
   // Start scraping mutation
   const startScrapingMutation = useMutation({
@@ -255,20 +234,25 @@ export default function PropertyInput() {
     });
   }, []);
 
-  // Handle selection counts updates from sidebar
-  const handleSelectionCountsChange = useCallback((counts: { subjects: number; competitors: number; total: number }) => {
-    setPropertySelection(prev => ({
-      ...prev,
-      subjectCount: counts.subjects,
-      competitorCount: counts.competitors,
-      totalCount: counts.total
-    }));
-  }, []);
+  // Select/deselect all properties of a type
+  const handleSelectAllType = useCallback((type: 'subject' | 'competitor', selectAll: boolean) => {
+    const properties = type === 'subject' ? subjectProperties : competitorProperties;
+    
+    properties.forEach(property => {
+      const isCurrentlySelected = propertySelection.selectedPropertyIds.includes(property.id);
+      if (selectAll && !isCurrentlySelected) {
+        handlePropertySelectionChange(property.id, true);
+      } else if (!selectAll && isCurrentlySelected) {
+        handlePropertySelectionChange(property.id, false);
+      }
+    });
+  }, [subjectProperties, competitorProperties, propertySelection.selectedPropertyIds, handlePropertySelectionChange]);
 
-  // Handle form submission
-  const handleFormSubmit = (data: InsertPropertyProfile) => {
-    createPropertyProfileMutation.mutate(data);
-  };
+  // Check if all properties of a type are selected
+  const areAllSelected = useCallback((type: 'subject' | 'competitor'): boolean => {
+    const properties = type === 'subject' ? subjectProperties : competitorProperties;
+    return properties.length > 0 && properties.every(p => propertySelection.selectedPropertyIds.includes(p.id));
+  }, [subjectProperties, competitorProperties, propertySelection.selectedPropertyIds]);
 
   // Handle analysis start with proper validation
   const handleStartAnalysis = () => {
@@ -335,137 +319,267 @@ export default function PropertyInput() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Property Analysis Setup</h1>
           <p className="text-muted-foreground">
-            {isAuthenticated 
-              ? "Select properties and add new ones to create comprehensive market analysis"
-              : "Explore existing property data and discover market insights"}
+            Select properties to include in your comprehensive market analysis
           </p>
         </div>
         
-        {propertySelection.totalCount > 0 && (
-          <div className="flex items-center gap-3">
-            <Badge variant="default" className="px-3 py-1" data-testid="badge-total-selected">
-              {propertySelection.totalCount} Selected
-            </Badge>
-            <Button
-              onClick={handleStartAnalysis}
-              disabled={createAnalysisSessionMutation.isPending}
-              data-testid="button-start-analysis"
-              className={`shrink-0 ${!createAnalysisSessionMutation.isPending ? 'animate-glow' : ''}`}
-            >
-              <Play className="h-4 w-4 mr-2" />
-              {createAnalysisSessionMutation.isPending ? "Starting..." : `Analyze Selected Properties (${propertySelection.totalCount})`}
-            </Button>
-          </div>
-        )}
+        <div className="flex items-center gap-3">
+          {/* Add Property Button */}
+          <Button
+            variant="outline"
+            onClick={() => setLocation('/property-profiles')}
+            data-testid="button-add-property"
+            className="shrink-0"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Property
+          </Button>
+          
+          {/* Analyze Button */}
+          {propertySelection.totalCount > 0 && (
+            <>
+              <Badge variant="default" className="px-3 py-1" data-testid="badge-total-selected">
+                {propertySelection.totalCount} Selected
+              </Badge>
+              <Button
+                onClick={handleStartAnalysis}
+                disabled={createAnalysisSessionMutation.isPending}
+                data-testid="button-start-analysis"
+                className={`shrink-0 ${!createAnalysisSessionMutation.isPending ? 'animate-glow' : ''}`}
+              >
+                <Play className="h-4 w-4 mr-2" />
+                {createAnalysisSessionMutation.isPending ? "Starting..." : `Analyze Selected Properties`}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
 
-      {/* Main Layout: Sidebar + Form Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Sidebar - Property Selection (1/3 on desktop) */}
-        <div className="lg:col-span-1">
-          <PropertySidebar
-            selectedPropertyIds={propertySelection.selectedPropertyIds}
-            onPropertySelectionChange={handlePropertySelectionChange}
-            onSelectionCountsChange={handleSelectionCountsChange}
-            className="sticky top-6"
-          />
-        </div>
-
-        {/* Right Panel - Quick Add Form (2/3 on desktop) */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Quick Add Property Form */}
-          <Card data-testid="quick-add-form-card">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Plus className="h-5 w-5" />
-                {isAuthenticated ? "Add New Property Profile" : "Add Property Profile (Sign In Required)"}
-              </CardTitle>
-              <p className="text-sm text-muted-foreground">
-                {isAuthenticated 
-                  ? "Add a new property profile to expand your analysis. Properties are automatically selected when created."
-                  : "To create and save property profiles, you'll need to sign in to your account."}
-              </p>
-            </CardHeader>
-            <CardContent>
-              {!isAuthenticated ? (
-                <div className="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-6 text-center space-y-4">
-                  <Lock className="h-12 w-12 text-gray-400 mx-auto" />
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-2">Create Account to Add Properties</h3>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">
-                      Sign in to create property profiles, save your analysis, and access portfolio management features.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <PropertyProfileForm
-                  ref={formRef}
-                  onSubmit={handleFormSubmit}
-                  onCancel={() => {}} // No cancel needed in this context
-                  isLoading={createPropertyProfileMutation.isPending}
-                />
+      {/* Main Property Grid */}
+      <div className="space-y-8">
+        {/* Subject Properties Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Target className="h-5 w-5 text-blue-600" />
+              <h2 className="text-xl font-semibold">Subject Properties</h2>
+              <Badge variant="secondary" data-testid="badge-subject-count">
+                {subjectProperties.length} available
+              </Badge>
+              {counts.subjects > 0 && (
+                <Badge variant="outline" className="text-xs" data-testid="badge-subject-selected">
+                  {counts.subjects} selected
+                </Badge>
               )}
-            </CardContent>
-          </Card>
-
-          {/* Scraping Status Display */}
-          {Object.keys(scrapingStatuses).length > 0 && (
-            <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950" data-testid="scraping-status-card">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
-                  <Database className="h-5 w-5" />
-                  Property Data Scraping
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {Object.values(scrapingStatuses).map((status) => (
-                  <div
-                    key={status.propertyId}
-                    className="flex items-center gap-3 p-3 bg-white dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-800"
-                    data-testid={`scraping-status-${status.propertyId}`}
-                  >
-                    {status.status === 'processing' && (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                    )}
-                    {status.status === 'completed' && (
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                    )}
-                    {status.status === 'failed' && (
-                      <AlertCircle className="h-4 w-4 text-red-600" />
-                    )}
-                    
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{status.propertyName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {status.message || `Status: ${status.status}`}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+            </div>
+            
+            {subjectProperties.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSelectAllType('subject', true)}
+                  disabled={areAllSelected('subject')}
+                  data-testid="button-select-all-subjects"
+                >
+                  <CheckSquare className="h-4 w-4 mr-1" />
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSelectAllType('subject', false)}
+                  disabled={counts.subjects === 0}
+                  data-testid="button-deselect-all-subjects"
+                >
+                  <Square className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
+            )}
+          </div>
+          
+          {isLoadingSubjects ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-48" />
+              ))}
+            </div>
+          ) : subjectProperties.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="text-center py-12">
+                <Target className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-medium mb-2">No Subject Properties Available</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add your first subject property to start analyzing your portfolio
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation('/property-profiles')}
+                  data-testid="button-add-first-subject"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Subject Property
+                </Button>
               </CardContent>
             </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {subjectProperties.map((property) => (
+                <PropertyCheckboxCard
+                  key={property.id}
+                  property={property}
+                  isSelected={propertySelection.selectedPropertyIds.includes(property.id)}
+                  onSelectionChange={handlePropertySelectionChange}
+                  showDistance={false}
+                  data-testid={`subject-property-${property.id}`}
+                />
+              ))}
+            </div>
           )}
+        </div>
 
-          {/* Quick Start Guide */}
-          <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800" data-testid="quick-start-guide">
-            <CardContent className="p-6">
-              <div className="flex items-start gap-4">
-                <Building2 className="text-blue-600 mt-1 h-6 w-6 shrink-0" />
-                <div>
-                  <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">How to Get Started:</h4>
-                  <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
-                    <li><strong>Add Properties:</strong> Use the form to add subject and competitor properties</li>
-                    <li><strong>Select for Analysis:</strong> Check properties in the sidebar to include them</li>
-                    <li><strong>Auto-Scraping:</strong> Properties with URLs are automatically scraped for data</li>
-                    <li><strong>Start Analysis:</strong> Click "Start Analysis" when you have properties selected</li>
-                    <li><strong>Review Results:</strong> Analyze competitive positioning and pricing insights</li>
-                  </ul>
-                </div>
+        <Separator />
+
+        {/* Competitor Properties Section */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Users className="h-5 w-5 text-orange-600" />
+              <h2 className="text-xl font-semibold">Competitor Properties</h2>
+              <Badge variant="secondary" data-testid="badge-competitor-count">
+                {competitorProperties.length} available
+              </Badge>
+              {counts.competitors > 0 && (
+                <Badge variant="outline" className="text-xs" data-testid="badge-competitor-selected">
+                  {counts.competitors} selected
+                </Badge>
+              )}
+            </div>
+            
+            {competitorProperties.length > 0 && (
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSelectAllType('competitor', true)}
+                  disabled={areAllSelected('competitor')}
+                  data-testid="button-select-all-competitors"
+                >
+                  <CheckSquare className="h-4 w-4 mr-1" />
+                  Select All
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleSelectAllType('competitor', false)}
+                  disabled={counts.competitors === 0}
+                  data-testid="button-deselect-all-competitors"
+                >
+                  <Square className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
               </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
+          
+          {isLoadingCompetitors ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <Skeleton key={i} className="h-48" />
+              ))}
+            </div>
+          ) : competitorProperties.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="text-center py-12">
+                <Users className="h-12 w-12 mx-auto mb-3 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-medium mb-2">No Competitor Properties Available</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Add competitor properties to compare against your portfolio
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={() => setLocation('/property-profiles')}
+                  data-testid="button-add-first-competitor"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Competitor Property
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {competitorProperties.map((property) => (
+                <PropertyCheckboxCard
+                  key={property.id}
+                  property={property}
+                  isSelected={propertySelection.selectedPropertyIds.includes(property.id)}
+                  onSelectionChange={handlePropertySelectionChange}
+                  showDistance={false}
+                  data-testid={`competitor-property-${property.id}`}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Scraping Status Display */}
+      {Object.keys(scrapingStatuses).length > 0 && (
+        <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950" data-testid="scraping-status-card">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+              <Database className="h-5 w-5" />
+              Property Data Scraping
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {Object.values(scrapingStatuses).map((status) => (
+              <div
+                key={status.propertyId}
+                className="flex items-center gap-3 p-3 bg-white dark:bg-blue-900 rounded-lg border border-blue-200 dark:border-blue-800"
+                data-testid={`scraping-status-${status.propertyId}`}
+              >
+                {status.status === 'processing' && (
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                )}
+                {status.status === 'completed' && (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                )}
+                {status.status === 'failed' && (
+                  <AlertCircle className="h-4 w-4 text-red-600" />
+                )}
+                
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{status.propertyName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {status.message || `Status: ${status.status}`}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Start Guide */}
+      <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950 dark:to-indigo-950 border-blue-200 dark:border-blue-800" data-testid="quick-start-guide">
+        <CardContent className="p-6">
+          <div className="flex items-start gap-4">
+            <Building2 className="text-blue-600 mt-1 h-6 w-6 shrink-0" />
+            <div>
+              <h4 className="font-medium text-blue-900 dark:text-blue-100 mb-2">How to Get Started:</h4>
+              <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1 list-disc list-inside">
+                <li><strong>Add Properties:</strong> Click "Add Property" to create subject and competitor profiles</li>
+                <li><strong>Select for Analysis:</strong> Use the checkboxes to select properties for comparison</li>
+                <li><strong>Auto-Scraping:</strong> Properties with URLs are automatically scraped for unit data</li>
+                <li><strong>Start Analysis:</strong> Click "Analyze Selected Properties" when ready</li>
+                <li><strong>Review Results:</strong> Explore competitive positioning and pricing insights</li>
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
       
       {/* Scraping Progress Modal */}
       <ScrapingProgressModal
