@@ -4,7 +4,6 @@ import { Home, BarChart3, TrendingUp, DollarSign, Building2, Grid3X3, PieChart, 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import WorkflowProgress from "@/components/workflow-progress";
 
 interface NavigationItem {
   name: string;
@@ -419,8 +418,6 @@ export default function Sidebar() {
             </Alert>
           </div>
         )}
-        
-        <WorkflowProgress />
       </nav>
     </div>
   );
