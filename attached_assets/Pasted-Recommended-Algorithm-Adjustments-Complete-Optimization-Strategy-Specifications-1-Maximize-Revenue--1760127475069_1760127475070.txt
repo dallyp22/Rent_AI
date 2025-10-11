@@ -1,0 +1,303 @@
+Recommended Algorithm Adjustments
+Complete Optimization Strategy Specifications
+1. Maximize Revenue Strategy
+Goal: Optimize for highest possible revenue while maintaining acceptable occupancy
+Parameters:
+
+Target Occupancy: 85%
+Risk Level: 3 (Aggressive)
+Primary Metric: Annual Revenue Impact
+
+AI Prompt Guidelines:
+OPTIMIZATION GOAL: MAXIMIZE REVENUE
+
+PRIMARY OBJECTIVE: Maximize rental revenue across the portfolio
+TARGET OCCUPANCY: 85% (willing to accept some vacancy for higher rents)
+PRICING STRATEGY: Aggressive - pursue premium pricing where market supports it
+RISK TOLERANCE: Level 3 (substantial changes acceptable)
+
+PRICING RULES:
+1. Recommend price increases when:
+   - Unit is priced below market average (any amount)
+   - Competition exists and property has competitive advantages (location, amenities, condition)
+   - Historical occupancy for unit type is >85%
+   - Market shows ability to absorb higher prices
+
+2. Magnitude of increases:
+   - Strong market position: Up to 10-15% increases
+   - Average market position: 5-10% increases
+   - Weak market position: 2-5% increases
+
+3. Recommend price decreases ONLY when:
+   - Unit has been vacant >60 days
+   - Unit is priced >20% above market average
+   - Occupancy for that unit type is <70%
+   - Decrease would generate faster lease-up with better annual revenue
+
+4. Unit-type competition analysis:
+   - If NO competition exists for unit type: Allow 15-20% premium over similar sized units
+   - If LIMITED competition (<3 competitors): Allow 10-15% premium
+   - If STRONG competition (>5 competitors): Stay within 5% of market average
+
+5. Consider turnover costs:
+   - Vacant units should prioritize lease-up after 45 days
+   - Balance higher rents against extended vacancy costs
+   - Factor in $1,500-2,500 turnover costs per unit
+
+CONFIDENCE LEVELS:
+- HIGH confidence: Strong market data, clear competitive position, recent comps
+- MEDIUM confidence: Limited market data, unclear trends, older comps
+- LOW confidence: Minimal market data, unique unit types, volatile market
+
+OUTPUT REQUIREMENTS:
+For each unit provide:
+- Recommended rent (specific dollar amount)
+- Change from current rent (dollar and percentage)
+- Annual impact calculation
+- Confidence level (High/Medium/Low)
+- Reasoning (2-3 sentences explaining the recommendation)
+- Market average for comparison
+- Expected days to lease at recommended price
+
+Portfolio-level provide:
+- Total annual revenue increase potential
+- Number of units recommended for increase vs decrease
+- Average percentage change
+- Risk assessment
+- Market positioning summary
+
+2. Maximize Occupancy Strategy
+Goal: Achieve highest possible occupancy with competitive pricing
+Parameters:
+
+Target Occupancy: 98%
+Risk Level: 1 (Conservative)
+Primary Metric: Occupancy Rate & Lease-Up Speed
+
+AI Prompt Guidelines:
+OPTIMIZATION GOAL: MAXIMIZE OCCUPANCY
+
+PRIMARY OBJECTIVE: Achieve and maintain 98% occupancy
+TARGET OCCUPANCY: 98% (prioritize keeping units filled)
+PRICING STRATEGY: Conservative - competitive pricing to attract and retain tenants
+RISK TOLERANCE: Level 1 (minimal changes, stability preferred)
+
+PRICING RULES:
+1. Default approach - FAVOR DECREASES OR MINIMAL CHANGES:
+   - Occupied units: Recommend <3% increases maximum
+   - Vacant units: Recommend decreases to accelerate lease-up
+
+2. Recommend price INCREASES only when ALL conditions met:
+   - Unit is significantly underpriced (>15% below market average)
+   - AND no direct competition exists for that unit type
+   - AND current occupancy for that unit type is >95%
+   - AND increase is <5%
+
+3. Recommend price DECREASES when:
+   - Unit has been vacant >30 days: 3-5% decrease
+   - Unit has been vacant >45 days: 5-8% decrease
+   - Unit has been vacant >60 days: 8-12% decrease
+   - Unit is priced above market average (any amount): Match or go 2-3% below market
+   - Occupancy for unit type is <92%: Decrease to market average or below
+
+4. Pricing positioning:
+   - TARGET: 5-10% below market average for fastest lease-up
+   - Never price above market average unless no competition exists
+   - For competitive unit types: Match lowest competitor or go 2-3% below
+
+5. Unit-type competition analysis:
+   - If NO competition for unit type: Can price at market average (no premium)
+   - If LIMITED competition: Price at or slightly below average
+   - If STRONG competition: Price 5-10% below average for competitive advantage
+
+6. Seasonal adjustments:
+   - Peak season (May-August): Can be less aggressive with decreases
+   - Off-season (Nov-Feb): Be more aggressive with competitive pricing
+   - Consider local market timing
+
+CONFIDENCE LEVELS:
+- HIGH confidence: Recent comparable leases, clear market positioning
+- MEDIUM confidence: Some market uncertainty, mixed signals
+- LOW confidence: Limited data, unique circumstances
+
+OUTPUT REQUIREMENTS:
+For each unit provide:
+- Recommended rent (specific dollar amount)
+- Change from current rent (dollar and percentage)
+- Expected impact on lease-up speed
+- Confidence level (High/Medium/Low)
+- Reasoning emphasizing occupancy impact
+- Market average for comparison
+- Estimated days to lease at recommended price vs current price
+
+Portfolio-level provide:
+- Projected occupancy rate at recommended pricing
+- Number of units expected to lease faster
+- Average days to lease improvement
+- Revenue impact (acknowledge potential revenue trade-off)
+- Competitive positioning summary
+
+3. Balanced Strategy
+Goal: Optimize for both revenue and occupancy in equilibrium
+Parameters:
+
+Target Occupancy: 92%
+Risk Level: 2 (Moderate)
+Primary Metric: Revenue per Available Unit (RevPAU)
+
+AI Prompt Guidelines:
+OPTIMIZATION GOAL: BALANCED APPROACH
+
+PRIMARY OBJECTIVE: Balance revenue optimization with strong occupancy
+TARGET OCCUPANCY: 92% (optimal economic occupancy)
+PRICING STRATEGY: Moderate - strategic pricing based on market position
+RISK TOLERANCE: Level 2 (moderate changes, calculated risk)
+
+PRICING PHILOSOPHY:
+Revenue Per Available Unit (RevPAU) = Average Rent × Occupancy Rate
+Optimize this formula by finding the sweet spot between rent and occupancy
+
+PRICING RULES:
+1. Recommend price INCREASES when:
+   - Unit is underpriced (>10% below market average)
+   - Unit type occupancy is >90%
+   - Property has competitive advantages (location, condition, amenities)
+   - Increase magnitude: 5-8% maximum
+
+2. Recommend price DECREASES when:
+   - Unit has been vacant >45 days: 5-7% decrease
+   - Unit is overpriced (>10% above market average): Match market
+   - Unit type occupancy is <85%: Decrease 3-5%
+   - Revenue loss from vacancy exceeds revenue gain from higher rent
+
+3. MAINTAIN current pricing when:
+   - Unit is within ±10% of market average
+   - Unit type occupancy is 88-95%
+   - Recent lease-up was within acceptable timeframe (30-45 days)
+   - No significant market changes detected
+
+4. Unit-type competition analysis:
+   - NO competition: Allow 5-10% premium over market average
+   - LIMITED competition: Match market average or 2-3% premium
+   - STRONG competition: Match market average or 0-5% below if needed
+
+5. Economic occupancy analysis:
+   For each recommendation calculate:
+   - Current annual revenue: Current Rent × Expected Occupancy Days
+   - Proposed annual revenue: New Rent × Expected Occupancy Days
+   - Only recommend changes that improve annual revenue
+
+6. Market timing considerations:
+   - Consider seasonal demand patterns
+   - Account for local market velocity
+   - Factor in upcoming lease expirations and renewal timing
+
+CONFIDENCE LEVELS:
+- HIGH confidence: Strong data supporting RevPAU improvement
+- MEDIUM confidence: Reasonable data, some assumptions required
+- LOW confidence: Limited data, uncertain market conditions
+
+OUTPUT REQUIREMENTS:
+For each unit provide:
+- Recommended rent (specific dollar amount)
+- Change from current rent (dollar and percentage)
+- Annual revenue impact
+- Expected occupancy impact
+- RevPAU calculation (current vs. proposed)
+- Confidence level (High/Medium/Low)
+- Reasoning balancing revenue and occupancy factors
+- Market average for comparison
+- Break-even analysis (days vacant where higher rent = lower revenue)
+
+Portfolio-level provide:
+- Total RevPAU improvement
+- Number of increases vs decreases vs no changes
+- Average percentage change
+- Projected occupancy rate
+- Total annual revenue impact
+- Risk assessment
+- Market positioning summary
+
+4. Custom Strategy
+Goal: User-defined optimization with custom parameters
+Parameters:
+
+Target Occupancy: User-specified (0-100%)
+Risk Level: User-specified (1-3)
+Custom Goals: User-defined priorities
+
+AI Prompt Guidelines:
+OPTIMIZATION GOAL: CUSTOM STRATEGY
+
+USER-DEFINED PARAMETERS:
+- Target Occupancy: [USER_INPUT]%
+- Risk Tolerance: Level [USER_INPUT] (1=Conservative, 2=Moderate, 3=Aggressive)
+- Custom Priority: [USER_INPUT - e.g., "Focus on 2BR units", "Prepare for seasonal turnover", "Match specific competitor"]
+- Additional Constraints: [USER_INPUT]
+
+DYNAMIC PRICING RULES:
+Adjust recommendations based on user parameters:
+
+1. Risk Level Interpretation:
+   - Level 1 (Conservative):
+     * Maximum change: ±5%
+     * Favor stability and occupied units
+     * Require strong market data for changes
+   
+   - Level 2 (Moderate):
+     * Maximum change: ±8%
+     * Balance between revenue and stability
+     * Accept reasonable market-based changes
+   
+   - Level 3 (Aggressive):
+     * Maximum change: ±15%
+     * Pursue opportunities aggressively
+     * Accept calculated risks for higher returns
+
+2. Target Occupancy Interpretation:
+   - If target >95%: Apply conservative pricing, favor decreases
+   - If target 90-95%: Apply moderate pricing, balance increases/decreases
+   - If target 85-90%: Apply moderate-aggressive pricing, favor revenue
+   - If target <85%: Apply aggressive pricing, maximize revenue per occupied unit
+
+3. Custom priority integration:
+   Analyze user's custom goals and incorporate into recommendations:
+   - Unit type focus: Prioritize specified bedroom counts
+   - Competitor matching: Reference specific competitor pricing
+   - Seasonal preparation: Adjust for upcoming market changes
+   - Renewal focus: Consider upcoming lease expirations
+   - Specific property focus: Weight recommendations toward specified properties
+
+4. Unit-type competition analysis:
+   - Apply competition logic consistent with risk level
+   - Adjust premiums/discounts based on target occupancy
+   - Consider custom priorities in competitive positioning
+
+5. Calculation methodology:
+   - Calculate expected impact using user's target occupancy
+   - Project revenue based on user's risk tolerance
+   - Factor in custom constraints throughout analysis
+
+CONFIDENCE LEVELS:
+- HIGH confidence: Parameters align with market conditions, strong data
+- MEDIUM confidence: Some tension between parameters and market, adequate data
+- LOW confidence: Parameters challenging given market conditions, limited data
+
+OUTPUT REQUIREMENTS:
+For each unit provide:
+- Recommended rent (specific dollar amount)
+- Change from current rent (dollar and percentage)
+- Impact relative to user's goals (occupancy/revenue/custom)
+- Confidence level (High/Medium/Low)
+- Reasoning explaining how recommendation serves user's custom parameters
+- Market average for comparison
+- Notes on any conflicts between user goals and market conditions
+
+Portfolio-level provide:
+- Projected achievement of target occupancy
+- Revenue impact based on user's risk tolerance
+- How recommendations align with custom priorities
+- Number of increases vs decreases
+- Risk assessment relative to user's tolerance
+- Recommendations for adjusting parameters if goals conflict
+- Market positioning summary
