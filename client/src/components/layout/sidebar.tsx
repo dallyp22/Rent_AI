@@ -312,28 +312,30 @@ export default function Sidebar() {
               'optimize': 'text-purple-700 dark:text-purple-300'
             };
             
-            // Add phase label for non-Select items
+            // Add phase label for all items
             const phaseLabels = {
-              'summarize': 'Phase 2',
-              'analyze': 'Phase 3', 
-              'optimize': 'Phase 4'
+              'select': 'Phase 1: Select',
+              'summarize': 'Phase 2: Summarize',
+              'analyze': 'Phase 3: Analyze', 
+              'optimize': 'Phase 4: Optimize'
             };
             
             return (
               <div key={item.name} className="relative">
                 {/* Phase indicator and wrapper */}
-                {itemPhase !== 'select' && index > 0 && (
+                {index > 0 && (
                   <div className="mb-2">
                     {/* Phase separator */}
                     <div className="h-px bg-border mb-3" />
-                    {/* Phase label */}
-                    <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
-                      {phaseLabels[itemPhase]}
-                    </div>
                   </div>
                 )}
                 
-                <div className={`relative ${isPhaseActive && itemPhase !== 'select' ? 'rounded-lg p-2 -m-2 ' + phaseColors[itemPhase] : ''}`}>
+                {/* Phase label for all phases */}
+                <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
+                  {phaseLabels[itemPhase]}
+                </div>
+                
+                <div className={`relative ${isPhaseActive ? 'rounded-lg p-2 -m-2 ' + phaseColors[itemPhase] : ''}`}>
                   {/* Phase active indicator bar */}
                   {isPhaseActive && (
                     <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l ${phaseBorderColors[itemPhase]}`} />
