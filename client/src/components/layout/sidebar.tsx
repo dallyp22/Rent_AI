@@ -28,6 +28,16 @@ export default function Sidebar() {
   
   const propertyId = extractPropertyId(location);
   
+  // Determine current phase based on location
+  const getCurrentPhase = (): 'select' | 'summarize' | 'analyze' | 'optimize' => {
+    if (location.includes('/summarize')) return 'summarize';
+    if (location.includes('/analyze')) return 'analyze';
+    if (location.includes('/optimize')) return 'optimize';
+    return 'select';
+  };
+  
+  const currentPhase = getCurrentPhase();
+  
   // Generate navigation with dynamic property IDs and auth requirements
   const navigation: NavigationItem[] = [
     { 
@@ -112,8 +122,8 @@ export default function Sidebar() {
       </div>
       
       <nav className="flex-1 p-4" data-testid="main-navigation">
-        <div className="space-y-1">
-          {navigation.map((item) => {
+        <div className="space-y-4">
+          {navigation.map((item, index) => {
             const renderNavigationItem = (navItem: NavigationItem, isChild = false) => {
               const Icon = navItem.icon;
               const isExpanded = expandedItems.has(navItem.name);
@@ -268,7 +278,73 @@ export default function Sidebar() {
               );
             };
             
-            return renderNavigationItem(item);
+            // Determine the phase for this navigation item
+            const getItemPhase = (navItem: NavigationItem): 'select' | 'summarize' | 'analyze' | 'optimize' => {
+              if (navItem.name === "Select Properties") return 'select';
+              if (navItem.name === "Summarize") return 'summarize';
+              if (navItem.name === "Analyze") return 'analyze';
+              if (navItem.name === "Optimize") return 'optimize';
+              return 'select';
+            };
+            
+            const itemPhase = getItemPhase(item);
+            const isPhaseActive = currentPhase === itemPhase;
+            
+            // Phase indicator colors
+            const phaseColors = {
+              'select': 'border-blue-500 bg-blue-50 dark:bg-blue-950',
+              'summarize': 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950',
+              'analyze': 'border-amber-500 bg-amber-50 dark:bg-amber-950',
+              'optimize': 'border-purple-500 bg-purple-50 dark:bg-purple-950'
+            };
+            
+            const phaseBorderColors = {
+              'select': 'border-blue-500',
+              'summarize': 'border-emerald-500',
+              'analyze': 'border-amber-500',
+              'optimize': 'border-purple-500'
+            };
+            
+            const phaseTextColors = {
+              'select': 'text-blue-700 dark:text-blue-300',
+              'summarize': 'text-emerald-700 dark:text-emerald-300',
+              'analyze': 'text-amber-700 dark:text-amber-300',
+              'optimize': 'text-purple-700 dark:text-purple-300'
+            };
+            
+            // Add phase label for non-Select items
+            const phaseLabels = {
+              'summarize': 'Phase 2',
+              'analyze': 'Phase 3', 
+              'optimize': 'Phase 4'
+            };
+            
+            return (
+              <div key={item.name} className="relative">
+                {/* Phase indicator and wrapper */}
+                {itemPhase !== 'select' && index > 0 && (
+                  <div className="mb-2">
+                    {/* Phase separator */}
+                    <div className="h-px bg-border mb-3" />
+                    {/* Phase label */}
+                    <div className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isPhaseActive ? phaseTextColors[itemPhase] : 'text-muted-foreground'}`}>
+                      {phaseLabels[itemPhase]}
+                    </div>
+                  </div>
+                )}
+                
+                <div className={`relative ${isPhaseActive && itemPhase !== 'select' ? 'rounded-lg p-2 -m-2 ' + phaseColors[itemPhase] : ''}`}>
+                  {/* Phase active indicator bar */}
+                  {isPhaseActive && (
+                    <div className={`absolute left-0 top-0 bottom-0 w-1 rounded-l ${phaseBorderColors[itemPhase]}`} />
+                  )}
+                  
+                  <div className={isPhaseActive ? 'ml-2' : ''}>
+                    {renderNavigationItem(item)}
+                  </div>
+                </div>
+              </div>
+            );
           })}
         </div>
         
