@@ -12,8 +12,8 @@ export default function AuthCallback() {
     // Clear the stored redirect path
     sessionStorage.removeItem('auth_redirect_path');
     
-    // Navigate to the intended destination or default to portfolio dashboard
-    const targetPath = redirectPath || '/portfolio-dashboard';
+    // Navigate to the intended destination or default to property profiles
+    const targetPath = redirectPath || '/property-profiles';
     
     // Use a small delay to ensure the auth state has been updated
     setTimeout(() => {
