@@ -334,24 +334,6 @@ export default function PropertyInput() {
             <Plus className="h-4 w-4 mr-2" />
             Add Property
           </Button>
-          
-          {/* Analyze Button */}
-          {propertySelection.totalCount > 0 && (
-            <>
-              <Badge variant="default" className="px-3 py-1" data-testid="badge-total-selected">
-                {propertySelection.totalCount} Selected
-              </Badge>
-              <Button
-                onClick={handleStartAnalysis}
-                disabled={createAnalysisSessionMutation.isPending}
-                data-testid="button-start-analysis"
-                className={`shrink-0 ${!createAnalysisSessionMutation.isPending ? 'animate-glow' : ''}`}
-              >
-                <Play className="h-4 w-4 mr-2" />
-                {createAnalysisSessionMutation.isPending ? "Starting..." : `Analyze Selected Properties`}
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
@@ -523,6 +505,33 @@ export default function PropertyInput() {
           )}
         </div>
       </div>
+
+      {/* Centered Analysis Action Area */}
+      {propertySelection.totalCount > 0 && (
+        <div className="flex justify-center py-8">
+          <div className="flex flex-col items-center gap-4">
+            <div className="flex items-center gap-3">
+              <Badge variant="default" className="px-4 py-2 text-lg" data-testid="badge-total-selected">
+                <CheckCircle className="h-4 w-4 mr-2" />
+                {propertySelection.totalCount} Properties Selected
+              </Badge>
+            </div>
+            <div className="text-center text-sm text-muted-foreground mb-2">
+              {propertySelection.subjectCount} {propertySelection.subjectCount === 1 ? 'subject' : 'subjects'} • {propertySelection.competitorCount} {propertySelection.competitorCount === 1 ? 'competitor' : 'competitors'}
+            </div>
+            <Button
+              size="lg"
+              onClick={handleStartAnalysis}
+              disabled={createAnalysisSessionMutation.isPending}
+              data-testid="button-start-analysis"
+              className={`${!createAnalysisSessionMutation.isPending ? 'animate-glow' : ''}`}
+            >
+              <Play className="h-5 w-5 mr-2" />
+              {createAnalysisSessionMutation.isPending ? "Starting Analysis..." : "Analyze Selected Properties"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Scraping Status Display */}
       {Object.keys(scrapingStatuses).length > 0 && (
