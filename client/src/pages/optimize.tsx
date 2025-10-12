@@ -787,44 +787,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
           </Badge>
         </div>
-
-        {/* Portfolio Properties Summary for Session Mode */}
-        {isSessionMode && sessionData && (
-          <Card className="mt-4">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center space-x-2">
-                <BarChart3 className="h-4 w-4" />
-                <span>Portfolio Optimization Overview</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
-                <div className="text-center">
-                  <div className="font-semibold text-blue-600 dark:text-blue-400">{subjectProperties.length}</div>
-                  <div className="text-muted-foreground">Properties</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-semibold text-green-600 dark:text-green-400">
-                    {subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0)}
-                  </div>
-                  <div className="text-muted-foreground">Total Units</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-semibold text-orange-600 dark:text-orange-400">
-                    {optimizationQuery.data ? Object.keys(optimizationQuery.data.portfolio || {}).length : 0}
-                  </div>
-                  <div className="text-muted-foreground">Optimized Properties</div>
-                </div>
-                <div className="text-center">
-                  <div className="font-semibold text-purple-600 dark:text-purple-400">
-                    ${optimizationQuery.data?.report?.totalIncrease || '0'}
-                  </div>
-                  <div className="text-muted-foreground">Portfolio Impact</div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
       <div className="bg-card rounded-lg border border-border p-6">
