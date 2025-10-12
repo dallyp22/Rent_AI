@@ -7,6 +7,15 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 ## Recent Changes
 
 ### October 12, 2025 (Latest)
+- **Fixed Market Position Gauge to Show Accurate Session Data**: Market Position Gauge now displays transparent, data-driven calculations
+  - Simplified percentile rank calculation to use pure rent comparisons without complex adjustments
+  - Fixed pricing power score with transparent formula: 40% percentile, 30% price difference, 30% occupancy
+  - Simplified market position text to clear 3-tier system: Below Market (0-33%), At Market (34-66%), Above Market (67-100%)
+  - Added data transparency fields: dataPointsUsed, actual average rents, and comparison notes
+  - Special handling for small datasets: "Insufficient Data" for 0 competitors, exact position for 1-2 competitors
+  - Removed all randomization and complex scoring adjustments that obscured real market comparisons
+
+### October 12, 2025 (Earlier)
 - **Fixed Availability Date Display in Optimize Section**: Availability dates now properly flow from Summarize to Optimize and Excel export
   - Enhanced optimization API endpoints to preserve availabilityDate field for both session and property-based flows
   - Fixed formatAvailability logic in OptimizationTable to prioritize specific dates over "Available Now"
