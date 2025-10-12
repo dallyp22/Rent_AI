@@ -4860,116 +4860,57 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         3: 'High'
       };
 
-      // Build market context string
-      let marketContextStr = '';
-      if (marketAverages.size > 0) {
-        marketContextStr = 'Market Averages by Unit Type:\n';
-        for (const [unitType, stats] of Array.from(marketAverages.entries())) {
-          marketContextStr += `- ${unitType}: $${stats.avg}/month (based on ${stats.count} competitor units)\n`;
-        }
-      }
+      // No longer need to build a prompt since we're using smart pricing optimization
 
-      // For portfolio optimization, we'll iterate through each property
-      // But for simplicity in this case with a single property, we'll create a single sophisticated prompt
-      const firstProfile = subjectProfiles[0];
-      const propertyUnits = allUnits.filter(u => u.propertyProfileId === firstProfile.id);
-
-      const prompt = `As a real estate pricing optimization expert, analyze the following property and provide pricing recommendations:
-
-Property Details:
-- Address: ${firstProfile.address}
-- Property Type: ${firstProfile.propertyType || 'Multi-Family'}
-- Total Units: ${firstProfile.totalUnits || propertyUnits.length}
-${firstProfile.builtYear ? `- Built Year: ${firstProfile.builtYear}` : ''}
-
-Optimization Parameters:
-- Goal: ${goalDisplayMap[goal] || goal}
-- Target Occupancy: ${targetOccupancy}%
-- Risk Tolerance: ${riskDisplayMap[riskTolerance] || 'Medium'}
-
-Current Unit Portfolio (${allUnits.length} units):
-${allUnits.map(unit => `Unit Number: ${unit.unitNumber} - Type: ${unit.bedrooms}BR/${unit.bathrooms}BA - Current Rent: $${unit.currentRent} - Status: ${unit.status}${unit.squareFootage ? ` - Sqft: ${unit.squareFootage}` : ''}${unit.tag ? ` - TAG: ${unit.tag}` : ''}`).join('\n')}
-
-Market Context:
-- Consider current market conditions for similar properties
-- Factor in seasonal trends and local market dynamics
-- Account for unit turnover costs and vacancy risks
-- Balance revenue optimization with occupancy targets
-
-${marketContextStr}
-
-Please provide optimization recommendations for ALL ${allUnits.length} units in this exact JSON format:
-{
-  "unitRecommendations": [
-    {
-      "unitNumber": "[actual unit number from input]",
-      "currentRent": number,
-      "recommendedRent": number,
-      "marketAverage": number,
-      "change": number,
-      "annualImpact": number,
-      "confidenceLevel": "High|Medium|Low",
-      "reasoning": "Brief explanation for the recommendation"
-    }
-  ],
-  "totalIncrease": number,
-  "affectedUnits": number,
-  "avgIncrease": number,
-  "riskLevel": "Low|Medium|High",
-  "marketInsights": {
-    "occupancyImpact": "Expected impact on occupancy rate",
-    "competitivePosition": "How this positions the property vs competitors",
-    "timeToLease": "Average days to lease at new rates"
-  }
-}
-
-Important: Generate recommendations for ALL ${allUnits.length} units based on the optimization goal and parameters. Use the exact unit numbers provided in the input.`;
-
-      console.log('[SESSION_OPTIMIZE] Generating AI recommendations...');
+      console.log('[SESSION_OPTIMIZE] Generating smart pricing optimization using pricing power scores...');
       
+      // Use the new storage method with pricing power scores instead of OpenAI
       let optimizationData;
       try {
-        optimizationData = await callOpenAIWithRetry(prompt);
-      } catch (aiError: any) {
-        console.error('[SESSION_OPTIMIZE] OpenAI API error:', aiError);
+        optimizationData = await storage.generateOptimizationReport(sessionId, goal, targetOccupancy, riskTolerance);
+        console.log('[SESSION_OPTIMIZE] Successfully generated optimization with pricing power scores');
+      } catch (error: any) {
+        console.error('[SESSION_OPTIMIZE] Error generating optimization:', error);
         
-        // Provide fallback response when AI fails
+        // Provide fallback response when storage method fails
         const fallbackData = {
           unitRecommendations: allUnits.map(unit => {
             const currentRent = parseFloat(unit.currentRent) || 0;
             const marketAdjustment = Math.floor(Math.random() * 100) + 50; // Conservative $50-150 increase
             const recommendedRent = currentRent + marketAdjustment;
             return {
-              id: crypto.randomUUID(), // Add unique ID for fallback recommendations
+              id: crypto.randomUUID(),
               propertyName: unit.propertyName,
               propertyProfileId: unit.propertyProfileId,
               unitNumber: unit.unitNumber,
-              tag: unit.tag, // Include TAG field in fallback recommendations
+              tag: unit.tag,
               currentRent: currentRent,
               recommendedRent: recommendedRent,
               marketAverage: currentRent * 1.05,
               change: marketAdjustment,
               annualImpact: marketAdjustment * 12,
+              pricingPowerScore: 50, // Default middle score
+              adjustmentReason: "Fallback recommendation due to optimization error",
               confidenceLevel: "Low",
-              reasoning: "Fallback recommendation due to AI service unavailability - conservative market-based adjustment",
-              availabilityDate: unit.availabilityDate // Include availability date in fallback
+              reasoning: "Fallback recommendation - conservative market-based adjustment",
+              availabilityDate: unit.availabilityDate
             };
           }),
           totalIncrease: allUnits.reduce((sum, unit) => sum + (Math.floor(Math.random() * 100) + 50), 0),
           affectedUnits: allUnits.length,
-          avgIncrease: 75, // Average of $50-150 range
+          avgIncrease: 75,
           riskLevel: "Low",
           marketInsights: {
             occupancyImpact: "Conservative approach to maintain occupancy",
             competitivePosition: "Market-aligned pricing strategy",
-            timeToLease: "Standard market timeframes expected"
+            timeToLease: "Standard market timeframes expected",
+            avgPricingPowerScore: 50,
+            marketDataQuality: "Limited"
           }
         };
         
         optimizationData = fallbackData;
-        
-        // Log the fallback usage but don't fail the request
-        console.warn('[SESSION_OPTIMIZE] Using fallback optimization data due to AI service error');
+        console.warn('[SESSION_OPTIMIZE] Using fallback optimization data due to error');
       }
       
       console.log('[SESSION_OPTIMIZE] AI recommendations generated');
@@ -5015,6 +4956,9 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
             marketAverage: recommendation.marketAverage,
             change: recommendation.change,
             annualImpact: recommendation.annualImpact,
+            // NEW: Include pricing power score and adjustment reason
+            pricingPowerScore: recommendation.pricingPowerScore,
+            adjustmentReason: recommendation.adjustmentReason,
             confidenceLevel: recommendation.confidenceLevel,
             reasoning: recommendation.reasoning,
             // Include additional unit fields for frontend display

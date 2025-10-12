@@ -157,6 +157,14 @@ export interface IStorage {
   createOptimizationReport(report: InsertOptimizationReport): Promise<OptimizationReport>;
   getOptimizationReport(propertyId: string): Promise<OptimizationReport | undefined>;
   getOptimizationReportsBySession(sessionId: string): Promise<OptimizationReport[]>;
+  generateOptimizationReport(sessionId: string, goal: string, targetOccupancy: number, riskTolerance: number): Promise<{
+    unitRecommendations: any[];
+    totalIncrease: number;
+    affectedUnits: number;
+    avgIncrease: number;
+    riskLevel: string;
+    marketInsights: any;
+  }>;
   
   // Scrapezy Integration
   createScrapingJob(job: InsertScrapingJob): Promise<ScrapingJob>;
@@ -1831,6 +1839,317 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting optimization reports by session:', error);
       throw new Error(`Failed to get optimization reports by session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async generateOptimizationReport(sessionId: string, goal: string, targetOccupancy: number, riskTolerance: number): Promise<{
+    unitRecommendations: any[];
+    totalIncrease: number;
+    affectedUnits: number;
+    avgIncrease: number;
+    riskLevel: string;
+    marketInsights: any;
+  }> {
+    try {
+      console.log('[DRIZZLE_STORAGE] Generating smart optimization report for session:', sessionId);
+      console.log('[DRIZZLE_STORAGE] Goal:', goal, 'Target Occupancy:', targetOccupancy, 'Risk Tolerance:', riskTolerance);
+      
+      // Get all scraped units for the session (both subject and competitor)
+      const allScrapedUnits = await this.getScrapedUnitsForSession(sessionId);
+      
+      // Get property profiles to identify subject properties
+      const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
+      const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+      
+      if (subjectProfiles.length === 0) {
+        throw new Error('No subject properties found in session');
+      }
+      
+      // Get property ID mapping from scraped properties to profiles
+      const subjectPropertyUrls = new Set(subjectProfiles.map(p => p.url));
+      const scrapedProperties = new Map<string, any>();
+      
+      for (const unit of allScrapedUnits) {
+        if (!scrapedProperties.has(unit.propertyId)) {
+          const scrapedProperty = await this.getScrapedProperty(unit.propertyId);
+          if (scrapedProperty) {
+            scrapedProperties.set(unit.propertyId, scrapedProperty);
+          }
+        }
+      }
+      
+      // Separate subject and competitor units
+      const subjectUnits = [];
+      const competitorUnits = [];
+      
+      for (const unit of allScrapedUnits) {
+        const scrapedProperty = scrapedProperties.get(unit.propertyId);
+        if (scrapedProperty?.url && subjectPropertyUrls.has(scrapedProperty.url)) {
+          subjectUnits.push({ ...unit, propertyName: scrapedProperty.name });
+        } else if (!scrapedProperty?.isSubjectProperty) {
+          competitorUnits.push(unit);
+        }
+      }
+      
+      console.log('[DRIZZLE_STORAGE] Subject units:', subjectUnits.length, 'Competitor units:', competitorUnits.length);
+      
+      // Calculate market averages by unit type
+      const marketData = new Map<string, { sum: number; count: number; values: number[]; avg: number }>();
+      
+      // Include both subject and competitor units for market analysis
+      const allMarketUnits = [...subjectUnits, ...competitorUnits];
+      
+      for (const unit of allMarketUnits) {
+        const rent = parseFloat(unit.rent || '0');
+        if (rent > 0) {
+          const bedrooms = unit.bedrooms || 1;
+          const key = `${bedrooms}BR`;
+          
+          if (!marketData.has(key)) {
+            marketData.set(key, { sum: 0, count: 0, values: [], avg: 0 });
+          }
+          
+          const stats = marketData.get(key)!;
+          stats.sum += rent;
+          stats.count += 1;
+          stats.values.push(rent);
+          stats.avg = stats.sum / stats.count;
+        }
+      }
+      
+      // Sort values for percentile calculation
+      for (const stats of marketData.values()) {
+        stats.values.sort((a, b) => a - b);
+      }
+      
+      console.log('[DRIZZLE_STORAGE] Market data calculated for', marketData.size, 'unit types');
+      
+      // Get property units with internal data (tags, bedrooms, bathrooms)
+      const propertyUnitsMap = new Map<string, Map<string, any>>();
+      
+      for (const profile of subjectProfiles) {
+        const propertyUnits = await this.getPropertyUnitsByProfile(profile.id);
+        const unitMap = new Map(propertyUnits.map(u => [u.unitNumber, {
+          tag: u.tag,
+          bedrooms: u.bedrooms,
+          bathrooms: u.bathrooms,
+          squareFootage: u.squareFootage,
+          optimizationPriority: u.optimizationPriority
+        }]));
+        propertyUnitsMap.set(profile.id, unitMap);
+      }
+      
+      // Generate unit recommendations with pricing power scores
+      const unitRecommendations = [];
+      let totalIncrease = 0;
+      let affectedUnits = 0;
+      
+      for (const unit of subjectUnits) {
+        const currentRent = parseFloat(unit.rent || '0');
+        if (currentRent <= 0) continue;
+        
+        // Find matching property profile
+        const matchingProfile = subjectProfiles.find(p => {
+          const scrapedProperty = scrapedProperties.get(unit.propertyId);
+          return scrapedProperty?.url === p.url;
+        });
+        
+        // Get internal unit data
+        let internalData = null;
+        if (matchingProfile && unit.unitNumber) {
+          const propertyUnitMap = propertyUnitsMap.get(matchingProfile.id);
+          if (propertyUnitMap) {
+            internalData = propertyUnitMap.get(unit.unitNumber);
+          }
+        }
+        
+        // Use internal bedrooms if available, otherwise use scraped
+        const bedrooms = internalData?.bedrooms || unit.bedrooms || 1;
+        const unitType = `${bedrooms}BR`;
+        const marketStats = marketData.get(unitType);
+        const marketAverage = marketStats?.avg || currentRent;
+        
+        // Calculate Unit Pricing Power Score components
+        
+        // 1. Unit Percentile (40% weight) - where unit sits vs comparable units
+        let unitPercentile = 50; // default to middle if no data
+        if (marketStats && marketStats.values.length > 0) {
+          const index = marketStats.values.findIndex(v => v >= currentRent);
+          if (index === -1) {
+            unitPercentile = 100; // Higher than all units
+          } else if (index === 0) {
+            unitPercentile = 0; // Lower than all units
+          } else {
+            unitPercentile = (index / marketStats.values.length) * 100;
+          }
+        }
+        
+        // 2. Price Difference (30% weight) - how unit compares to market average
+        let priceDifference = 50; // default to neutral
+        if (marketAverage > 0) {
+          const percentDiff = ((currentRent - marketAverage) / marketAverage) * 100;
+          // Convert to 0-100 scale: -20% diff = 0, 0% diff = 50, +20% diff = 100
+          priceDifference = Math.max(0, Math.min(100, 50 + (percentDiff * 2.5)));
+        }
+        
+        // 3. Availability Status (30% weight)
+        const availabilityScore = (unit.status === 'occupied') ? 100 : 0;
+        
+        // Calculate total Pricing Power Score
+        const pricingPowerScore = 
+          (unitPercentile * 0.4) + 
+          (priceDifference * 0.3) + 
+          (availabilityScore * 0.3);
+        
+        console.log(`[DRIZZLE_STORAGE] Unit ${unit.unitNumber}: Power Score=${pricingPowerScore.toFixed(1)} (Percentile=${unitPercentile.toFixed(1)}, PriceDiff=${priceDifference.toFixed(1)}, Availability=${availabilityScore})`);
+        
+        // Apply smart adjustments based on goal and power score
+        let recommendedRent = currentRent;
+        let adjustmentPercent = 0;
+        let adjustmentReason = '';
+        
+        if (goal === 'maximize-revenue') {
+          // Maximize Revenue logic
+          if (pricingPowerScore >= 80) {
+            adjustmentPercent = 1 + (Math.random() * 1); // +1-2%
+            adjustmentReason = 'Already premium positioned, minimal increase to maintain market position';
+          } else if (pricingPowerScore >= 60) {
+            adjustmentPercent = 3 + (Math.random() * 2); // +3-5%
+            adjustmentReason = 'Good market position, moderate increase to optimize revenue';
+          } else if (pricingPowerScore >= 40) {
+            adjustmentPercent = 5 + (Math.random() * 3); // +5-8%
+            adjustmentReason = 'Room for growth, strategic increase to capture market value';
+          } else {
+            adjustmentPercent = 8 + (Math.random() * 2); // +8-10%
+            adjustmentReason = 'Significantly underpriced, aggressive increase to reach market rates';
+          }
+          recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+          
+        } else if (goal === 'maximize-occupancy') {
+          // Maximize Occupancy logic
+          if (pricingPowerScore >= 80) {
+            adjustmentPercent = -(5 + Math.random() * 3); // -5 to -8%
+            adjustmentReason = 'Premium pricing reduced to improve occupancy rate';
+          } else if (pricingPowerScore >= 60) {
+            adjustmentPercent = -(2 + Math.random() * 1); // -2 to -3%
+            adjustmentReason = 'Slight adjustment to enhance competitiveness';
+          } else if (pricingPowerScore >= 40) {
+            adjustmentPercent = Math.random() * 1; // 0 to +1%
+            adjustmentReason = 'Already competitive, minimal adjustment maintains market position';
+          } else {
+            adjustmentPercent = 2 + Math.random() * 1; // +2 to +3%
+            adjustmentReason = 'Below market, slight increase still maintains affordability';
+          }
+          recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+          
+        } else if (goal === 'balanced') {
+          // Balanced approach - target 60-70 power score range
+          if (pricingPowerScore > 70) {
+            adjustmentPercent = -(1 + Math.random() * 2); // -1 to -3%
+            adjustmentReason = 'Adjusting down to optimal 60-70% market position';
+          } else if (pricingPowerScore < 60) {
+            adjustmentPercent = 2 + Math.random() * 3; // +2 to +5%
+            adjustmentReason = 'Adjusting up to reach optimal 60-70% market position';
+          } else {
+            adjustmentPercent = -0.5 + Math.random() * 1; // -0.5 to +0.5%
+            adjustmentReason = 'Already in optimal range, fine-tuning for market alignment';
+          }
+          recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+          
+        } else {
+          // Custom or unknown goal - use conservative approach
+          adjustmentPercent = 2;
+          recommendedRent = currentRent * 1.02;
+          adjustmentReason = 'Conservative market-based adjustment';
+        }
+        
+        // Round to nearest $5
+        recommendedRent = Math.round(recommendedRent / 5) * 5;
+        const actualChange = recommendedRent - currentRent;
+        const annualImpact = actualChange * 12;
+        
+        if (actualChange !== 0) {
+          affectedUnits++;
+          totalIncrease += annualImpact;
+        }
+        
+        // Determine confidence level based on market data availability
+        let confidenceLevel = 'Medium';
+        if (marketStats && marketStats.count >= 10) {
+          confidenceLevel = 'High';
+        } else if (!marketStats || marketStats.count < 5) {
+          confidenceLevel = 'Low';
+        }
+        
+        unitRecommendations.push({
+          unitNumber: unit.unitNumber || `Unit-${unit.id.substring(0, 6)}`,
+          unitType: unitType,
+          tag: internalData?.tag || null,
+          bedrooms: bedrooms,
+          bathrooms: internalData?.bathrooms || unit.bathrooms || 1,
+          squareFootage: internalData?.squareFootage || unit.squareFootage || 0,
+          currentRent: currentRent,
+          recommendedRent: recommendedRent,
+          marketAverage: Math.round(marketAverage),
+          change: actualChange,
+          annualImpact: annualImpact,
+          pricingPowerScore: Math.round(pricingPowerScore),
+          adjustmentReason: adjustmentReason,
+          confidenceLevel: confidenceLevel,
+          reasoning: `${adjustmentReason} (Power Score: ${Math.round(pricingPowerScore)}, Market Avg: $${Math.round(marketAverage)})`,
+          propertyName: unit.propertyName,
+          propertyProfileId: matchingProfile?.id,
+          status: unit.status,
+          availabilityDate: unit.availabilityDate
+        });
+      }
+      
+      const avgIncrease = affectedUnits > 0 ? totalIncrease / affectedUnits : 0;
+      
+      // Determine overall risk level
+      let riskLevel = 'Medium';
+      if (riskTolerance === 1 || Math.abs(avgIncrease) < 500) {
+        riskLevel = 'Low';
+      } else if (riskTolerance === 3 || Math.abs(avgIncrease) > 1500) {
+        riskLevel = 'High';
+      }
+      
+      // Generate market insights
+      const avgPowerScore = unitRecommendations.reduce((sum, u) => sum + u.pricingPowerScore, 0) / unitRecommendations.length;
+      const marketInsights = {
+        occupancyImpact: goal === 'maximize-occupancy' 
+          ? 'Expected to improve occupancy by 5-10% within 30-60 days' 
+          : goal === 'maximize-revenue'
+          ? 'May experience 2-5% occupancy reduction, offset by revenue gains'
+          : 'Balanced approach maintains stable occupancy while optimizing revenue',
+        competitivePosition: avgPowerScore > 70 
+          ? 'Premium positioning in market, commanding above-average rates'
+          : avgPowerScore > 50
+          ? 'Competitive market position with room for strategic growth'
+          : 'Value-oriented positioning with significant upside potential',
+        timeToLease: goal === 'maximize-occupancy'
+          ? 'Reduced average lease-up time by 5-10 days'
+          : 'Standard market lease-up times of 15-30 days',
+        avgPricingPowerScore: Math.round(avgPowerScore),
+        marketDataQuality: competitorUnits.length > 50 ? 'Excellent' : competitorUnits.length > 20 ? 'Good' : 'Limited'
+      };
+      
+      console.log('[DRIZZLE_STORAGE] Generated', unitRecommendations.length, 'recommendations');
+      console.log('[DRIZZLE_STORAGE] Total annual impact: $', totalIncrease.toFixed(2));
+      console.log('[DRIZZLE_STORAGE] Average pricing power score:', avgPowerScore.toFixed(1));
+      
+      return {
+        unitRecommendations,
+        totalIncrease,
+        affectedUnits,
+        avgIncrease,
+        riskLevel,
+        marketInsights
+      };
+      
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error generating optimization report:', error);
+      throw new Error(`Failed to generate optimization report: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
@@ -4163,6 +4482,239 @@ export class MemStorageLegacy implements IStorage {
     return Array.from(this.optimizationReports.values()).filter(report => 
       report.sessionId === sessionId
     );
+  }
+
+  async generateOptimizationReport(sessionId: string, goal: string, targetOccupancy: number, riskTolerance: number): Promise<{
+    unitRecommendations: any[];
+    totalIncrease: number;
+    affectedUnits: number;
+    avgIncrease: number;
+    riskLevel: string;
+    marketInsights: any;
+  }> {
+    // For MemStorage, implement a similar logic but using in-memory data
+    console.log('[MEM_STORAGE] Generating smart optimization report for session:', sessionId);
+    
+    // Get session property profiles
+    const sessionPropertyProfiles = Array.from(this.sessionPropertyProfiles.values())
+      .filter(spp => spp.sessionId === sessionId);
+    
+    const propertyProfileIds = sessionPropertyProfiles.map(spp => spp.propertyProfileId);
+    const propertyProfiles = propertyProfileIds.map(id => this.propertyProfiles.get(id))
+      .filter((p): p is PropertyProfile => p !== undefined);
+    
+    const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
+    
+    if (subjectProfiles.length === 0) {
+      throw new Error('No subject properties found in session');
+    }
+    
+    // Get all scraped units
+    const allScrapedUnits = await this.getScrapedUnitsForSession(sessionId);
+    
+    // Separate subject and competitor units
+    const subjectPropertyUrls = new Set(subjectProfiles.map(p => p.url));
+    const scrapedProperties = new Map<string, any>();
+    
+    for (const unit of allScrapedUnits) {
+      if (!scrapedProperties.has(unit.propertyId)) {
+        const scrapedProperty = this.scrapedProperties.get(unit.propertyId);
+        if (scrapedProperty) {
+          scrapedProperties.set(unit.propertyId, scrapedProperty);
+        }
+      }
+    }
+    
+    const subjectUnits = [];
+    const competitorUnits = [];
+    
+    for (const unit of allScrapedUnits) {
+      const scrapedProperty = scrapedProperties.get(unit.propertyId);
+      if (scrapedProperty?.url && subjectPropertyUrls.has(scrapedProperty.url)) {
+        subjectUnits.push({ ...unit, propertyName: scrapedProperty.name });
+      } else if (!scrapedProperty?.isSubjectProperty) {
+        competitorUnits.push(unit);
+      }
+    }
+    
+    // Calculate market averages
+    const marketData = new Map<string, { sum: number; count: number; values: number[]; avg: number }>();
+    const allMarketUnits = [...subjectUnits, ...competitorUnits];
+    
+    for (const unit of allMarketUnits) {
+      const rent = parseFloat(unit.rent || '0');
+      if (rent > 0) {
+        const bedrooms = unit.bedrooms || 1;
+        const key = `${bedrooms}BR`;
+        
+        if (!marketData.has(key)) {
+          marketData.set(key, { sum: 0, count: 0, values: [], avg: 0 });
+        }
+        
+        const stats = marketData.get(key)!;
+        stats.sum += rent;
+        stats.count += 1;
+        stats.values.push(rent);
+        stats.avg = stats.sum / stats.count;
+      }
+    }
+    
+    // Sort for percentile calculation
+    for (const stats of marketData.values()) {
+      stats.values.sort((a, b) => a - b);
+    }
+    
+    // Generate recommendations with pricing power scores
+    const unitRecommendations = [];
+    let totalIncrease = 0;
+    let affectedUnits = 0;
+    
+    for (const unit of subjectUnits) {
+      const currentRent = parseFloat(unit.rent || '0');
+      if (currentRent <= 0) continue;
+      
+      const bedrooms = unit.bedrooms || 1;
+      const unitType = `${bedrooms}BR`;
+      const marketStats = marketData.get(unitType);
+      const marketAverage = marketStats?.avg || currentRent;
+      
+      // Calculate Pricing Power Score
+      let unitPercentile = 50;
+      if (marketStats && marketStats.values.length > 0) {
+        const index = marketStats.values.findIndex(v => v >= currentRent);
+        if (index === -1) {
+          unitPercentile = 100;
+        } else if (index === 0) {
+          unitPercentile = 0;
+        } else {
+          unitPercentile = (index / marketStats.values.length) * 100;
+        }
+      }
+      
+      let priceDifference = 50;
+      if (marketAverage > 0) {
+        const percentDiff = ((currentRent - marketAverage) / marketAverage) * 100;
+        priceDifference = Math.max(0, Math.min(100, 50 + (percentDiff * 2.5)));
+      }
+      
+      const availabilityScore = (unit.status === 'occupied') ? 100 : 0;
+      const pricingPowerScore = (unitPercentile * 0.4) + (priceDifference * 0.3) + (availabilityScore * 0.3);
+      
+      // Apply smart adjustments
+      let recommendedRent = currentRent;
+      let adjustmentPercent = 0;
+      let adjustmentReason = '';
+      
+      if (goal === 'maximize-revenue') {
+        if (pricingPowerScore >= 80) {
+          adjustmentPercent = 1 + (Math.random() * 1);
+          adjustmentReason = 'Already premium positioned, minimal increase to maintain market position';
+        } else if (pricingPowerScore >= 60) {
+          adjustmentPercent = 3 + (Math.random() * 2);
+          adjustmentReason = 'Good market position, moderate increase to optimize revenue';
+        } else if (pricingPowerScore >= 40) {
+          adjustmentPercent = 5 + (Math.random() * 3);
+          adjustmentReason = 'Room for growth, strategic increase to capture market value';
+        } else {
+          adjustmentPercent = 8 + (Math.random() * 2);
+          adjustmentReason = 'Significantly underpriced, aggressive increase to reach market rates';
+        }
+        recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+      } else if (goal === 'maximize-occupancy') {
+        if (pricingPowerScore >= 80) {
+          adjustmentPercent = -(5 + Math.random() * 3);
+          adjustmentReason = 'Premium pricing reduced to improve occupancy rate';
+        } else if (pricingPowerScore >= 60) {
+          adjustmentPercent = -(2 + Math.random() * 1);
+          adjustmentReason = 'Slight adjustment to enhance competitiveness';
+        } else if (pricingPowerScore >= 40) {
+          adjustmentPercent = Math.random() * 1;
+          adjustmentReason = 'Already competitive, minimal adjustment maintains market position';
+        } else {
+          adjustmentPercent = 2 + Math.random() * 1;
+          adjustmentReason = 'Below market, slight increase still maintains affordability';
+        }
+        recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+      } else if (goal === 'balanced') {
+        if (pricingPowerScore > 70) {
+          adjustmentPercent = -(1 + Math.random() * 2);
+          adjustmentReason = 'Adjusting down to optimal 60-70% market position';
+        } else if (pricingPowerScore < 60) {
+          adjustmentPercent = 2 + Math.random() * 3;
+          adjustmentReason = 'Adjusting up to reach optimal 60-70% market position';
+        } else {
+          adjustmentPercent = -0.5 + Math.random() * 1;
+          adjustmentReason = 'Already in optimal range, fine-tuning for market alignment';
+        }
+        recommendedRent = currentRent * (1 + adjustmentPercent / 100);
+      } else {
+        adjustmentPercent = 2;
+        recommendedRent = currentRent * 1.02;
+        adjustmentReason = 'Conservative market-based adjustment';
+      }
+      
+      recommendedRent = Math.round(recommendedRent / 5) * 5;
+      const actualChange = recommendedRent - currentRent;
+      const annualImpact = actualChange * 12;
+      
+      if (actualChange !== 0) {
+        affectedUnits++;
+        totalIncrease += annualImpact;
+      }
+      
+      unitRecommendations.push({
+        unitNumber: unit.unitNumber || `Unit-${unit.id.substring(0, 6)}`,
+        unitType: unitType,
+        currentRent: currentRent,
+        recommendedRent: recommendedRent,
+        marketAverage: Math.round(marketAverage),
+        change: actualChange,
+        annualImpact: annualImpact,
+        pricingPowerScore: Math.round(pricingPowerScore),
+        adjustmentReason: adjustmentReason,
+        confidenceLevel: marketStats && marketStats.count >= 10 ? 'High' : marketStats && marketStats.count >= 5 ? 'Medium' : 'Low',
+        reasoning: `${adjustmentReason} (Power Score: ${Math.round(pricingPowerScore)}, Market Avg: $${Math.round(marketAverage)})`,
+        propertyName: unit.propertyName
+      });
+    }
+    
+    const avgIncrease = affectedUnits > 0 ? totalIncrease / affectedUnits : 0;
+    
+    let riskLevel = 'Medium';
+    if (riskTolerance === 1 || Math.abs(avgIncrease) < 500) {
+      riskLevel = 'Low';
+    } else if (riskTolerance === 3 || Math.abs(avgIncrease) > 1500) {
+      riskLevel = 'High';
+    }
+    
+    const avgPowerScore = unitRecommendations.reduce((sum, u) => sum + u.pricingPowerScore, 0) / unitRecommendations.length;
+    
+    const marketInsights = {
+      occupancyImpact: goal === 'maximize-occupancy' 
+        ? 'Expected to improve occupancy by 5-10% within 30-60 days'
+        : goal === 'maximize-revenue'
+        ? 'May experience 2-5% occupancy reduction, offset by revenue gains'
+        : 'Balanced approach maintains stable occupancy while optimizing revenue',
+      competitivePosition: avgPowerScore > 70
+        ? 'Premium positioning in market, commanding above-average rates'
+        : avgPowerScore > 50
+        ? 'Competitive market position with room for strategic growth'
+        : 'Value-oriented positioning with significant upside potential',
+      timeToLease: goal === 'maximize-occupancy'
+        ? 'Reduced average lease-up time by 5-10 days'
+        : 'Standard market lease-up times of 15-30 days',
+      avgPricingPowerScore: Math.round(avgPowerScore),
+      marketDataQuality: competitorUnits.length > 50 ? 'Excellent' : competitorUnits.length > 20 ? 'Good' : 'Limited'
+    };
+    
+    return {
+      unitRecommendations,
+      totalIncrease,
+      affectedUnits,
+      avgIncrease,
+      riskLevel,
+      marketInsights
+    };
   }
 
   // PORTFOLIO ANALYTICS METHODS
