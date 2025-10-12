@@ -7,6 +7,14 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 ## Recent Changes
 
 ### October 12, 2025 (Latest)
+- **Streamlined Analysis UI**: Removed Location Score statistics box and adjusted layout
+  - Removed Location Score box from analysis results statistics section
+  - Adjusted grid layout from 4 columns to 3 columns for better space utilization
+  - Updated loading skeleton to match the new 3-box layout
+  - Remaining statistics: Unit Count, Average Rent, Price per Sq Ft
+  - Cleaner, more balanced visual presentation of key metrics
+
+### October 12, 2025
 - **Fixed Phase Navigation Refresh Issue**: Resolved sidebar navigation not updating when on Optimize page
   - Removed 30-second cache time on workflow state queries in sidebar
   - Set `staleTime: 0` to ensure sidebar always fetches fresh workflow state
