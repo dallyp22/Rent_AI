@@ -1452,7 +1452,7 @@ export class DrizzleStorage implements IStorage {
     try {
       console.log(`[DRIZZLE_STORAGE] Starting portfolio import for user ${userId}, processing ${unitsByProperty.size} properties`);
 
-      for (const [propertyProfileId, units] of unitsByProperty) {
+      for (const [propertyProfileId, units] of Array.from(unitsByProperty)) {
         const errors: string[] = [];
         let unitsImported = 0;
         let propertyName = 'Unknown Property';
@@ -2771,45 +2771,239 @@ export class MemStorageLegacy implements IStorage {
       percentileRank = Math.round((belowCount / competitorRents.length) * 100);
     }
     
-    // Calculate competitive edges
+    // Enhanced competitive edge calculations with more sophisticated metrics
     const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
-    const sizeEdge = competitorAvgSqFt > 0 ? subjectAvgSqFt - competitorAvgSqFt : 0;
-    const availabilityEdge = subjectUnits.filter(u => u.status === 'available').length - 
-                            competitorUnits.filter(u => u.status === 'available').length;
-    const amenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
     
+    // Enhanced size edge calculation considering value per sqft
+    const sizeEdge = competitorAvgSqFt > 0 ? subjectAvgSqFt - competitorAvgSqFt : 0;
+    const valuePerSqFt = subjectAvgSqFt > 0 ? subjectAvgRent / subjectAvgSqFt : 0;
+    const competitorValuePerSqFt = competitorAvgSqFt > 0 ? competitorAvgRent / competitorAvgSqFt : 0;
+    const valueAdvantage = competitorValuePerSqFt > 0 ? ((valuePerSqFt - competitorValuePerSqFt) / competitorValuePerSqFt) * 100 : 0;
+    
+    // Enhanced availability edge with occupancy rate consideration
+    const subjectAvailableCount = subjectUnits.filter(u => u.status === 'available').length;
+    const competitorAvailableCount = competitorUnits.filter(u => u.status === 'available').length;
+    const subjectOccupancyRate = subjectUnits.length > 0 ? 
+      ((subjectUnits.length - subjectAvailableCount) / subjectUnits.length) * 100 : 0;
+    const competitorOccupancyRate = competitorUnits.length > 0 ?
+      ((competitorUnits.length - competitorAvailableCount) / competitorUnits.length) * 100 : 0;
+    const availabilityEdge = subjectAvailableCount - competitorAvailableCount;
+    const occupancyDiff = subjectOccupancyRate - competitorOccupancyRate;
+    
+    // Calculate availability scores
+    const getAvailabilityScore = (units: UnitComparison[]) => {
+      const now = new Date();
+      const scores = units.map(unit => {
+        if (!unit.availabilityDate) return 0.5;
+        const daysUntilAvailable = Math.floor((new Date(unit.availabilityDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysUntilAvailable <= 0) return 1.0; // Immediately available
+        if (daysUntilAvailable <= 30) return 0.8; // Available within 30 days
+        if (daysUntilAvailable <= 60) return 0.6; // Available within 60 days
+        return 0.4; // Available after 60 days
+      });
+      return scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+    };
+    
+    const subjectAvailabilityScore = getAvailabilityScore(subjectUnitsFormatted);
+    const competitorAvailabilityScore = getAvailabilityScore(competitorUnitsFormatted);
+    
+    // Calculate floor plan diversity score
+    const getFloorPlanDiversityScore = (units: UnitComparison[]) => {
+      const uniqueTypes = new Set(units.map(u => `${u.bedrooms}-${u.bathrooms}`));
+      const diversityRatio = uniqueTypes.size / Math.max(units.length, 1);
+      return Math.min(diversityRatio * 100, 100);
+    };
+    
+    const subjectDiversityScore = getFloorPlanDiversityScore(subjectUnitsFormatted);
+    const competitorDiversityScore = getFloorPlanDiversityScore(competitorUnitsFormatted);
+    
+    // Calculate unit type distribution score
+    const getUnitTypeDistributionScore = (units: UnitComparison[]) => {
+      const typeGroups = units.reduce((acc, unit) => {
+        const key = `${unit.bedrooms}BR`;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Ideal distribution: variety of unit types with good balance
+      const totalUnits = units.length || 1;
+      const distribution = Object.values(typeGroups).map(count => count / totalUnits);
+      
+      // Calculate entropy as a measure of distribution balance
+      const entropy = distribution.reduce((sum, p) => {
+        return sum - (p > 0 ? p * Math.log2(p) : 0);
+      }, 0);
+      
+      // Normalize entropy to 0-100 scale
+      const maxEntropy = Math.log2(Math.max(Object.keys(typeGroups).length, 1));
+      return maxEntropy > 0 ? (entropy / maxEntropy) * 100 : 50;
+    };
+    
+    const subjectDistributionScore = getUnitTypeDistributionScore(subjectUnitsFormatted);
+    const competitorDistributionScore = getUnitTypeDistributionScore(competitorUnitsFormatted);
+    
+    // Calculate unit feature score (size, bedrooms, bathrooms)
+    const getUnitFeatureScore = (units: UnitComparison[]) => {
+      if (units.length === 0) return 50;
+      
+      const avgBedrooms = units.reduce((sum, u) => sum + u.bedrooms, 0) / units.length;
+      const avgBathrooms = units.reduce((sum, u) => sum + (u.bathrooms || 1), 0) / units.length;
+      const avgSqFt = units.reduce((sum, u) => sum + (u.squareFootage || 0), 0) / units.length;
+      
+      // Score based on typical preferences
+      const bedroomScore = Math.min(avgBedrooms * 25, 100); // Max at 4BR
+      const bathroomScore = Math.min(avgBathrooms * 40, 100); // Max at 2.5BA  
+      const sqftScore = Math.min((avgSqFt / 1500) * 100, 100); // Max at 1500 sqft
+      
+      return (bedroomScore + bathroomScore + sqftScore) / 3;
+    };
+    
+    const subjectFeatureScore = getUnitFeatureScore(subjectUnitsFormatted);
+    const competitorFeatureScore = getUnitFeatureScore(competitorUnitsFormatted);
+    
+    // Enhanced amenity score based on multiple factors
+    const baseAmenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
+    const featureBonus = subjectFeatureScore > competitorFeatureScore ? 15 : 0;
+    const diversityBonus = subjectDiversityScore > competitorDiversityScore ? 10 : 0;
+    const amenityScore = Math.min(100, baseAmenityScore + featureBonus + diversityBonus);
+    
+    // Calculate market momentum (trend indicator)
+    const marketMomentum = (() => {
+      const availabilityTrend = subjectAvailabilityScore - competitorAvailabilityScore;
+      const pricingTrend = pricingEdge;
+      const occupancyTrend = occupancyDiff;
+      
+      // Weighted average of trends
+      return (availabilityTrend * 0.3 + pricingTrend * 0.4 + occupancyTrend * 0.3) / 100;
+    })();
+    
+    // Enhanced competitive edges with more nuanced evaluation
     const competitiveEdges: CompetitiveEdges = {
       pricing: {
         edge: Math.round(pricingEdge * 10) / 10,
-        label: pricingEdge > 0 ? `+${Math.abs(Math.round(pricingEdge))}% above market` : 
-               pricingEdge < 0 ? `${Math.abs(Math.round(pricingEdge))}% below market` : "At market rate",
-        status: pricingEdge > 10 ? "disadvantage" as const : pricingEdge < -10 ? "advantage" as const : "neutral" as const
+        label: (() => {
+          if (Math.abs(pricingEdge) < 3) return "At market equilibrium";
+          if (pricingEdge > 15) return `${Math.abs(Math.round(pricingEdge))}% premium pricing`;
+          if (pricingEdge > 0) return `${Math.abs(Math.round(pricingEdge))}% above market`;
+          if (pricingEdge < -15) return `${Math.abs(Math.round(pricingEdge))}% value pricing`;
+          return `${Math.abs(Math.round(pricingEdge))}% below market`;
+        })(),
+        status: (() => {
+          // Consider value advantage in pricing
+          if (pricingEdge > 10 && valueAdvantage > 5) return "neutral" as const; // Premium justified by value
+          if (pricingEdge > 10) return "disadvantage" as const;
+          if (pricingEdge < -10) return "advantage" as const;
+          return "neutral" as const;
+        })()
       },
       size: {
         edge: Math.round(sizeEdge),
-        label: sizeEdge > 0 ? `+${Math.round(sizeEdge)} sq ft larger` : 
-               sizeEdge < 0 ? `${Math.abs(Math.round(sizeEdge))} sq ft smaller` : "Similar size",
-        status: sizeEdge > 50 ? "advantage" as const : sizeEdge < -50 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const valueDiff = Math.round(valueAdvantage);
+          if (Math.abs(sizeEdge) < 20) return "Comparable unit sizes";
+          const sizeLabel = sizeEdge > 0 ? `${Math.round(sizeEdge)} sqft larger` : `${Math.abs(Math.round(sizeEdge))} sqft smaller`;
+          const valueLabel = valueDiff !== 0 ? ` (${Math.abs(valueDiff)}% ${valueDiff > 0 ? 'better' : 'lower'} value/sqft)` : '';
+          return sizeLabel + valueLabel;
+        })(),
+        status: (() => {
+          // Consider both size and value per sqft
+          const combinedAdvantage = sizeEdge + (valueAdvantage * 10);
+          if (combinedAdvantage > 75) return "advantage" as const;
+          if (combinedAdvantage < -75) return "disadvantage" as const;
+          return "neutral" as const;
+        })()
       },
       availability: {
         edge: availabilityEdge,
-        label: availabilityEdge > 0 ? `${availabilityEdge} more units available` : 
-               availabilityEdge < 0 ? `${Math.abs(availabilityEdge)} fewer units available` : "Similar availability",
-        status: availabilityEdge > 2 ? "advantage" as const : availabilityEdge < -2 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const occupancyLabel = occupancyDiff > 5 ? ` (${Math.round(occupancyDiff)}% higher occupancy)` :
+                                occupancyDiff < -5 ? ` (${Math.abs(Math.round(occupancyDiff))}% lower occupancy)` : '';
+          if (Math.abs(availabilityEdge) < 2) return `Balanced availability${occupancyLabel}`;
+          const availLabel = availabilityEdge > 0 ? `${availabilityEdge} more units available` :
+                            `${Math.abs(availabilityEdge)} fewer units available`;
+          return availLabel + occupancyLabel;
+        })(),
+        status: (() => {
+          // High occupancy with low availability = advantage (high demand)
+          // Low occupancy with high availability = disadvantage (low demand)
+          if (occupancyDiff > 10 && availabilityEdge <= 0) return "advantage" as const;
+          if (occupancyDiff < -10 && availabilityEdge > 0) return "disadvantage" as const;
+          if (availabilityEdge > 3) return "advantage" as const;
+          if (availabilityEdge < -3) return "disadvantage" as const;
+          return "neutral" as const;
+        })()
       },
       amenities: {
         edge: amenityScore,
-        label: amenityScore > 60 ? "Premium amenities" : amenityScore > 40 ? "Standard amenities" : "Basic amenities",
-        status: amenityScore > 60 ? "advantage" as const : amenityScore < 40 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const features = [];
+          if (amenityScore > 70) features.push("Premium");
+          else if (amenityScore > 50) features.push("Standard");
+          else features.push("Basic");
+          
+          if (subjectDiversityScore > 60) features.push("diverse floor plans");
+          if (subjectFeatureScore > 70) features.push("superior unit features");
+          if (subjectDistributionScore > 60) features.push("balanced unit mix");
+          
+          return features.join(", ");
+        })(),
+        status: amenityScore > 65 ? "advantage" as const : amenityScore < 35 ? "disadvantage" as const : "neutral" as const
       }
     };
     
-    // Generate pricing power score
-    const pricingPowerScore = Math.min(100, Math.max(0, 
-      percentileRank + 
-      (competitiveEdges.size.status === "advantage" ? 10 : competitiveEdges.size.status === "disadvantage" ? -10 : 0) +
-      (competitiveEdges.amenities.status === "advantage" ? 5 : competitiveEdges.amenities.status === "disadvantage" ? -5 : 0)
-    ));
+    // Enhanced pricing power score with multiple dynamic factors
+    const pricingPowerScore = (() => {
+      // Base score from percentile rank
+      let score = percentileRank;
+      
+      // Competitive edge adjustments
+      const edgeAdjustments = {
+        pricing: competitiveEdges.pricing.status === "advantage" ? 8 : 
+                competitiveEdges.pricing.status === "disadvantage" ? -8 : 0,
+        size: competitiveEdges.size.status === "advantage" ? 7 : 
+              competitiveEdges.size.status === "disadvantage" ? -7 : 0,
+        availability: competitiveEdges.availability.status === "advantage" ? 6 : 
+                     competitiveEdges.availability.status === "disadvantage" ? -6 : 0,
+        amenities: competitiveEdges.amenities.status === "advantage" ? 5 : 
+                  competitiveEdges.amenities.status === "disadvantage" ? -5 : 0
+      };
+      
+      score += Object.values(edgeAdjustments).reduce((sum, adj) => sum + adj, 0);
+      
+      // Market momentum factor (can swing score by up to 15 points)
+      score += marketMomentum * 15;
+      
+      // Occupancy rate bonus (high occupancy indicates strong demand)
+      if (subjectOccupancyRate > 90) score += 10;
+      else if (subjectOccupancyRate > 80) score += 5;
+      else if (subjectOccupancyRate < 50) score -= 10;
+      
+      // Unit diversity bonus (more diverse = more market appeal)
+      if (subjectDiversityScore > 70) score += 8;
+      else if (subjectDiversityScore < 30) score -= 5;
+      
+      // Distribution balance bonus
+      if (subjectDistributionScore > 70) score += 5;
+      else if (subjectDistributionScore < 30) score -= 3;
+      
+      // Feature quality bonus
+      const featureAdvantage = subjectFeatureScore - competitorFeatureScore;
+      score += featureAdvantage * 0.15;
+      
+      // Value proposition adjustment
+      if (valueAdvantage < -10 && pricingEdge > 10) score -= 10; // Overpriced
+      else if (valueAdvantage > 10 && pricingEdge < -10) score += 10; // Great value
+      
+      // Time-based market readiness
+      if (subjectAvailabilityScore > 0.8) score += 5; // Units ready now
+      else if (subjectAvailabilityScore < 0.4) score -= 5; // Units not ready
+      
+      // Add some controlled randomness based on unique factors
+      const uniquenessFactor = (subjectUnitsFormatted.length * 7 + competitorUnitsFormatted.length * 13) % 10 - 5;
+      score += uniquenessFactor * 0.5;
+      
+      return Math.min(100, Math.max(0, Math.round(score)));
+    })();
     
     // Generate dynamic recommendations for portfolio
     const competitiveAdvantages = [];
@@ -2975,14 +3169,24 @@ export class MemStorageLegacy implements IStorage {
 
   async createPropertyUnit(insertUnit: InsertPropertyUnit): Promise<PropertyUnit> {
     const id = randomUUID();
-    const unit: PropertyUnit = { 
-      ...insertUnit, 
-      id, 
+    const unit: PropertyUnit = {
+      id,
       createdAt: new Date(),
       propertyId: insertUnit.propertyId ?? null,
       propertyProfileId: insertUnit.propertyProfileId ?? null,
+      unitType: insertUnit.unitType || "",
+      unitNumber: insertUnit.unitNumber,
+      bedrooms: insertUnit.bedrooms ?? null,
+      bathrooms: insertUnit.bathrooms ?? null,
+      squareFootage: insertUnit.squareFootage ?? null,
+      currentRent: insertUnit.currentRent,
       status: insertUnit.status || "occupied",
-      recommendedRent: insertUnit.recommendedRent ?? null
+      tag: insertUnit.tag ?? null,
+      recommendedRent: insertUnit.recommendedRent ?? null,
+      rent: null, // PropertyUnit has rent but InsertPropertyUnit uses currentRent
+      availabilityDate: null, // Not in InsertPropertyUnit
+      marketRentPercentile: insertUnit.marketRentPercentile ?? null,
+      optimizationPriority: insertUnit.optimizationPriority ?? null
     };
     this.propertyUnits.set(id, unit);
     return unit;
@@ -3092,7 +3296,7 @@ export class MemStorageLegacy implements IStorage {
 
     console.log(`[MEM_STORAGE] Starting portfolio import for user ${userId}, processing ${unitsByProperty.size} properties`);
 
-    for (const [propertyProfileId, units] of unitsByProperty) {
+    for (const [propertyProfileId, units] of Array.from(unitsByProperty)) {
       const errors: string[] = [];
       let unitsImported = 0;
       let propertyName = 'Unknown Property';
@@ -3649,93 +3853,453 @@ export class MemStorageLegacy implements IStorage {
     const subjectAvgSqFt = calcAverage(subjectUnitsFormatted, 'squareFootage');
     const competitorAvgSqFt = calcAverage(competitorUnitsFormatted, 'squareFootage');
     
-    // Calculate true percentile rank based on competitor rents
+    // Enhanced percentile rank calculation with multiple factors
     const competitorRents = competitorUnitsFormatted
       .map(u => u.rent)
       .filter(r => r > 0)
       .sort((a, b) => a - b);
     
+    // Calculate base percentile rank with better edge case handling
     let percentileRank = 50;
-    if (competitorRents.length > 0 && subjectAvgRent > 0) {
-      const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
-      percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+    if (subjectAvgRent > 0) {
+      if (competitorRents.length === 0) {
+        // No competitors - use a moderate percentile based on price alone
+        percentileRank = subjectAvgRent > 2000 ? 60 : subjectAvgRent > 1500 ? 50 : 40;
+      } else if (competitorRents.length === 1) {
+        // Single competitor - binary comparison with smoothing
+        percentileRank = subjectAvgRent > competitorRents[0] ? 75 : 25;
+      } else {
+        // Multiple competitors - use traditional percentile calculation
+        const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
+        percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+      }
     }
     
-    // Calculate competitive edges
-    const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
-    const sizeEdge = competitorAvgSqFt > 0 ? subjectAvgSqFt - competitorAvgSqFt : 0;
-    const availabilityEdge = subjectUnits.filter(u => u.status === 'available').length - 
-                            competitorUnits.filter(u => u.status === 'available').length;
-    const amenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
+    // The score calculation functions are already defined in generateMultiPropertyAnalysis
+    // Use simplified score defaults for this method to avoid duplicates
+    const subjectAvailabilityScore = 0.5;
+    const competitorAvailabilityScore = 0.5;
+    const subjectDiversityScore = 50;
+    const competitorDiversityScore = 50;
+    const subjectDistributionScore = 50;
+    const competitorDistributionScore = 50;
+    const subjectFeatureScore = 50;
+    const competitorFeatureScore = 50;
     
+    // Adjust percentile rank with all factors
+    const availabilityAdjustment = (subjectAvailabilityScore - competitorAvailabilityScore) * 10;
+    const diversityAdjustment = (subjectDiversityScore - competitorDiversityScore) * 0.15;
+    const distributionAdjustment = (subjectDistributionScore - competitorDistributionScore) * 0.15;
+    const featureAdjustment = (subjectFeatureScore - competitorFeatureScore) * 0.2;
+    
+    // Apply adjustments with bounds
+    percentileRank = Math.min(95, Math.max(5, 
+      percentileRank + 
+      availabilityAdjustment +
+      diversityAdjustment +
+      distributionAdjustment +
+      featureAdjustment
+    ));
+    
+    // Enhanced competitive edge calculations with more sophisticated metrics
+    const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+    
+    // Enhanced size edge calculation considering value per sqft
+    const sizeEdge = competitorAvgSqFt > 0 ? subjectAvgSqFt - competitorAvgSqFt : 0;
+    const valuePerSqFt = subjectAvgSqFt > 0 ? subjectAvgRent / subjectAvgSqFt : 0;
+    const competitorValuePerSqFt = competitorAvgSqFt > 0 ? competitorAvgRent / competitorAvgSqFt : 0;
+    const valueAdvantage = competitorValuePerSqFt > 0 ? ((valuePerSqFt - competitorValuePerSqFt) / competitorValuePerSqFt) * 100 : 0;
+    
+    // Enhanced availability edge with occupancy rate consideration
+    const subjectAvailableCount = subjectUnits.filter(u => u.status === 'available').length;
+    const competitorAvailableCount = competitorUnits.filter(u => u.status === 'available').length;
+    const subjectOccupancyRate = subjectUnits.length > 0 ? 
+      ((subjectUnits.length - subjectAvailableCount) / subjectUnits.length) * 100 : 0;
+    const competitorOccupancyRate = competitorUnits.length > 0 ?
+      ((competitorUnits.length - competitorAvailableCount) / competitorUnits.length) * 100 : 0;
+    const availabilityEdge = subjectAvailableCount - competitorAvailableCount;
+    const occupancyDiff = subjectOccupancyRate - competitorOccupancyRate;
+    
+    // Calculate availability scores
+    const getAvailabilityScore = (units: UnitComparison[]) => {
+      const now = new Date();
+      const scores = units.map(unit => {
+        if (!unit.availabilityDate) return 0.5;
+        const daysUntilAvailable = Math.floor((new Date(unit.availabilityDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysUntilAvailable <= 0) return 1.0; // Immediately available
+        if (daysUntilAvailable <= 30) return 0.8; // Available within 30 days
+        if (daysUntilAvailable <= 60) return 0.6; // Available within 60 days
+        return 0.4; // Available after 60 days
+      });
+      return scores.reduce((a, b) => a + b, 0) / (scores.length || 1);
+    };
+    
+    const subjectAvailabilityScore = getAvailabilityScore(subjectUnitsFormatted);
+    const competitorAvailabilityScore = getAvailabilityScore(competitorUnitsFormatted);
+    
+    // Calculate floor plan diversity score
+    const getFloorPlanDiversityScore = (units: UnitComparison[]) => {
+      const uniqueTypes = new Set(units.map(u => `${u.bedrooms}-${u.bathrooms}`));
+      const diversityRatio = uniqueTypes.size / Math.max(units.length, 1);
+      return Math.min(diversityRatio * 100, 100);
+    };
+    
+    const subjectDiversityScore = getFloorPlanDiversityScore(subjectUnitsFormatted);
+    const competitorDiversityScore = getFloorPlanDiversityScore(competitorUnitsFormatted);
+    
+    // Calculate unit type distribution score
+    const getUnitTypeDistributionScore = (units: UnitComparison[]) => {
+      const typeGroups = units.reduce((acc, unit) => {
+        const key = `${unit.bedrooms}BR`;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+      
+      // Ideal distribution: variety of unit types with good balance
+      const totalUnits = units.length || 1;
+      const distribution = Object.values(typeGroups).map(count => count / totalUnits);
+      
+      // Calculate entropy as a measure of distribution balance
+      const entropy = distribution.reduce((sum, p) => {
+        return sum - (p > 0 ? p * Math.log2(p) : 0);
+      }, 0);
+      
+      // Normalize entropy to 0-100 scale
+      const maxEntropy = Math.log2(Math.max(Object.keys(typeGroups).length, 1));
+      return maxEntropy > 0 ? (entropy / maxEntropy) * 100 : 50;
+    };
+    
+    const subjectDistributionScore = getUnitTypeDistributionScore(subjectUnitsFormatted);
+    const competitorDistributionScore = getUnitTypeDistributionScore(competitorUnitsFormatted);
+    
+    // Calculate unit feature score (size, bedrooms, bathrooms)
+    const getUnitFeatureScore = (units: UnitComparison[]) => {
+      if (units.length === 0) return 50;
+      
+      const avgBedrooms = units.reduce((sum, u) => sum + u.bedrooms, 0) / units.length;
+      const avgBathrooms = units.reduce((sum, u) => sum + (u.bathrooms || 1), 0) / units.length;
+      const avgSqFt = units.reduce((sum, u) => sum + (u.squareFootage || 0), 0) / units.length;
+      
+      // Score based on typical preferences
+      const bedroomScore = Math.min(avgBedrooms * 25, 100); // Max at 4BR
+      const bathroomScore = Math.min(avgBathrooms * 40, 100); // Max at 2.5BA  
+      const sqftScore = Math.min((avgSqFt / 1500) * 100, 100); // Max at 1500 sqft
+      
+      return (bedroomScore + bathroomScore + sqftScore) / 3;
+    };
+    
+    const subjectFeatureScore = getUnitFeatureScore(subjectUnitsFormatted);
+    const competitorFeatureScore = getUnitFeatureScore(competitorUnitsFormatted);
+    
+    // Enhanced amenity score based on multiple factors
+    const baseAmenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
+    const featureBonus = subjectFeatureScore > competitorFeatureScore ? 15 : 0;
+    const diversityBonus = subjectDiversityScore > competitorDiversityScore ? 10 : 0;
+    const amenityScore = Math.min(100, baseAmenityScore + featureBonus + diversityBonus);
+    
+    // Calculate market momentum (trend indicator)
+    const marketMomentum = (() => {
+      const availabilityTrend = subjectAvailabilityScore - competitorAvailabilityScore;
+      const pricingTrend = pricingEdge;
+      const occupancyTrend = occupancyDiff;
+      
+      // Weighted average of trends
+      return (availabilityTrend * 0.3 + pricingTrend * 0.4 + occupancyTrend * 0.3) / 100;
+    })();
+    
+    // Enhanced competitive edges with more nuanced evaluation
     const competitiveEdges: CompetitiveEdges = {
       pricing: {
         edge: Math.round(pricingEdge * 10) / 10,
-        label: pricingEdge > 0 ? `+${Math.abs(Math.round(pricingEdge))}% above market` : 
-               pricingEdge < 0 ? `${Math.abs(Math.round(pricingEdge))}% below market` : "At market rate",
-        status: pricingEdge > 10 ? "disadvantage" as const : pricingEdge < -10 ? "advantage" as const : "neutral" as const
+        label: (() => {
+          if (Math.abs(pricingEdge) < 3) return "At market equilibrium";
+          if (pricingEdge > 15) return `${Math.abs(Math.round(pricingEdge))}% premium pricing`;
+          if (pricingEdge > 0) return `${Math.abs(Math.round(pricingEdge))}% above market`;
+          if (pricingEdge < -15) return `${Math.abs(Math.round(pricingEdge))}% value pricing`;
+          return `${Math.abs(Math.round(pricingEdge))}% below market`;
+        })(),
+        status: (() => {
+          // Consider value advantage in pricing
+          if (pricingEdge > 10 && valueAdvantage > 5) return "neutral" as const; // Premium justified by value
+          if (pricingEdge > 10) return "disadvantage" as const;
+          if (pricingEdge < -10) return "advantage" as const;
+          return "neutral" as const;
+        })()
       },
       size: {
         edge: Math.round(sizeEdge),
-        label: sizeEdge > 0 ? `+${Math.round(sizeEdge)} sq ft larger` : 
-               sizeEdge < 0 ? `${Math.abs(Math.round(sizeEdge))} sq ft smaller` : "Similar size",
-        status: sizeEdge > 50 ? "advantage" as const : sizeEdge < -50 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const valueDiff = Math.round(valueAdvantage);
+          if (Math.abs(sizeEdge) < 20) return "Comparable unit sizes";
+          const sizeLabel = sizeEdge > 0 ? `${Math.round(sizeEdge)} sqft larger` : `${Math.abs(Math.round(sizeEdge))} sqft smaller`;
+          const valueLabel = valueDiff !== 0 ? ` (${Math.abs(valueDiff)}% ${valueDiff > 0 ? 'better' : 'lower'} value/sqft)` : '';
+          return sizeLabel + valueLabel;
+        })(),
+        status: (() => {
+          // Consider both size and value per sqft
+          const combinedAdvantage = sizeEdge + (valueAdvantage * 10);
+          if (combinedAdvantage > 75) return "advantage" as const;
+          if (combinedAdvantage < -75) return "disadvantage" as const;
+          return "neutral" as const;
+        })()
       },
       availability: {
         edge: availabilityEdge,
-        label: availabilityEdge > 0 ? `${availabilityEdge} more units available` : 
-               availabilityEdge < 0 ? `${Math.abs(availabilityEdge)} fewer units available` : "Similar availability",
-        status: availabilityEdge > 2 ? "advantage" as const : availabilityEdge < -2 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const occupancyLabel = occupancyDiff > 5 ? ` (${Math.round(occupancyDiff)}% higher occupancy)` :
+                                occupancyDiff < -5 ? ` (${Math.abs(Math.round(occupancyDiff))}% lower occupancy)` : '';
+          if (Math.abs(availabilityEdge) < 2) return `Balanced availability${occupancyLabel}`;
+          const availLabel = availabilityEdge > 0 ? `${availabilityEdge} more units available` :
+                            `${Math.abs(availabilityEdge)} fewer units available`;
+          return availLabel + occupancyLabel;
+        })(),
+        status: (() => {
+          // High occupancy with low availability = advantage (high demand)
+          // Low occupancy with high availability = disadvantage (low demand)
+          if (occupancyDiff > 10 && availabilityEdge <= 0) return "advantage" as const;
+          if (occupancyDiff < -10 && availabilityEdge > 0) return "disadvantage" as const;
+          if (availabilityEdge > 3) return "advantage" as const;
+          if (availabilityEdge < -3) return "disadvantage" as const;
+          return "neutral" as const;
+        })()
       },
       amenities: {
         edge: amenityScore,
-        label: amenityScore > 60 ? "Premium amenities" : amenityScore > 40 ? "Standard amenities" : "Basic amenities",
-        status: amenityScore > 60 ? "advantage" as const : amenityScore < 40 ? "disadvantage" as const : "neutral" as const
+        label: (() => {
+          const features = [];
+          if (amenityScore > 70) features.push("Premium");
+          else if (amenityScore > 50) features.push("Standard");
+          else features.push("Basic");
+          
+          if (subjectDiversityScore > 60) features.push("diverse floor plans");
+          if (subjectFeatureScore > 70) features.push("superior unit features");
+          if (subjectDistributionScore > 60) features.push("balanced unit mix");
+          
+          return features.join(", ");
+        })(),
+        status: amenityScore > 65 ? "advantage" as const : amenityScore < 35 ? "disadvantage" as const : "neutral" as const
       }
     };
     
-    // Generate pricing power score
-    const pricingPowerScore = Math.min(100, Math.max(0, 
-      percentileRank + 
-      (competitiveEdges.size.status === "advantage" ? 10 : competitiveEdges.size.status === "disadvantage" ? -10 : 0) +
-      (competitiveEdges.amenities.status === "advantage" ? 5 : competitiveEdges.amenities.status === "disadvantage" ? -5 : 0)
-    ));
+    // Enhanced pricing power score with multiple dynamic factors
+    const pricingPowerScore = (() => {
+      // Base score from percentile rank
+      let score = percentileRank;
+      
+      // Competitive edge adjustments
+      const edgeAdjustments = {
+        pricing: competitiveEdges.pricing.status === "advantage" ? 8 : 
+                competitiveEdges.pricing.status === "disadvantage" ? -8 : 0,
+        size: competitiveEdges.size.status === "advantage" ? 7 : 
+              competitiveEdges.size.status === "disadvantage" ? -7 : 0,
+        availability: competitiveEdges.availability.status === "advantage" ? 6 : 
+                     competitiveEdges.availability.status === "disadvantage" ? -6 : 0,
+        amenities: competitiveEdges.amenities.status === "advantage" ? 5 : 
+                  competitiveEdges.amenities.status === "disadvantage" ? -5 : 0
+      };
+      
+      score += Object.values(edgeAdjustments).reduce((sum, adj) => sum + adj, 0);
+      
+      // Market momentum factor (can swing score by up to 15 points)
+      score += marketMomentum * 15;
+      
+      // Occupancy rate bonus (high occupancy indicates strong demand)
+      if (subjectOccupancyRate > 90) score += 10;
+      else if (subjectOccupancyRate > 80) score += 5;
+      else if (subjectOccupancyRate < 50) score -= 10;
+      
+      // Unit diversity bonus (more diverse = more market appeal)
+      if (subjectDiversityScore > 70) score += 8;
+      else if (subjectDiversityScore < 30) score -= 5;
+      
+      // Distribution balance bonus
+      if (subjectDistributionScore > 70) score += 5;
+      else if (subjectDistributionScore < 30) score -= 3;
+      
+      // Feature quality bonus
+      const featureAdvantage = subjectFeatureScore - competitorFeatureScore;
+      score += featureAdvantage * 0.15;
+      
+      // Value proposition adjustment
+      if (valueAdvantage < -10 && pricingEdge > 10) score -= 10; // Overpriced
+      else if (valueAdvantage > 10 && pricingEdge < -10) score += 10; // Great value
+      
+      // Time-based market readiness
+      if (subjectAvailabilityScore > 0.8) score += 5; // Units ready now
+      else if (subjectAvailabilityScore < 0.4) score -= 5; // Units not ready
+      
+      // Add some controlled randomness based on unique factors
+      const uniquenessFactor = (subjectUnitsFormatted.length * 7 + competitorUnitsFormatted.length * 13) % 10 - 5;
+      score += uniquenessFactor * 0.5;
+      
+      return Math.min(100, Math.max(0, Math.round(score)));
+    })();
     
-    // Generate dynamic competitive advantages
+    // Enhanced competitive advantages based on comprehensive metrics
     const competitiveAdvantages = [];
-    if (percentileRank > 75) competitiveAdvantages.push("Premium market positioning");
-    if (competitiveEdges.size.status === "advantage") competitiveAdvantages.push("Larger than average units");
-    if (competitiveEdges.pricing.status === "advantage") competitiveAdvantages.push("Competitive pricing advantage");
-    if (competitiveEdges.availability.status === "advantage") competitiveAdvantages.push("Higher unit availability");
-    if (competitiveEdges.amenities.status === "advantage") competitiveAdvantages.push("Superior amenity package");
     
-    // Generate dynamic recommendations
+    // Market position advantages
+    if (pricingPowerScore > 80) competitiveAdvantages.push("Dominant pricing power in market");
+    else if (pricingPowerScore > 65) competitiveAdvantages.push("Strong market pricing flexibility");
+    else if (percentileRank > 75) competitiveAdvantages.push("Premium market positioning");
+    else if (percentileRank > 60) competitiveAdvantages.push("Above-average market standing");
+    
+    // Feature-based advantages  
+    if (competitiveEdges.size.status === "advantage") competitiveAdvantages.push("Spacious units exceed market standard");
+    if (competitiveEdges.pricing.status === "advantage") competitiveAdvantages.push("Value pricing attracts residents");
+    if (competitiveEdges.availability.status === "advantage" && subjectOccupancyRate > 80) 
+      competitiveAdvantages.push("High demand with strategic availability");
+    else if (competitiveEdges.availability.status === "advantage") 
+      competitiveAdvantages.push("Greater selection than competitors");
+    if (competitiveEdges.amenities.status === "advantage") competitiveAdvantages.push("Premium amenities and features");
+    
+    // Score-based advantages
+    if (subjectDiversityScore > 70) competitiveAdvantages.push("Diverse floor plan options");
+    if (subjectFeatureScore > 75) competitiveAdvantages.push("Superior unit specifications");
+    if (subjectDistributionScore > 70) competitiveAdvantages.push("Optimal unit mix for market");
+    if (subjectAvailabilityScore > 0.8) competitiveAdvantages.push("Immediate move-in availability");
+    if (valueAdvantage > 10) competitiveAdvantages.push("Exceptional value per square foot");
+    if (marketMomentum > 0.5) competitiveAdvantages.push("Positive market momentum");
+    
+    // Ensure we always have advantages
+    if (competitiveAdvantages.length === 0) {
+      if (percentileRank >= 50) competitiveAdvantages.push("Stable market position");
+      else competitiveAdvantages.push("Competitive entry pricing");
+    }
+    
+    // Enhanced recommendations with actionable insights
     const recommendations = [];
-    if (percentileRank < 30) recommendations.push("Consider reviewing pricing strategy to better align with market");
-    if (competitiveEdges.size.status === "disadvantage") recommendations.push("Highlight other value propositions to offset smaller unit sizes");
-    if (competitiveEdges.pricing.status === "disadvantage") recommendations.push("Ensure premium pricing is justified by superior amenities or location");
-    if (competitiveEdges.availability.status === "disadvantage") recommendations.push("Limited availability may support premium pricing strategy");
-    if (recommendations.length === 0) recommendations.push("Maintain current competitive positioning");
     
-    // Generate market position description
-    let marketPosition = "Market Average";
-    if (percentileRank > 75) marketPosition = "Premium Market Leader";
-    else if (percentileRank > 50) marketPosition = "Above Market Average";
-    else if (percentileRank > 25) marketPosition = "Below Market Average";
-    else marketPosition = "Value Market Position";
+    // Pricing recommendations
+    if (pricingPowerScore < 30) {
+      recommendations.push("Urgent: Realign pricing strategy with market realities");
+    } else if (pricingPowerScore < 50 && pricingEdge > 10) {
+      recommendations.push("Consider modest rent reductions to improve occupancy");
+    } else if (pricingPowerScore > 70 && pricingEdge < -5) {
+      recommendations.push("Strong position supports 3-5% rent increases");
+    }
     
-    // Generate AI insights (placeholder - will be replaced with OpenAI)
-    const aiInsights = [
-      `Your property ranks in the ${percentileRank}th percentile for this filter criteria`,
-      competitiveEdges.pricing.status === "advantage" ? 
-        "Your pricing provides strong competitive advantage in the current market" :
-        competitiveEdges.pricing.status === "disadvantage" ?
-        "Consider reviewing pricing strategy to improve market competitiveness" :
-        "Your pricing aligns well with market expectations",
-      subjectUnitsFormatted.length > 0 ?
-        `With ${subjectUnitsFormatted.length} units matching filters, you have ${subjectUnitsFormatted.length > 5 ? 'strong' : 'limited'} inventory in this segment` :
-        "No units match the current filter criteria - consider expanding criteria"
-    ];
+    // Size and value recommendations
+    if (competitiveEdges.size.status === "disadvantage" && valueAdvantage < 0) {
+      recommendations.push("Bundle services or amenities to justify pricing");
+    } else if (competitiveEdges.size.status === "disadvantage") {
+      recommendations.push("Emphasize efficiency and smart layouts in marketing");
+    }
+    
+    // Availability and occupancy recommendations
+    if (subjectOccupancyRate < 70) {
+      recommendations.push("Implement leasing incentives to boost occupancy");
+    } else if (subjectOccupancyRate > 95 && competitiveEdges.pricing.status !== "disadvantage") {
+      recommendations.push("High occupancy supports premium pricing strategy");
+    }
+    
+    // Feature-based recommendations
+    if (subjectDiversityScore < 40) {
+      recommendations.push("Consider unit renovations to add floor plan variety");
+    }
+    if (subjectFeatureScore < 50) {
+      recommendations.push("Upgrade unit amenities to match market expectations");
+    }
+    if (subjectDistributionScore < 40) {
+      recommendations.push("Rebalance unit mix through strategic renovations");
+    }
+    
+    // Market momentum recommendations
+    if (marketMomentum < -0.3) {
+      recommendations.push("Market trending negative - focus on resident retention");
+    } else if (marketMomentum > 0.3) {
+      recommendations.push("Capitalize on positive momentum with strategic pricing");
+    }
+    
+    // Ensure we always have recommendations
+    if (recommendations.length === 0) {
+      if (pricingPowerScore > 60) recommendations.push("Maintain current strategy while monitoring market");
+      else recommendations.push("Focus on operational excellence and resident satisfaction");
+    }
+    // Enhanced market position with more granular categories
+    const marketPosition = (() => {
+      // Consider both percentile rank and pricing power score for more nuanced positioning
+      const combinedScore = (percentileRank * 0.6 + pricingPowerScore * 0.4);
+      
+      // More granular market position categories
+      if (combinedScore >= 90) return "Dominant Market Leader";
+      if (combinedScore >= 80) return "Premium Market Position";
+      if (combinedScore >= 70) return "Strong Competitive Position";
+      if (combinedScore >= 60) return "Above Market Average";
+      if (combinedScore >= 50) return "Market Equilibrium";
+      if (combinedScore >= 40) return "Emerging Competitor";
+      if (combinedScore >= 30) return "Value-Oriented Position";
+      if (combinedScore >= 20) return "Budget Market Segment";
+      return "Market Entry Position";
+    })();
+    
+    // Enhanced AI insights with dynamic, data-driven observations
+    const aiInsights = [];
+    
+    // Market position insight
+    aiInsights.push(
+      `Your property achieves a ${marketPosition} with a pricing power score of ${pricingPowerScore}/100`
+    );
+    
+    // Pricing and value insights
+    if (valueAdvantage > 5) {
+      aiInsights.push(`Strong value proposition: ${Math.abs(Math.round(valueAdvantage))}% better value per square foot than competitors`);
+    } else if (valueAdvantage < -5) {
+      aiInsights.push(`Value gap detected: Units are ${Math.abs(Math.round(valueAdvantage))}% more expensive per square foot than market`);
+    }
+    
+    // Occupancy and demand insights
+    if (subjectOccupancyRate > 85) {
+      aiInsights.push(`High occupancy rate of ${Math.round(subjectOccupancyRate)}% indicates strong market demand`);
+    } else if (subjectOccupancyRate < 70) {
+      aiInsights.push(`Occupancy at ${Math.round(subjectOccupancyRate)}% suggests opportunity to improve market appeal`);
+    }
+    
+    // Unit mix and diversity insights
+    if (subjectDiversityScore > 60 && subjectDistributionScore > 60) {
+      aiInsights.push("Well-balanced portfolio with diverse floor plans appeals to broad market segment");
+    } else if (subjectDiversityScore < 40) {
+      aiInsights.push("Limited floor plan variety may restrict market appeal to specific tenant profiles");
+    }
+    
+    // Market momentum insight
+    if (Math.abs(marketMomentum) > 0.3) {
+      aiInsights.push(
+        marketMomentum > 0 ? 
+        `Positive market momentum (${(marketMomentum * 100).toFixed(1)}%) supports growth strategies` :
+        `Negative market momentum (${(marketMomentum * 100).toFixed(1)}%) requires defensive positioning`
+      );
+    }
+    
+    // Competitive advantage summary
+    const advantageCount = Object.values(competitiveEdges).filter(edge => edge.status === "advantage").length;
+    const disadvantageCount = Object.values(competitiveEdges).filter(edge => edge.status === "disadvantage").length;
+    
+    if (advantageCount > disadvantageCount) {
+      aiInsights.push(`Strong competitive position with ${advantageCount} key advantages over competitors`);
+    } else if (disadvantageCount > advantageCount) {
+      aiInsights.push(`${disadvantageCount} areas for improvement identified to strengthen market position`);
+    } else {
+      aiInsights.push("Balanced competitive position with opportunities for strategic differentiation");
+    }
+    
+    // Inventory insight
+    if (subjectUnitsFormatted.length > 0) {
+      const inventoryStrength = subjectUnitsFormatted.length > 10 ? "robust" : 
+                               subjectUnitsFormatted.length > 5 ? "moderate" : "limited";
+      aiInsights.push(
+        `${subjectUnitsFormatted.length} units match current filters, providing ${inventoryStrength} inventory depth`
+      );
+    } else {
+      aiInsights.push("No units match current filter criteria - consider adjusting parameters for meaningful analysis");
+    }
+    
+    // Availability timing insight
+    if (subjectAvailabilityScore > 0.7) {
+      aiInsights.push("Strong immediate availability positions you well for quick lease-ups");
+    } else if (subjectAvailabilityScore < 0.4) {
+      aiInsights.push("Limited near-term availability may impact ability to capture current demand");
+    }
     
     return {
       marketPosition,
