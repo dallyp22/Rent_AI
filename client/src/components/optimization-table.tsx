@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, ChevronUp, ChevronDown, FileSpreadsheet } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, ChevronUp, ChevronDown, FileSpreadsheet, Info } from "lucide-react";
 import { formatCurrency, formatCurrencyChange, formatLargeCurrency } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
@@ -22,13 +23,50 @@ interface UnitWithDetails extends PropertyUnit {
   marketAverage?: string;
   propertyName?: string;
   availabilityDate?: string | null;
+  pricingPowerScore?: number;
+  adjustmentReason?: string;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortColumn = 'unit' | 'tag' | 'property' | 'type' | 'current' | 'aiRec' | 'marketAvg' | 'newPrice' | 'change' | 'annual' | null;
+type SortColumn = 'unit' | 'tag' | 'property' | 'type' | 'powerScore' | 'current' | 'aiRec' | 'marketAvg' | 'newPrice' | 'change' | 'annual' | null;
+
+// Function to get power score badge with color coding
+const getPowerScoreBadge = (score: number | undefined) => {
+  if (score === undefined || score === null) {
+    return <Badge variant="outline" className="text-gray-500">N/A</Badge>;
+  }
+
+  let variant: "default" | "secondary" | "outline" | "destructive" = "outline";
+  let className = "";
+  let label = "";
+
+  if (score >= 80) {
+    // Premium position (80-100)
+    className = "bg-green-100 text-green-800 border-green-300";
+    label = "Premium";
+  } else if (score >= 60) {
+    // Good position (60-80)
+    className = "bg-blue-100 text-blue-800 border-blue-300";
+    label = "Good";
+  } else if (score >= 40) {
+    // Average position (40-60)
+    className = "bg-yellow-100 text-yellow-800 border-yellow-300";
+    label = "Average";
+  } else {
+    // Below market (0-40)
+    className = "bg-orange-100 text-orange-800 border-orange-300";
+    label = "Below";
+  }
+
+  return (
+    <Badge variant="outline" className={className}>
+      {score.toFixed(0)}%
+    </Badge>
+  );
+};
 
 // Memoized table row component for better performance
-const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getStatusBadge, formatCurrency, formatCurrencyChange }: any) => {
+const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdjust, getChangeIndicator, getStatusBadge, getPowerScoreBadge, formatCurrency, formatCurrencyChange }: any) => {
   const unitWithDetails = unit as UnitWithDetails;
   const currentRent = parseFloat(unit.currentRent);
   const recommendedRent = unit.recommendedRent ? parseFloat(unit.recommendedRent) : currentRent;
@@ -54,13 +92,30 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
       <td className="px-4 py-3" data-testid={`unit-type-${unit.unitNumber}`}>
         {unit.unitType}
       </td>
+      <td className="px-4 py-3" data-testid={`power-score-${unit.unitNumber}`}>
+        {getPowerScoreBadge(unitWithDetails.pricingPowerScore)}
+      </td>
       <td className="px-4 py-3" data-testid={`current-rent-${unit.unitNumber}`}>
         {formatCurrency(currentRent)}
       </td>
       <td className="px-4 py-3" data-testid={`ai-recommended-${unit.unitNumber}`}>
-        <span className="text-blue-600 font-medium">
-          {formatCurrency(recommendedRent)}
-        </span>
+        <div className="flex items-center gap-1">
+          <span className="text-blue-600 font-medium">
+            {formatCurrency(recommendedRent)}
+          </span>
+          {unitWithDetails.adjustmentReason && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="w-4 h-4 text-muted-foreground hover:text-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  <p className="text-sm">{unitWithDetails.adjustmentReason}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
       </td>
       <td className="px-4 py-3" data-testid={`market-avg-${unit.unitNumber}`}>
         {formatCurrency(marketAvg)}
@@ -460,6 +515,10 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
           aValue = a.unitType || '';
           bValue = b.unitType || '';
           break;
+        case 'powerScore':
+          aValue = (a as UnitWithDetails).pricingPowerScore !== undefined ? (a as UnitWithDetails).pricingPowerScore : -1;
+          bValue = (b as UnitWithDetails).pricingPowerScore !== undefined ? (b as UnitWithDetails).pricingPowerScore : -1;
+          break;
         case 'current':
           aValue = parseFloat(a.currentRent);
           bValue = parseFloat(b.currentRent);
@@ -781,6 +840,17 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
                 </th>
                 <th 
                   className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
+                  onClick={() => handleColumnClick('powerScore')}
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Power Score</span>
+                    {sortColumn === 'powerScore' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
+                    {sortColumn === 'powerScore' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
+                    {sortColumn !== 'powerScore' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
+                  </div>
+                </th>
+                <th 
+                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
                   onClick={() => handleColumnClick('current')}
                 >
                   <div className="flex items-center gap-1">
@@ -859,6 +929,7 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
                   handleQuickAdjust={handleQuickAdjust}
                   getChangeIndicator={getChangeIndicator}
                   getStatusBadge={getStatusBadge}
+                  getPowerScoreBadge={getPowerScoreBadge}
                   formatCurrency={formatCurrency}
                   formatCurrencyChange={formatCurrencyChange}
                 />
