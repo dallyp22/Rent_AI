@@ -541,7 +541,12 @@ export const filteredAnalysisSchema = z.object({
   subjectAvgRent: z.number(),
   competitorAvgRent: z.number(),
   subjectAvgSqFt: z.number(),
-  competitorAvgSqFt: z.number()
+  competitorAvgSqFt: z.number(),
+  // Data transparency fields
+  dataPointsUsed: z.number().min(0),
+  subjectAvgRentActual: z.number().min(0),
+  competitorAvgRentActual: z.number().min(0),
+  comparisonNote: z.string()
 });
 
 export type FilterCriteria = z.infer<typeof filterCriteriaSchema>;
