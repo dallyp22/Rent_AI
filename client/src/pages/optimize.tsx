@@ -879,19 +879,10 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
       </div>
 
       <div className="bg-card rounded-lg border border-border p-6">
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6">
           <h3 className="text-xl font-semibold" data-testid="optimization-title">
             {isSessionMode ? 'Portfolio Optimization' : 'Pricing Optimization'}
           </h3>
-          <Button 
-            onClick={handleExportToExcel}
-            disabled={!optimizationQuery.data || isExporting}
-            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-            data-testid="button-export-excel"
-          >
-            <FileSpreadsheet className="mr-2 h-4 w-4" />
-            {isExporting ? 'Exporting...' : 'Export to Excel'}
-          </Button>
         </div>
 
         {/* Optimization Controls */}
@@ -926,6 +917,8 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             report={optimizationQuery.data.report}
             onApplyChanges={handleApplyChanges}
             onPricesChange={setCurrentModifiedPrices}
+            onExportToExcel={handleExportToExcel}
+            isExporting={isExporting}
           />
         ) : (
           <div className="text-center py-8" data-testid="no-data-state">

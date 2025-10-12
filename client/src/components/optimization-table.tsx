@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign, ChevronUp, ChevronDown } from "lucide-react";
+import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign, ChevronUp, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { formatCurrency, formatCurrencyChange, formatLargeCurrency } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
@@ -14,6 +14,8 @@ interface OptimizationTableProps {
   report: OptimizationReport;
   onApplyChanges?: (unitPrices: Record<string, number>) => void;
   onPricesChange?: (unitPrices: Record<string, number>) => void;
+  onExportToExcel?: () => void;
+  isExporting?: boolean;
 }
 
 interface UnitWithDetails extends PropertyUnit {
@@ -135,7 +137,7 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
 
 TableRow.displayName = 'TableRow';
 
-function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: OptimizationTableProps) {
+function OptimizationTable({ units, report, onApplyChanges, onPricesChange, onExportToExcel, isExporting }: OptimizationTableProps) {
   const [modifiedPrices, setModifiedPrices] = useState<Record<string, number>>({});
   const [selectedUnitType, setSelectedUnitType] = useState<string>("all");
   const [bulkFixedAmount, setBulkFixedAmount] = useState<string>("");
@@ -825,9 +827,22 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
         </div>
       </div>
 
-      {/* Apply Changes Button */}
-      {onApplyChanges && (
-        <div className="flex justify-end">
+      {/* Action Buttons */}
+      <div className="flex justify-end gap-3">
+        {onExportToExcel && (
+          <Button 
+            size="lg"
+            onClick={onExportToExcel}
+            disabled={isExporting}
+            variant="outline"
+            className="gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-300 px-6"
+            data-testid="button-export-excel"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            {isExporting ? "Exporting..." : "Export to Excel"}
+          </Button>
+        )}
+        {onApplyChanges && (
           <Button 
             size="lg"
             onClick={() => onApplyChanges(modifiedPrices)}
@@ -838,8 +853,8 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange }: Op
             <DollarSign className="w-5 h-5 mr-2" />
             Apply Changes ({impact.affectedUnits} units)
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
