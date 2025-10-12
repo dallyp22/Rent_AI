@@ -508,6 +508,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
               change: change,
               annualImpact: change * 12,
               status: unit.status,
+              availabilityDate: (unit as any).availabilityDate || null,
               reasoning: currentModifiedPrices[unit.id] 
                 ? 'User-adjusted pricing recommendation' 
                 : 'AI-generated portfolio optimization recommendation'
@@ -583,6 +584,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
               change: change,
               annualImpact: change * 12,
               status: unit.status,
+              availabilityDate: (unit as any).availabilityDate || null,
               reasoning: currentModifiedPrices[unit.id] 
                 ? 'User-adjusted pricing recommendation' 
                 : 'AI-generated pricing recommendation'

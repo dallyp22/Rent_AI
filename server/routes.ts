@@ -4765,6 +4765,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
               currentRent: unit.rent?.toString() || '0', // Always use scraped rent as current market price
               recommendedRent: null, // Will be set by optimization
               status: unit.status || 'available',
+              availabilityDate: unit.availabilityDate || null, // Include availability date from scraped data
               // Property-level data from profile
               propertyName: profile.name,
               propertyAddress: profile.address,
@@ -4937,7 +4938,8 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
               change: marketAdjustment,
               annualImpact: marketAdjustment * 12,
               confidenceLevel: "Low",
-              reasoning: "Fallback recommendation due to AI service unavailability - conservative market-based adjustment"
+              reasoning: "Fallback recommendation due to AI service unavailability - conservative market-based adjustment",
+              availabilityDate: unit.availabilityDate // Include availability date in fallback
             };
           }),
           totalIncrease: allUnits.reduce((sum, unit) => sum + (Math.floor(Math.random() * 100) + 50), 0),
@@ -5006,7 +5008,8 @@ Important: Generate recommendations for ALL ${allUnits.length} units based on th
             bedrooms: unit.bedrooms,
             bathrooms: unit.bathrooms,
             squareFootage: unit.squareFootage,
-            status: unit.status
+            status: unit.status,
+            availabilityDate: unit.availabilityDate // Include availability date in optimized response
           });
         } else {
           console.log(`[SESSION_OPTIMIZE] No matching unit found for recommendation: ${recommendation.unitNumber}`);

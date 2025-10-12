@@ -21,6 +21,7 @@ interface UnitWithDetails extends PropertyUnit {
   reasoning?: string;
   marketAverage?: string;
   propertyName?: string;
+  availabilityDate?: string | null;
 }
 
 type SortDirection = 'asc' | 'desc' | null;
@@ -128,7 +129,7 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
         </span>
       </td>
       <td className="px-4 py-3" data-testid={`status-${unit.unitNumber}`}>
-        {getStatusBadge(unit.status)}
+        {getStatusBadge(unit.status, unit.availabilityDate)}
       </td>
     </tr>
   );
@@ -359,7 +360,45 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, availabilityDate?: string | null) => {
+    // Helper function to format availability date
+    const formatAvailability = (date: string | null | undefined, status: string) => {
+      if (!date || date === 'Contact for availability') {
+        return 'Contact for availability';
+      }
+      
+      const lowerDate = date.toLowerCase();
+      const lowerStatus = status.toLowerCase();
+      
+      if (lowerStatus === 'available' || lowerDate.includes('available now') || lowerDate.includes('immediately')) {
+        return 'Available Now';
+      }
+      
+      // Try to parse the date
+      try {
+        const parsedDate = new Date(date);
+        if (!isNaN(parsedDate.getTime())) {
+          const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+          return `Available ${parsedDate.toLocaleDateString('en-US', options)}`;
+        }
+      } catch {
+        // Fall back to original string if parsing fails
+      }
+      
+      // If the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
+      if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
+        return `Available ${date}`;
+      }
+      
+      return date;
+    };
+    
+    // For available units, show availability date
+    if (status === 'available' && availabilityDate) {
+      const formattedDate = formatAvailability(availabilityDate, status);
+      return <Badge variant="outline" className="bg-blue-50 text-blue-700" data-testid={`status-available`}>{formattedDate}</Badge>;
+    }
+    
     switch (status) {
       case "vacant":
         return <Badge variant="destructive" data-testid={`status-vacant`}>Vacant</Badge>;
@@ -367,6 +406,8 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
         return <Badge variant="default" className="bg-green-100 text-green-800" data-testid={`status-occupied`}>Occupied</Badge>;
       case "notice_given":
         return <Badge variant="secondary" className="bg-blue-100 text-blue-800" data-testid={`status-notice`}>Notice Given</Badge>;
+      case "available":
+        return <Badge variant="outline" className="bg-blue-50 text-blue-700" data-testid={`status-available`}>Available</Badge>;
       default:
         return <Badge variant="outline" data-testid={`status-unknown`}>{status}</Badge>;
     }
@@ -804,7 +845,7 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
                     {sortColumn !== 'annual' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
                   </div>
                 </th>
-                <th className="px-4 py-3 text-left font-semibold">Status</th>
+                <th className="px-4 py-3 text-left font-semibold">Availability</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">

@@ -11,6 +11,40 @@ function formatSquareFootage(sqft: number | undefined | null): string {
   return sqft.toLocaleString() + ' sq ft';
 }
 
+// Helper function to format availability date
+function formatAvailabilityDate(date: string | null | undefined, status: string): string {
+  if (!date || date === 'Contact for availability') {
+    return status === 'available' ? 'Available Now' : 'Contact for availability';
+  }
+  
+  const lowerDate = date.toLowerCase();
+  const lowerStatus = status.toLowerCase();
+  
+  if (lowerStatus === 'available' || lowerDate.includes('available now') || lowerDate.includes('immediately')) {
+    return 'Available Now';
+  }
+  
+  // Try to parse the date
+  try {
+    const parsedDate = new Date(date);
+    if (!isNaN(parsedDate.getTime())) {
+      const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' };
+      return parsedDate.toLocaleDateString('en-US', options);
+    }
+  } catch {
+    // Fall back to original string if parsing fails
+  }
+  
+  // If the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
+  if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
+    // Add current year if not present
+    const currentYear = new Date().getFullYear();
+    return `${date}, ${currentYear}`;
+  }
+  
+  return date;
+}
+
 export interface ExcelExportData {
   propertyInfo: {
     address: string;
@@ -29,6 +63,7 @@ export interface ExcelExportData {
     change: number;
     annualImpact: number;
     status: string;
+    availabilityDate?: string | null;
     reasoning?: string;
   }>;
   summary: {
@@ -71,6 +106,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'Monthly Change', key: 'change', width: 15 },
     { header: 'Annual Impact', key: 'annualImpact', width: 15 },
     { header: 'Status', key: 'status', width: 12 },
+    { header: 'Availability Date', key: 'availabilityDate', width: 18 },
     { header: 'Notes', key: 'notes', width: 40 }
   ];
   
@@ -109,6 +145,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'Monthly Change',
     'Annual Impact',
     'Status',
+    'Availability Date',
     'Notes'
   ]);
   
@@ -142,6 +179,7 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.change,
       unit.annualImpact,
       unit.status,
+      formatAvailabilityDate(unit.availabilityDate, unit.status),
       unit.reasoning || 'No additional notes'
     ]);
     
