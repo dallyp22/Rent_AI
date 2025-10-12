@@ -367,10 +367,16 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
         return 'Contact for availability';
       }
       
-      const lowerDate = date.toLowerCase();
-      const lowerStatus = status.toLowerCase();
+      // First check if the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
+      // This should take precedence over other checks
+      if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
+        return `Available ${date}`;
+      }
       
-      if (lowerStatus === 'available' || lowerDate.includes('available now') || lowerDate.includes('immediately')) {
+      const lowerDate = date.toLowerCase();
+      
+      // Only show "Available Now" if the date explicitly says so
+      if (lowerDate === 'available now' || lowerDate === 'immediately' || lowerDate === 'now') {
         return 'Available Now';
       }
       
@@ -383,11 +389,6 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
         }
       } catch {
         // Fall back to original string if parsing fails
-      }
-      
-      // If the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
-      if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
-        return `Available ${date}`;
       }
       
       return date;
