@@ -11,6 +11,14 @@ function formatSquareFootage(sqft: number | undefined | null): string {
   return sqft.toLocaleString() + ' sq ft';
 }
 
+// Helper function to format power score
+function formatPowerScore(score: number | undefined | null): string {
+  if (score === undefined || score === null) {
+    return '-';
+  }
+  return `${Math.round(score)}%`;
+}
+
 // Helper function to format availability date
 function formatAvailabilityDate(date: string | null | undefined, status: string): string {
   if (!date || date === 'Contact for availability') {
@@ -58,9 +66,11 @@ export interface ExcelExportData {
     unitNumber: string;
     tag?: string;
     unitType: string;
+    pricingPowerScore?: number;
     squareFootage?: number;
     currentRent: number;
     recommendedRent?: number;
+    adjustmentReason?: string;
     change: number;
     annualImpact: number;
     status: string;
@@ -101,9 +111,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'TAG', key: 'tag', width: 20 },
     { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
+    { header: 'Power Score', key: 'powerScore', width: 12 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
-    { header: 'Recommended Rent', key: 'recommendedRent', width: 18 },
+    { header: 'AI Recommended', key: 'recommendedRent', width: 18 },
+    { header: 'Adjustment Reason', key: 'adjustmentReason', width: 30 },
     { header: 'Monthly Change', key: 'change', width: 15 },
     { header: 'Annual Impact', key: 'annualImpact', width: 15 },
     { header: 'Status', key: 'status', width: 12 },
@@ -140,9 +152,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'TAG',
     'Property',
     'Unit Type',
+    'Power Score',
     'Square Footage',
     'Current Rent',
-    'Recommended Rent',
+    'AI Recommended',
+    'Adjustment Reason',
     'Monthly Change',
     'Annual Impact',
     'Status',
@@ -174,9 +188,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.tag || '-',
       unit.propertyName || '',
       unit.unitType,
+      formatPowerScore(unit.pricingPowerScore),
       formatSquareFootage(unit.squareFootage),
       unit.currentRent,
       unit.recommendedRent || unit.currentRent,
+      unit.adjustmentReason || '',
       unit.change,
       unit.annualImpact,
       unit.status,
@@ -184,9 +200,48 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.reasoning || 'No additional notes'
     ]);
     
+    // Apply conditional formatting for Power Score column
+    const powerScoreCell = row.getCell(5); // Power Score column
+    if (unit.pricingPowerScore !== undefined && unit.pricingPowerScore !== null) {
+      const score = unit.pricingPowerScore;
+      if (score >= 80) {
+        // Premium position (80-100) - green
+        powerScoreCell.font = { color: { argb: 'FF059669' }, bold: true };
+        powerScoreCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDCFCE7' }
+        };
+      } else if (score >= 60) {
+        // Good position (60-80) - blue
+        powerScoreCell.font = { color: { argb: 'FF2563EB' }, bold: true };
+        powerScoreCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDBEAFE' }
+        };
+      } else if (score >= 40) {
+        // Average position (40-60) - yellow
+        powerScoreCell.font = { color: { argb: 'FFA16207' }, bold: true };
+        powerScoreCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEF3C7' }
+        };
+      } else {
+        // Below market (0-40) - orange
+        powerScoreCell.font = { color: { argb: 'FFEA580C' }, bold: true };
+        powerScoreCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFED7AA' }
+        };
+      }
+    }
+    
     // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(8); // Monthly Change column (now shifted by 3: TAG, Property, Square Footage)
-    const impactCell = row.getCell(9); // Annual Impact column (now shifted by 3: TAG, Property, Square Footage)
+    const changeCell = row.getCell(10); // Monthly Change column (with new Power Score and Adjustment Reason columns)
+    const impactCell = row.getCell(11); // Annual Impact column (with new Power Score and Adjustment Reason columns)
     
     if (unit.change > 0) {
       // Positive change - green
@@ -233,10 +288,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     });
     
     // Format currency cells
-    row.getCell(6).numFmt = '"$"#,##0.00'; // Current Rent (shifted by 3: TAG, Property, Square Footage)
-    row.getCell(7).numFmt = '"$"#,##0.00'; // Recommended Rent (shifted by 3: TAG, Property, Square Footage)
-    row.getCell(8).numFmt = '"$"#,##0.00'; // Monthly Change (shifted by 3: TAG, Property, Square Footage)
-    row.getCell(9).numFmt = '"$"#,##0.00'; // Annual Impact (shifted by 3: TAG, Property, Square Footage)
+    row.getCell(7).numFmt = '"$"#,##0.00'; // Current Rent (column 7)
+    row.getCell(8).numFmt = '"$"#,##0.00'; // AI Recommended (column 8)
+    row.getCell(10).numFmt = '"$"#,##0.00'; // Monthly Change (column 10)
+    row.getCell(11).numFmt = '"$"#,##0.00'; // Annual Impact (column 11)
   });
   
   worksheet.addRow([]);
@@ -286,4 +341,9 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+// Export alias for optimization-specific naming
+export async function exportOptimizationToExcel(data: ExcelExportData): Promise<void> {
+  return exportToExcel(data);
 }
