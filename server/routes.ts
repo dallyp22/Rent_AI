@@ -1559,6 +1559,19 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       );
 
       console.log('[SESSION_FILTERED_ANALYSIS] Analysis generated successfully for session:', session.name);
+      
+      // Log the actual calculated values being returned
+      console.log('[SESSION_FILTERED_ANALYSIS] Returning calculated values:');
+      console.log('[SESSION_FILTERED_ANALYSIS] - percentileRank:', analysis.percentileRank);
+      console.log('[SESSION_FILTERED_ANALYSIS] - pricingPowerScore:', analysis.pricingPowerScore);
+      console.log('[SESSION_FILTERED_ANALYSIS] - marketPosition:', analysis.marketPosition);
+      if (analysis.dataPointsUsed !== undefined) {
+        console.log('[SESSION_FILTERED_ANALYSIS] - dataPointsUsed:', analysis.dataPointsUsed);
+        console.log('[SESSION_FILTERED_ANALYSIS] - subjectAvgRentActual:', analysis.subjectAvgRentActual);
+        console.log('[SESSION_FILTERED_ANALYSIS] - competitorAvgRentActual:', analysis.competitorAvgRentActual);
+        console.log('[SESSION_FILTERED_ANALYSIS] - comparisonNote:', analysis.comparisonNote);
+      }
+      
       res.json(analysis);
 
     } catch (error) {
