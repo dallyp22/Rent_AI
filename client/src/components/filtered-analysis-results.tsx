@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Skeleton } from "@/components/ui/skeleton";
 import MarketPositionGauge from "@/components/analysis/market-position-gauge";
 import CompetitiveAdvantagesGrid from "@/components/analysis/competitive-advantages-grid";
-import DynamicInsightsPanel from "@/components/analysis/dynamic-insights-panel";
 import InteractiveComparisonChart from "@/components/analysis/interactive-comparison-chart";
 import type { FilteredAnalysis } from "@shared/schema";
 
@@ -23,9 +22,6 @@ const LoadingSkeleton = memo(() => (
     
     {/* Interactive Chart */}
     <Skeleton className="h-[400px] rounded-lg" />
-    
-    {/* AI Insights Panel */}
-    <Skeleton className="h-[200px] rounded-lg" />
     
     {/* Summary Statistics */}
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -139,24 +135,6 @@ const FilteredAnalysisResults = memo(({
           </AnimatePresence>
         </motion.div>
       )}
-
-      {/* AI Insights Panel - FULL WIDTH */}
-      <motion.div variants={itemVariants}>
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={`insights-${analysis.aiInsights?.length || 0}`}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 20 }}
-            transition={{ duration: 0.3 }}
-          >
-            <DynamicInsightsPanel 
-              aiInsights={analysis.aiInsights || []}
-              isLoading={isLoading}
-            />
-          </motion.div>
-        </AnimatePresence>
-      </motion.div>
 
       {/* Summary Statistics with Animated Numbers */}
       <motion.div 
