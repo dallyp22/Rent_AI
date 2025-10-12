@@ -961,21 +961,131 @@ export class DrizzleStorage implements IStorage {
       
       console.log('[FILTER] After filtering - Subject units:', filteredSubjectUnits.length, 'Competitor units:', filteredCompetitorUnits.length);
       
-      // Simplified analysis for database implementation
+      // Calculate average rents for subject and competitor units
+      const subjectAvgRent = filteredSubjectUnits.length > 0 ? 
+        filteredSubjectUnits.reduce((sum, unit) => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return sum + (isNaN(rent) ? 0 : rent);
+        }, 0) / filteredSubjectUnits.length : 0;
+      
+      const competitorAvgRent = filteredCompetitorUnits.length > 0 ? 
+        filteredCompetitorUnits.reduce((sum, unit) => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return sum + (isNaN(rent) ? 0 : rent);
+        }, 0) / filteredCompetitorUnits.length : 0;
+      
+      // Calculate percentile rank based on actual rent comparisons
+      const competitorRents = filteredCompetitorUnits
+        .map(unit => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent;
+        })
+        .filter(r => r > 0)
+        .sort((a, b) => a - b);
+      
+      let percentileRank = 50; // Default for insufficient data
+      let comparisonNote = "Insufficient data for market comparison";
+      
+      if (subjectAvgRent > 0 && competitorRents.length > 0) {
+        if (competitorRents.length <= 2) {
+          // For 1-2 competitors, show exact position
+          const position = competitorRents.filter(r => r < subjectAvgRent).length + 1;
+          const total = competitorRents.length + 1; // Include subject in total
+          percentileRank = Math.round(((position - 1) / competitorRents.length) * 100);
+          comparisonNote = `Position ${position} of ${total} properties`;
+        } else {
+          // For 3+ competitors, calculate true percentile from rent distribution
+          const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
+          percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+          comparisonNote = `Based on ${competitorRents.length} competitor units`;
+        }
+      } else if (competitorRents.length === 0) {
+        // No competitors - set to 50 and note insufficient data
+        percentileRank = 50;
+        comparisonNote = "No competitor data available for comparison";
+      }
+      
+      // Calculate pricing power score with transparent weights
+      const pricingPowerScore = (() => {
+        // Transparent calculation:
+        // 40% weight: Percentile rank (position in market)
+        // 30% weight: Price difference from market average
+        // 30% weight: Occupancy rate
+        
+        const percentileComponent = percentileRank * 0.40;
+        
+        // Price difference component: normalize to 0-100 scale
+        const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+        const priceDiffComponent = (() => {
+          if (competitorAvgRent === 0) return 50; // No comparison data
+          // Convert to 0-100 scale: -20% diff = 100, 0% = 50, +20% = 0
+          const normalized = 50 - (pricingEdge * 2.5);
+          return Math.min(100, Math.max(0, normalized));
+        })() * 0.30;
+        
+        // Occupancy component: estimate based on available data
+        const subjectAvailableCount = filteredSubjectUnits.filter(unit => 
+          unit.status === 'available' || unit.availabilityDate).length;
+        const subjectOccupancyRate = filteredSubjectUnits.length > 0 ? 
+          ((filteredSubjectUnits.length - subjectAvailableCount) / filteredSubjectUnits.length) * 100 : 50;
+        const occupancyComponent = subjectOccupancyRate * 0.30;
+        
+        // Sum all components for final score
+        const totalScore = percentileComponent + priceDiffComponent + occupancyComponent;
+        
+        return Math.min(100, Math.max(0, Math.round(totalScore)));
+      })();
+      
+      // Calculate market position based on percentile rank
+      const marketPosition = (() => {
+        if (percentileRank >= 67) return "Above Market";
+        if (percentileRank >= 34) return "At Market";
+        return "Below Market";
+      })();
+      
+      // Generate competitive advantages based on calculated values
+      const competitiveAdvantages = [];
+      if (pricingPowerScore > 80) competitiveAdvantages.push("Dominant pricing power in market");
+      else if (pricingPowerScore > 65) competitiveAdvantages.push("Strong market pricing flexibility");
+      else if (percentileRank > 75) competitiveAdvantages.push("Premium market positioning");
+      else if (percentileRank > 60) competitiveAdvantages.push("Above-average market standing");
+      
+      if (subjectAvgRent < competitorAvgRent * 0.9) competitiveAdvantages.push("Value pricing attracts residents");
+      if (competitiveAdvantages.length === 0) {
+        if (percentileRank >= 50) competitiveAdvantages.push("Stable market position");
+        else competitiveAdvantages.push("Competitive entry pricing");
+      }
+      
+      // Generate recommendations based on calculated values
+      const recommendations = [];
+      if (pricingPowerScore < 30) {
+        recommendations.push("Urgent: Realign pricing strategy with market realities");
+      } else if (pricingPowerScore < 50 && subjectAvgRent > competitorAvgRent * 1.1) {
+        recommendations.push("Consider modest rent reductions to improve occupancy");
+      } else if (pricingPowerScore > 70 && subjectAvgRent < competitorAvgRent * 0.95) {
+        recommendations.push("Strong position supports 3-5% rent increases");
+      }
+      
+      if (recommendations.length === 0) {
+        recommendations.push("Maintain current pricing strategy");
+        recommendations.push("Monitor competitor pricing closely");
+      }
+      
+      // Generate analysis with calculated values
       const analysis: FilteredAnalysis = {
-        marketPosition: "Competitive",
-        pricingPowerScore: 75,
-        competitiveAdvantages: ["Modern amenities", "Prime location"],
-        recommendations: ["Consider rental optimization", "Enhance marketing"],
+        marketPosition: marketPosition,
+        pricingPowerScore: pricingPowerScore,
+        competitiveAdvantages: competitiveAdvantages,
+        recommendations: recommendations,
         unitCount: filteredSubjectUnits.length + filteredCompetitorUnits.length,
         avgRent: (filteredSubjectUnits.length + filteredCompetitorUnits.length) > 0 ? 
           [...filteredSubjectUnits, ...filteredCompetitorUnits].reduce((sum, unit) => {
             const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
             return sum + (isNaN(rent) ? 0 : rent);
           }, 0) / (filteredSubjectUnits.length + filteredCompetitorUnits.length) : 0,
-        percentileRank: 70,
+        percentileRank: percentileRank,
         locationScore: 85,
-        amenityScore: 80,
+        amenityScore: percentileRank, // Use percentile rank as proxy for amenity score
         pricePerSqFt: (() => {
           const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
           const validUnitsWithSqft = allUnits.filter(u => u.squareFootage && u.squareFootage > 0);
@@ -1101,7 +1211,12 @@ export class DrizzleStorage implements IStorage {
         subjectAvgRent: subjectAvgRent,
         competitorAvgRent: competitorAvgRent,
         subjectAvgSqFt: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredSubjectUnits.length : 0,
-        competitorAvgSqFt: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredCompetitorUnits.length : 0
+        competitorAvgSqFt: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredCompetitorUnits.length : 0,
+        // Add transparency fields
+        dataPointsUsed: filteredCompetitorUnits.length,
+        subjectAvgRentActual: subjectAvgRent,
+        competitorAvgRentActual: competitorAvgRent,
+        comparisonNote: comparisonNote
       };
       
       return analysis;
@@ -2898,148 +3013,35 @@ export class MemStorageLegacy implements IStorage {
     return allUnits;
   }
 
-  async generateMultiPropertyAnalysis(sessionId: string, criteria: FilterCriteria, competitiveRelationships?: any[], providedPropertyProfiles?: any[]): Promise<FilteredAnalysis> {
-    console.log('[STORAGE] Generating multi-property analysis for session:', sessionId);
-    console.log('[STORAGE] Filter criteria:', JSON.stringify(criteria, null, 2));
-    
-    // Get all scraped units for this session
-    const allSessionUnits = await this.getScrapedUnitsForSession(sessionId);
-    
-    if (allSessionUnits.length === 0) {
-      console.log('[STORAGE] No scraped units found for session, returning default analysis');
-      return {
-        marketPosition: "No Data Available",
-        pricingPowerScore: 0,
-        competitiveAdvantages: ["Scraping Required"],
-        recommendations: ["Please complete property scraping to generate analysis"],
-        unitCount: 0,
-        avgRent: 0,
-        percentileRank: 0,
-        locationScore: 0,
-        amenityScore: 0,
-        pricePerSqFt: 0,
-        subjectUnits: [],
-        competitorUnits: [],
-        competitiveEdges: {
-          pricing: { edge: 0, label: "No data", status: "neutral" },
-          size: { edge: 0, label: "No data", status: "neutral" },
-          availability: { edge: 0, label: "No data", status: "neutral" },
-          amenities: { edge: 0, label: "No data", status: "neutral" }
-        },
-        aiInsights: [
-          "Complete property scraping to enable portfolio analysis",
-          "Add properties from the Property Selection Matrix",
-          "Analysis requires unit-level data from scraped properties"
-        ],
-        subjectAvgRent: 0,
-        competitorAvgRent: 0,
-        subjectAvgSqFt: 0,
-        competitorAvgSqFt: 0
-      };
-    }
-
-    // Filter the units based on criteria by temporarily storing them and using existing filter logic
-    const originalUnits = this.scrapedUnits;
-    let filteredUnits: ScrapedUnit[];
+  async getSubjectPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]> {
     try {
-      // Temporarily replace scraped units with session units for filtering
-      this.scrapedUnits = new Map();
-      allSessionUnits.forEach(unit => this.scrapedUnits.set(unit.id, unit));
-      
-      // Use existing filter method
-      filteredUnits = await this.getFilteredScrapedUnits(criteria);
-      console.log('[STORAGE] Filtered to', filteredUnits.length, 'units matching criteria');
-      
-    } finally {
-      // Always restore original units
-      this.scrapedUnits = originalUnits;
-    }
-    
-    // Get property profiles to determine subject vs competitor
-    const propertyProfiles = await this.getPropertyProfilesInSession(sessionId);
-    const subjectProfiles = propertyProfiles.filter(p => p.profileType === 'subject');
-    const competitorProfiles = propertyProfiles.filter(p => p.profileType === 'competitor');
-    
-    // Get property map for unit classification
-    const propertyMap = new Map<string, ScrapedProperty>();
-    for (const prop of Array.from(this.scrapedProperties.values())) {
-      propertyMap.set(prop.id, prop);
-    }
-    
-    // Map scraped properties to their profile types
-    const profileMap = new Map<string, PropertyProfile>();
-    for (const profile of propertyProfiles) {
-      // Find scraped properties associated with this profile
-      const jobs = await this.getScrapingJobsByProfile(profile.id);
-      for (const job of jobs) {
-        if (job.status === 'completed') {
-          const scrapedProps = await this.getScrapedPropertiesByJob(job.id);
-          for (const scrapedProp of scrapedProps) {
-            profileMap.set(scrapedProp.id, profile);
-          }
-        }
+      if (sessionId) {
+        const profiles = await this.getPropertyProfilesInSession(sessionId);
+        return profiles.filter(profile => profile.profileType === 'subject');
+      } else {
+        return await this.getPropertyProfilesByType('subject');
       }
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting subject property profiles:', error);
+      throw new Error(`Failed to get subject property profiles: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    // Separate subject and competitor units based on their property profiles
-    const subjectUnits = filteredUnits.filter(unit => {
-      const property = propertyMap.get(unit.propertyId);
-      const profile = property ? profileMap.get(property.id) : null;
-      return profile?.profileType === 'subject';
-    });
-    
-    const competitorUnits = filteredUnits.filter(unit => {
-      const property = propertyMap.get(unit.propertyId);
-      const profile = property ? profileMap.get(property.id) : null;
-      return profile?.profileType === 'competitor';
-    });
-    
-    console.log('[STORAGE] Subject units:', subjectUnits.length, 'Competitor units:', competitorUnits.length);
-    
-    // Use the same formatting and analysis logic as single property analysis
-    const formatUnit = (unit: ScrapedUnit, isSubject: boolean): UnitComparison => {
-      const property = propertyMap.get(unit.propertyId);
-      return {
-        unitId: unit.id,
-        propertyName: property?.name || "Unknown",
-        unitType: unit.unitType,
-        bedrooms: unit.bedrooms || 0,
-        bathrooms: unit.bathrooms ? parseFloat(unit.bathrooms.toString()) : null,
-        squareFootage: unit.squareFootage,
-        rent: unit.rent ? parseFloat(unit.rent.toString()) : 0,
-        isSubject,
-        availabilityDate: unit.availabilityDate || undefined
-      };
-    };
-    
-    const subjectUnitsFormatted = subjectUnits.map(u => formatUnit(u, true));
-    const competitorUnitsFormatted = competitorUnits.map(u => formatUnit(u, false));
-    
-    // Calculate averages using the same logic
-    const calcAverage = (units: UnitComparison[], field: 'rent' | 'squareFootage') => {
-      if (units.length === 0) return 0;
-      const sum = units.reduce((acc, unit) => {
-        const value = unit[field];
-        return acc + (value || 0);
-      }, 0);
-      return sum / units.length;
-    };
-    
-    const subjectAvgRent = calcAverage(subjectUnitsFormatted, 'rent');
-    const competitorAvgRent = calcAverage(competitorUnitsFormatted, 'rent');
-    const subjectAvgSqFt = calcAverage(subjectUnitsFormatted, 'squareFootage');
-    const competitorAvgSqFt = calcAverage(competitorUnitsFormatted, 'squareFootage');
-    
-    // Rest of analysis logic follows the same pattern as generateFilteredAnalysis
-    const competitorRents = competitorUnitsFormatted
-      .map(u => u.rent)
-      .filter(r => r > 0)
-      .sort((a, b) => a - b);
-    
-    let percentileRank = 50;
-    if (competitorRents.length > 0 && subjectAvgRent > 0) {
-      const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
-      percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+  }
+
+  async getCompetitorPropertyProfiles(sessionId?: string): Promise<PropertyProfile[]> {
+    try {
+      if (sessionId) {
+        const profiles = await this.getPropertyProfilesInSession(sessionId);
+        return profiles.filter(profile => profile.profileType === 'competitor');
+      } else {
+        return await this.getPropertyProfilesByType('competitor');
+      }
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting competitor property profiles:', error);
+      throw new Error(`Failed to get competitor property profiles: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+    } else if (competitorRents.length === 0) {
+      comparisonNote = "No competitor data available for comparison";
     }
     
     // SIMPLIFIED competitive edge calculations - transparent and straightforward
@@ -3215,7 +3217,12 @@ export class MemStorageLegacy implements IStorage {
       subjectAvgRent: Math.round(subjectAvgRent),
       competitorAvgRent: Math.round(competitorAvgRent),
       subjectAvgSqFt: Math.round(subjectAvgSqFt),
-      competitorAvgSqFt: Math.round(competitorAvgSqFt)
+      competitorAvgSqFt: Math.round(competitorAvgSqFt),
+      // Add transparency fields
+      dataPointsUsed: competitorUnitsFormatted.length,
+      subjectAvgRentActual: Math.round(subjectAvgRent),
+      competitorAvgRentActual: Math.round(competitorAvgRent),
+      comparisonNote: comparisonNote
     };
   }
 
@@ -3955,7 +3962,12 @@ export class MemStorageLegacy implements IStorage {
         subjectAvgRent: 0,
         competitorAvgRent: 0,
         subjectAvgSqFt: 0,
-        competitorAvgSqFt: 0
+        competitorAvgSqFt: 0,
+        // Add transparency fields
+        dataPointsUsed: 0,
+        subjectAvgRentActual: 0,
+        competitorAvgRentActual: 0,
+        comparisonNote: "No data available for comparison"
       };
     }
     
