@@ -2861,6 +2861,21 @@ export class MemStorageLegacy implements IStorage {
     const subjectFeatureScore = getUnitFeatureScore(subjectUnitsFormatted);
     const competitorFeatureScore = getUnitFeatureScore(competitorUnitsFormatted);
     
+    // Adjust percentile rank with all factors
+    const availabilityAdjustment = (subjectAvailabilityScore - competitorAvailabilityScore) * 10;
+    const diversityAdjustment = (subjectDiversityScore - competitorDiversityScore) * 0.15;
+    const distributionAdjustment = (subjectDistributionScore - competitorDistributionScore) * 0.15;
+    const featureAdjustment = (subjectFeatureScore - competitorFeatureScore) * 0.2;
+    
+    // Apply adjustments with bounds
+    percentileRank = Math.min(95, Math.max(5, 
+      percentileRank + 
+      availabilityAdjustment +
+      diversityAdjustment +
+      distributionAdjustment +
+      featureAdjustment
+    ));
+    
     // Enhanced amenity score based on multiple factors
     const baseAmenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
     const featureBonus = subjectFeatureScore > competitorFeatureScore ? 15 : 0;
@@ -3875,31 +3890,6 @@ export class MemStorageLegacy implements IStorage {
       }
     }
     
-    // The score calculation functions are already defined in generateMultiPropertyAnalysis
-    // Use simplified score defaults for this method to avoid duplicates
-    const subjectAvailabilityScore = 0.5;
-    const competitorAvailabilityScore = 0.5;
-    const subjectDiversityScore = 50;
-    const competitorDiversityScore = 50;
-    const subjectDistributionScore = 50;
-    const competitorDistributionScore = 50;
-    const subjectFeatureScore = 50;
-    const competitorFeatureScore = 50;
-    
-    // Adjust percentile rank with all factors
-    const availabilityAdjustment = (subjectAvailabilityScore - competitorAvailabilityScore) * 10;
-    const diversityAdjustment = (subjectDiversityScore - competitorDiversityScore) * 0.15;
-    const distributionAdjustment = (subjectDistributionScore - competitorDistributionScore) * 0.15;
-    const featureAdjustment = (subjectFeatureScore - competitorFeatureScore) * 0.2;
-    
-    // Apply adjustments with bounds
-    percentileRank = Math.min(95, Math.max(5, 
-      percentileRank + 
-      availabilityAdjustment +
-      diversityAdjustment +
-      distributionAdjustment +
-      featureAdjustment
-    ));
     
     // Enhanced competitive edge calculations with more sophisticated metrics
     const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
@@ -3990,6 +3980,21 @@ export class MemStorageLegacy implements IStorage {
     
     const subjectFeatureScore = getUnitFeatureScore(subjectUnitsFormatted);
     const competitorFeatureScore = getUnitFeatureScore(competitorUnitsFormatted);
+    
+    // Adjust percentile rank with all factors
+    const availabilityAdjustment = (subjectAvailabilityScore - competitorAvailabilityScore) * 10;
+    const diversityAdjustment = (subjectDiversityScore - competitorDiversityScore) * 0.15;
+    const distributionAdjustment = (subjectDistributionScore - competitorDistributionScore) * 0.15;
+    const featureAdjustment = (subjectFeatureScore - competitorFeatureScore) * 0.2;
+    
+    // Apply adjustments with bounds
+    percentileRank = Math.min(95, Math.max(5, 
+      percentileRank + 
+      availabilityAdjustment +
+      diversityAdjustment +
+      distributionAdjustment +
+      featureAdjustment
+    ));
     
     // Enhanced amenity score based on multiple factors
     const baseAmenityScore = percentileRank > 60 ? 75 : percentileRank > 40 ? 50 : 25;
