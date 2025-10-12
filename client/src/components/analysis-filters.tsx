@@ -19,9 +19,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ChevronRight, AlertCircle, Loader2, Building2, Home } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { motion } from "framer-motion";
 import type { FilterCriteria, PropertyProfile } from "@shared/schema";
 
@@ -29,10 +27,6 @@ interface AnalysisFiltersProps {
   filters: FilterCriteria;
   onFiltersChange: (filters: FilterCriteria) => void;
   isPortfolioMode?: boolean;
-  // New props for competitive relationships state
-  isLoadingRelationships?: boolean;
-  hasCompetitiveRelationships?: boolean;
-  relationshipsError?: Error | null;
 }
 
 const bedroomTypes = ["Studio", "1BR", "2BR", "3BR"] as const;
@@ -68,29 +62,19 @@ const renovationStatusOptions = [
   { value: "original", label: "Original" }
 ] as const;
 
-const competitiveSetOptions = [
-  { value: "all_competitors", label: "All Competitors", description: "Show all scraped competitors" },
-  { value: "internal_competitors_only", label: "Internal Competition Only", description: "Show only properties marked as internal competitors" },
-  { value: "external_competitors_only", label: "External Competitors Only", description: "Show only properties marked as external competitors" },
-  { value: "subject_properties_only", label: "Subject Properties Only", description: "Show only the user's portfolio properties" }
-] as const;
 
 const AnalysisFilters = memo(({ 
   filters, 
   onFiltersChange,
-  isPortfolioMode = false,
-  isLoadingRelationships = false,
-  hasCompetitiveRelationships = false,
-  relationshipsError = null
+  isPortfolioMode = false
 }: AnalysisFiltersProps) => {
   // Memoize advanced filters count
   const advancedFiltersCount = useMemo(() => 
     (filters.amenities?.length || 0) +
     (filters.leaseTerms?.length || 0) +
     (filters.floorLevel ? 1 : 0) +
-    (filters.renovationStatus ? 1 : 0) +
-    ((filters.competitiveSet && filters.competitiveSet !== "all_competitors") ? 1 : 0),
-    [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus, filters.competitiveSet]
+    (filters.renovationStatus ? 1 : 0),
+    [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus]
   );
 
   const handleBedroomChange = useCallback((bedroom: string, checked: boolean) => {
@@ -160,13 +144,6 @@ const AnalysisFilters = memo(({
     onFiltersChange({
       ...filters,
       renovationStatus: value as any
-    });
-  }, [filters, onFiltersChange]);
-
-  const handleCompetitiveSetChange = useCallback((value: string) => {
-    onFiltersChange({
-      ...filters,
-      competitiveSet: value as any
     });
   }, [filters, onFiltersChange]);
 
@@ -301,107 +278,6 @@ const AnalysisFilters = memo(({
             </div>
           </div>
 
-          {/* Competitive Set Filter - Only for Portfolio Mode */}
-          {isPortfolioMode && (
-            <>
-              <Separator />
-              
-              <div className="space-y-3" data-testid="competitive-set-filter">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-semibold">Competitive Set</Label>
-                  {filters.competitiveSet && filters.competitiveSet !== "all_competitors" && (
-                    <Badge variant="default" className="text-xs">
-                      {competitiveSetOptions.find(opt => opt.value === filters.competitiveSet)?.label.split(' ')[0]}
-                    </Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Filter analysis based on competitive relationships defined in your portfolio matrix
-                </p>
-
-                {/* Loading state */}
-                {isLoadingRelationships && (
-                  <div className="space-y-3" data-testid="competitive-set-loading">
-                    <div className="flex items-center space-x-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm text-muted-foreground">Loading competitive relationships...</span>
-                    </div>
-                    <div className="space-y-2">
-                      {[1, 2, 3].map((i) => (
-                        <div key={i} className="flex items-center space-x-2">
-                          <Skeleton className="h-4 w-4 rounded-full" />
-                          <Skeleton className="h-4 w-32" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Error state */}
-                {relationshipsError && !isLoadingRelationships && (
-                  <Alert variant="destructive" data-testid="competitive-set-error">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      Failed to load competitive relationships. Competitive filtering may not work properly.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Empty state - no relationships */}
-                {!isLoadingRelationships && !relationshipsError && !hasCompetitiveRelationships && (
-                  <Alert data-testid="competitive-set-empty">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>
-                      No competitive relationships defined. Only "All Competitors" filtering is available. 
-                      Visit the Property Selection Matrix to define competitive relationships.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {/* Radio group - gated by loading and relationships state */}
-                {!isLoadingRelationships && !relationshipsError && (
-                  <RadioGroup 
-                    value={filters.competitiveSet || "all_competitors"} 
-                    onValueChange={handleCompetitiveSetChange}
-                    data-testid="radiogroup-competitive-set"
-                    disabled={isLoadingRelationships}
-                  >
-                    {competitiveSetOptions.map((option) => {
-                      // Disable non-"all_competitors" options if no relationships exist
-                      const isDisabled = !hasCompetitiveRelationships && option.value !== "all_competitors";
-                      
-                      return (
-                        <div key={option.value} className="flex items-start space-x-2" data-testid={`competitive-set-${option.value}`}>
-                          <RadioGroupItem 
-                            value={option.value} 
-                            id={`competitive-${option.value}`}
-                            data-testid={`radio-competitive-${option.value}`}
-                            className="mt-0.5"
-                            disabled={isDisabled}
-                          />
-                          <div className="space-y-1">
-                            <Label 
-                              htmlFor={`competitive-${option.value}`} 
-                              className={`text-sm cursor-pointer font-medium ${isDisabled ? 'text-muted-foreground opacity-50' : ''}`}
-                              data-testid={`label-competitive-${option.value}`}
-                            >
-                              {option.label}
-                              {isDisabled && !hasCompetitiveRelationships && (
-                                <span className="ml-1 text-xs">(requires relationships)</span>
-                              )}
-                            </Label>
-                            <p className={`text-xs text-muted-foreground ${isDisabled ? 'opacity-50' : ''}`}>
-                              {option.description}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </RadioGroup>
-                )}
-              </div>
-            </>
-          )}
 
           <Separator />
 
