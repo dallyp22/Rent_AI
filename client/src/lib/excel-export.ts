@@ -17,6 +17,14 @@ function formatAvailabilityDate(date: string | null | undefined, status: string)
     return status === 'available' ? 'Available Now' : 'Contact for availability';
   }
   
+  // First check if the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
+  // This should be checked BEFORE trying to parse to avoid wrong year issues
+  if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
+    // Add current year if not present
+    const currentYear = new Date().getFullYear();
+    return `${date}, ${currentYear}`;
+  }
+  
   const lowerDate = date.toLowerCase();
   
   // Only return "Available Now" if the date string explicitly says so
@@ -24,7 +32,7 @@ function formatAvailabilityDate(date: string | null | undefined, status: string)
     return 'Available Now';
   }
   
-  // Try to parse the date
+  // Try to parse the date (for dates that include year or are in other formats)
   try {
     const parsedDate = new Date(date);
     if (!isNaN(parsedDate.getTime())) {
@@ -33,13 +41,6 @@ function formatAvailabilityDate(date: string | null | undefined, status: string)
     }
   } catch {
     // Fall back to original string if parsing fails
-  }
-  
-  // If the date already looks like a formatted date (e.g., "Oct 17", "Dec 1")
-  if (/^[A-Za-z]{3}\s+\d{1,2}$/.test(date)) {
-    // Add current year if not present
-    const currentYear = new Date().getFullYear();
-    return `${date}, ${currentYear}`;
   }
   
   return date;
