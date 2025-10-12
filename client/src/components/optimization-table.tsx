@@ -5,14 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, DollarSign, ChevronUp, ChevronDown, FileSpreadsheet } from "lucide-react";
+import { Plus, Minus, TrendingUp, TrendingDown, RotateCcw, RotateCw, RefreshCw, ChevronUp, ChevronDown, FileSpreadsheet } from "lucide-react";
 import { formatCurrency, formatCurrencyChange, formatLargeCurrency } from "@/utils/formatters";
 import type { PropertyUnit, OptimizationReport } from "@shared/schema";
 
 interface OptimizationTableProps {
   units: PropertyUnit[];
   report: OptimizationReport;
-  onApplyChanges?: (unitPrices: Record<string, number>) => void;
   onPricesChange?: (unitPrices: Record<string, number>) => void;
   onExportToExcel?: () => void;
   isExporting?: boolean;
@@ -137,7 +136,7 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
 
 TableRow.displayName = 'TableRow';
 
-function OptimizationTable({ units, report, onApplyChanges, onPricesChange, onExportToExcel, isExporting }: OptimizationTableProps) {
+function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isExporting }: OptimizationTableProps) {
   const [modifiedPrices, setModifiedPrices] = useState<Record<string, number>>({});
   const [selectedUnitType, setSelectedUnitType] = useState<string>("all");
   const [bulkFixedAmount, setBulkFixedAmount] = useState<string>("");
@@ -840,18 +839,6 @@ function OptimizationTable({ units, report, onApplyChanges, onPricesChange, onEx
           >
             <FileSpreadsheet className="h-4 w-4" />
             {isExporting ? "Exporting..." : "Export to Excel"}
-          </Button>
-        )}
-        {onApplyChanges && (
-          <Button 
-            size="lg"
-            onClick={() => onApplyChanges(modifiedPrices)}
-            disabled={impact.affectedUnits === 0}
-            data-testid="button-apply-changes"
-            className="px-8"
-          >
-            <DollarSign className="w-5 h-5 mr-2" />
-            Apply Changes ({impact.affectedUnits} units)
           </Button>
         )}
       </div>

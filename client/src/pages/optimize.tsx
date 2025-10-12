@@ -7,16 +7,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { 
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from "@/components/ui/alert-dialog";
 import { FileSpreadsheet, Save, Building2, Home, BarChart3 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -123,8 +113,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [goal, setGoal] = useState("maximize-revenue");
   const [targetOccupancy, setTargetOccupancy] = useState([95]);
   const [riskTolerance, setRiskTolerance] = useState([2]); // 1=Low, 2=Medium, 3=High
-  const [showApplyDialog, setShowApplyDialog] = useState(false);
-  const [pendingPrices, setPendingPrices] = useState<Record<string, number>>({});
   const [hasInitialized, setHasInitialized] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [currentModifiedPrices, setCurrentModifiedPrices] = useState<Record<string, number>>({});
@@ -382,35 +370,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
     }
   });
 
-  const applyPricingMutation = useMutation({
-    mutationFn: async (unitPrices: Record<string, number>) => {
-      const endpoint = isSessionMode 
-        ? `/api/analysis-sessions/${sessionId}/apply-pricing`
-        : `/api/properties/${params.id}/apply-pricing`;
-      
-      console.log('[APPLY_PRICING_MUTATION] Using endpoint:', endpoint);
-      console.log('[APPLY_PRICING_MUTATION] Mode:', isSessionMode ? 'session' : 'property');
-      console.log('[APPLY_PRICING_MUTATION] Unit prices count:', Object.keys(unitPrices).length);
-      
-      const res = await apiRequest("POST", endpoint, { unitPrices });
-      return res.json();
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/properties', params.id] });
-      toast({
-        title: "Pricing Applied Successfully",
-        description: `Updated pricing for ${data.affectedUnits} units with an annual impact of $${data.totalAnnualImpact.toLocaleString()}.`,
-      });
-      setShowApplyDialog(false);
-    },
-    onError: () => {
-      toast({
-        title: "Failed to Apply Pricing",
-        description: "There was an error saving the pricing changes. Please try again.",
-        variant: "destructive",
-      });
-    }
-  });
 
   const generateRecommendations = () => {
     // Pre-validation before API calls
@@ -479,16 +438,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         });
       }
     }
-  };
-
-
-  const handleApplyChanges = (unitPrices: Record<string, number>) => {
-    setPendingPrices(unitPrices);
-    setShowApplyDialog(true);
-  };
-
-  const confirmApplyChanges = () => {
-    applyPricingMutation.mutate(pendingPrices);
   };
 
   const handleExportToExcel = async () => {
@@ -915,7 +864,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           <OptimizationTable
             units={deduplicatedUnits}
             report={optimizationQuery.data.report}
-            onApplyChanges={handleApplyChanges}
             onPricesChange={setCurrentModifiedPrices}
             onExportToExcel={handleExportToExcel}
             isExporting={isExporting}
@@ -936,30 +884,6 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         )}
 
       </div>
-
-      {/* Apply Changes Confirmation Dialog */}
-      <AlertDialog open={showApplyDialog} onOpenChange={setShowApplyDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apply Pricing Changes?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You are about to apply pricing changes to your property units. 
-              This action will update the recommended rent prices for all modified units.
-              <br /><br />
-              {Object.keys(pendingPrices).length} units will be affected.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={confirmApplyChanges}
-              disabled={applyPricingMutation.isPending}
-            >
-              {applyPricingMutation.isPending ? "Applying..." : "Apply Changes"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Optimization Progress Modal */}
       {showOptimizationModal && (
