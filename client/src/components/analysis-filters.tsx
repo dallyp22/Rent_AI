@@ -21,7 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ChevronRight, Sparkles, DollarSign, Clock, RotateCcw, AlertCircle, Loader2, Building2, Home } from "lucide-react";
+import { ChevronRight, AlertCircle, Loader2, Building2, Home } from "lucide-react";
 import { motion } from "framer-motion";
 import type { FilterCriteria, PropertyProfile } from "@shared/schema";
 
@@ -171,48 +171,6 @@ const AnalysisFilters = memo(({
   }, [filters, onFiltersChange]);
 
 
-  // Memoized preset handlers
-  const applyPremiumPreset = useCallback(() => {
-    onFiltersChange({
-      ...filters,
-      priceRange: { min: 2000, max: 5000 },  // Expanded upper range
-      bedroomTypes: ["2BR", "3BR"],
-      squareFootageRange: { min: 1000, max: 3000 }  // Expanded upper range
-    });
-  }, [filters, onFiltersChange]);
-
-  const applyEntryLevelPreset = useCallback(() => {
-    onFiltersChange({
-      ...filters,
-      priceRange: { min: 500, max: 1500 },  // Lowered minimum
-      bedroomTypes: ["Studio", "1BR"],
-      squareFootageRange: { min: 200, max: 800 }  // Lowered minimum
-    });
-  }, [filters, onFiltersChange]);
-
-  const applyHighTurnoverPreset = useCallback(() => {
-    onFiltersChange({
-      ...filters,
-      availability: "now",
-      leaseTerms: ["month_to_month", "6_month"]
-    });
-  }, [filters, onFiltersChange]);
-
-  const resetFilters = useCallback(() => {
-    onFiltersChange({
-      bedroomTypes: [],
-      priceRange: { min: 500, max: 5000 },  // Widened range to show all units
-      availability: "60days",  // Most inclusive option
-      squareFootageRange: { min: 200, max: 3000 },  // Expanded range
-      amenities: undefined,
-      leaseTerms: undefined,
-      floorLevel: undefined,
-      renovationStatus: undefined,
-      competitiveSet: "all_competitors",
-      // Keep selectedProperties as is since it's handled by PropertyFilterSidebar
-      selectedProperties: filters.selectedProperties
-    });
-  }, [onFiltersChange, filters.selectedProperties]);
 
   return (
     <motion.div 
@@ -239,102 +197,6 @@ const AnalysisFilters = memo(({
           )}
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* Filter Presets */}
-          <div className="space-y-3" data-testid="filter-presets">
-            <Label className="text-sm font-semibold">
-              {isPortfolioMode ? 'Portfolio Presets' : 'Quick Presets'}
-            </Label>
-            <TooltipProvider>
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={applyPremiumPreset}
-                        className="justify-center text-xs h-9"
-                        data-testid="preset-premium"
-                      >
-                        <Sparkles className="mr-1 h-3 w-3" />
-                        Premium
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isPortfolioMode 
-                        ? 'High-end portfolio units: $2000-$5000, 2-3BR, 1000-3000 sq ft'
-                        : 'High-end units: $2000-$3000, 2-3BR, 1000-2000 sq ft'
-                      }</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={applyEntryLevelPreset}
-                        className="justify-center text-xs h-9"
-                        data-testid="preset-entry"
-                      >
-                        <DollarSign className="mr-1 h-3 w-3" />
-                        Entry Level
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isPortfolioMode 
-                        ? 'Affordable portfolio units: $500-$1500, Studio-1BR, 200-800 sq ft'
-                        : 'Affordable units: $500-$1500, Studio-1BR, 200-800 sq ft'
-                      }</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={applyHighTurnoverPreset}
-                        className="justify-center text-xs h-9"
-                        data-testid="preset-turnover"
-                      >
-                        <Clock className="mr-1 h-3 w-3" />
-                        High Turn
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isPortfolioMode 
-                        ? 'High turnover across portfolio: Available now, flexible lease terms'
-                        : 'Quick move-ins: Available now, flexible lease terms'
-                      }</p>
-                    </TooltipContent>
-                  </Tooltip>
-
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="default"
-                        onClick={resetFilters}
-                        className="justify-center text-xs h-9"
-                        data-testid="preset-clear"
-                      >
-                        <RotateCcw className="mr-1 h-3 w-3" />
-                        Clear All
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Reset all filters to defaults</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </div>
-              </div>
-            </TooltipProvider>
-          </div>
-
-          <Separator />
 
           {/* Bedroom Type Filters */}
           <div className="space-y-3" data-testid="bedroom-filters">
