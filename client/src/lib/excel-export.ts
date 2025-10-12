@@ -18,9 +18,9 @@ function formatAvailabilityDate(date: string | null | undefined, status: string)
   }
   
   const lowerDate = date.toLowerCase();
-  const lowerStatus = status.toLowerCase();
   
-  if (lowerStatus === 'available' || lowerDate.includes('available now') || lowerDate.includes('immediately')) {
+  // Only return "Available Now" if the date string explicitly says so
+  if (lowerDate.includes('available now') || lowerDate.includes('immediately')) {
     return 'Available Now';
   }
   
