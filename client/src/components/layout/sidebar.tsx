@@ -66,7 +66,9 @@ export default function Sidebar() {
       return null;
     },
     enabled: !!sessionId,
-    staleTime: 30000,
+    staleTime: 0, // Always fetch fresh data to ensure navigation is up-to-date
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Refetch when component mounts
   });
   
   // Determine current phase based on location

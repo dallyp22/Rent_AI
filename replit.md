@@ -6,7 +6,24 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 
 ## Recent Changes
 
-### October 11, 2025 (Latest)
+### October 12, 2025 (Latest)
+- **Fixed Phase Navigation Refresh Issue**: Resolved sidebar navigation not updating when on Optimize page
+  - Removed 30-second cache time on workflow state queries in sidebar
+  - Set `staleTime: 0` to ensure sidebar always fetches fresh workflow state
+  - Added `refetchOnWindowFocus` and `refetchOnMount` for better state synchronization
+  - Navigation now properly shows all accessible phases immediately after state changes
+  - Users can now reliably navigate backward from Optimize to any previously visited phase
+
+### October 12, 2025 (Earlier)
+- **Implemented Free Navigation Between Completed Phases**: Enhanced workflow navigation for bidirectional movement
+  - Added `highestStage` tracking to workflow state to preserve furthest phase reached
+  - Updated sidebar to check `highestStage` instead of current stage for phase accessibility
+  - Users can now freely navigate between any phases they've already visited
+  - Backward navigation (e.g., Optimize→Analyze→Summarize) no longer locks out later phases
+  - Maintains full session context and data when moving between phases
+  - Backward compatible with existing sessions
+
+### October 11, 2025
 - **Settings Menu Implementation**: Reorganized sidebar navigation for improved focus on workflow
   - Created dedicated Settings dropdown menu with gear icon
   - Moved Property Profiles and Unit Management into Settings menu
