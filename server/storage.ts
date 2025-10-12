@@ -2026,19 +2026,19 @@ export class DrizzleStorage implements IStorage {
           recommendedRent = currentRent * (1 + adjustmentPercent / 100);
           
         } else if (goal === 'maximize-occupancy') {
-          // Maximize Occupancy logic
+          // Maximize Occupancy logic - Never increase prices when trying to fill units
           if (pricingPowerScore >= 80) {
-            adjustmentPercent = -(5 + Math.random() * 3); // -5 to -8%
-            adjustmentReason = 'Premium pricing reduced to improve occupancy rate';
+            adjustmentPercent = -(8 + Math.random() * 2); // -8 to -10%
+            adjustmentReason = 'Steep reduction from premium pricing to accelerate lease-up and maximize occupancy';
           } else if (pricingPowerScore >= 60) {
-            adjustmentPercent = -(2 + Math.random() * 1); // -2 to -3%
-            adjustmentReason = 'Slight adjustment to enhance competitiveness';
+            adjustmentPercent = -(3 + Math.random() * 2); // -3 to -5%
+            adjustmentReason = 'Moderate price reduction to enhance competitiveness and attract tenants';
           } else if (pricingPowerScore >= 40) {
-            adjustmentPercent = Math.random() * 1; // 0 to +1%
-            adjustmentReason = 'Already competitive, minimal adjustment maintains market position';
+            adjustmentPercent = -(1 + Math.random() * 1); // -1 to -2%
+            adjustmentReason = 'Slight price reduction to maintain competitive edge, already well-positioned';
           } else {
-            adjustmentPercent = 2 + Math.random() * 1; // +2 to +3%
-            adjustmentReason = 'Below market, slight increase still maintains affordability';
+            adjustmentPercent = 0; // 0% - NO CHANGE
+            adjustmentReason = 'Already priced below market - no reduction needed to maintain strong occupancy';
           }
           recommendedRent = currentRent * (1 + adjustmentPercent / 100);
           
