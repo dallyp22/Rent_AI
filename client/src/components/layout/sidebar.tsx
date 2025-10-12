@@ -51,8 +51,9 @@ export default function Sidebar() {
   const { sessionId, isSessionMode } = extractSessionInfo(location);
   
   // Query workflow state when we have a session ID
-  const { data: workflowState, isLoading: workflowLoading } = useQuery<WorkflowState>({
-    queryKey: ['workflow-state', sessionId, isSessionMode],
+  // Include location in queryKey to force refetch when navigation changes
+  const { data: workflowState, isLoading: workflowLoading, refetch } = useQuery<WorkflowState>({
+    queryKey: ['workflow-state', sessionId, isSessionMode, location],
     queryFn: async () => {
       if (!sessionId) return null;
       const endpoint = isSessionMode 
@@ -67,9 +68,18 @@ export default function Sidebar() {
     },
     enabled: !!sessionId,
     staleTime: 0, // Always fetch fresh data to ensure navigation is up-to-date
+    gcTime: 0, // Don't keep cache (was cacheTime in v4, now gcTime in v5)
     refetchOnWindowFocus: true, // Refetch when window regains focus
     refetchOnMount: true, // Refetch when component mounts
+    refetchInterval: false, // Disable automatic refetch interval
   });
+  
+  // Force refetch when location changes to ensure navigation is always up-to-date
+  useEffect(() => {
+    if (sessionId && refetch) {
+      refetch();
+    }
+  }, [location, sessionId, refetch]);
   
   // Determine current phase based on location
   const getCurrentPhase = (): 'select' | 'summarize' | 'analyze' | 'optimize' => {
