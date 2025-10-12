@@ -7,6 +7,14 @@ Rent AI Optimization (formerly Property Analytics Pro) is a comprehensive real e
 ## Recent Changes
 
 ### October 12, 2025 (Latest)
+- **Fixed Availability Date Display in Optimize Section**: Availability dates now properly flow from Summarize to Optimize and Excel export
+  - Enhanced optimization API endpoints to preserve availabilityDate field for both session and property-based flows
+  - Updated OptimizationTable component to display formatted dates like "Available Oct 17" instead of just "Available"
+  - Added dedicated "Availability Date" column to Excel export with properly formatted dates
+  - Changed column header from "Status" to "Availability" for better clarity
+  - Complete data flow: Scraped Units → Optimization API → UI Display → Excel Export
+
+### October 12, 2025 (Earlier)
 - **Streamlined Analysis UI**: Removed Location Score statistics box and adjusted layout
   - Removed Location Score box from analysis results statistics section
   - Adjusted grid layout from 4 columns to 3 columns for better space utilization
