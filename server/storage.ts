@@ -1007,21 +1007,99 @@ export class DrizzleStorage implements IStorage {
           isSubject: false,
           availabilityDate: unit.availabilityDate || undefined
         })),
-        competitiveEdges: {
-          pricing: { edge: 5, label: "+5% above market", status: "advantage" },
-          size: { edge: 120, label: "+120 sq ft larger", status: "advantage" },
-          availability: { edge: 2, label: "2 days faster", status: "advantage" },
-          amenities: { edge: 15, label: "Premium amenities", status: "advantage" }
-        },
-        aiInsights: ["Strong competitive position", "Excellent location advantage"],
-        subjectAvgRent: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / filteredSubjectUnits.length : 0,
-        competitorAvgRent: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / filteredCompetitorUnits.length : 0,
+        competitiveEdges: (() => {
+          // Calculate pricing edge
+          const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+          
+          // Calculate size edge
+          const subjectAvgSqFt = filteredSubjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (filteredSubjectUnits.length || 1);
+          const competitorAvgSqFtCalc = filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (filteredCompetitorUnits.length || 1);
+          const sizeEdge = competitorAvgSqFtCalc > 0 ? subjectAvgSqFt - competitorAvgSqFtCalc : 0;
+          const sizePercentDiff = competitorAvgSqFtCalc > 0 ? ((subjectAvgSqFt - competitorAvgSqFtCalc) / competitorAvgSqFtCalc) * 100 : 0;
+          
+          // Calculate availability
+          const subjectAvailableCount = filteredSubjectUnits.filter(unit => 
+            unit.status === 'available' || unit.availabilityDate).length;
+          const competitorAvailableCount = filteredCompetitorUnits.filter(unit => 
+            unit.status === 'available' || unit.availabilityDate).length;
+          const availabilityEdge = subjectAvailableCount - competitorAvailableCount;
+          
+          const subjectOccupancyRate = filteredSubjectUnits.length > 0 ? 
+            ((filteredSubjectUnits.length - subjectAvailableCount) / filteredSubjectUnits.length) * 100 : 0;
+          const competitorOccupancyRate = filteredCompetitorUnits.length > 0 ?
+            ((filteredCompetitorUnits.length - competitorAvailableCount) / filteredCompetitorUnits.length) * 100 : 0;
+          
+          return {
+            pricing: {
+              edge: Math.round(pricingEdge * 10) / 10,
+              label: (() => {
+                if (Math.abs(pricingEdge) <= 10) return "At market rate";
+                if (pricingEdge > 0) return `${Math.abs(Math.round(pricingEdge))}% above market`;
+                return `${Math.abs(Math.round(pricingEdge))}% below market`;
+              })(),
+              status: (() => {
+                if (pricingEdge > 10) return "disadvantage" as const;
+                if (pricingEdge < -10) return "advantage" as const;
+                return "neutral" as const;
+              })()
+            },
+            size: {
+              edge: Math.round(sizeEdge),
+              label: (() => {
+                if (Math.abs(sizePercentDiff) <= 10) return "Comparable unit sizes";
+                if (sizeEdge > 0) return `${Math.round(sizeEdge)} sqft larger`;
+                return `${Math.abs(Math.round(sizeEdge))} sqft smaller`;
+              })(),
+              status: (() => {
+                if (sizePercentDiff > 10) return "advantage" as const;
+                if (sizePercentDiff < -10) return "disadvantage" as const;
+                return "neutral" as const;
+              })()
+            },
+            availability: {
+              edge: availabilityEdge,
+              label: (() => {
+                const occupancyLabel = subjectOccupancyRate > 0 ? ` (${Math.round(subjectOccupancyRate)}% occupied)` : '';
+                if (Math.abs(availabilityEdge) < 2) return `Balanced availability${occupancyLabel}`;
+                if (availabilityEdge > 0) return `${availabilityEdge} more units available${occupancyLabel}`;
+                return `${Math.abs(availabilityEdge)} fewer units available${occupancyLabel}`;
+              })(),
+              status: (() => {
+                const occupancyDiff = subjectOccupancyRate - competitorOccupancyRate;
+                if (Math.abs(occupancyDiff) > 10) {
+                  return occupancyDiff > 0 ? "advantage" as const : "disadvantage" as const;
+                }
+                return "neutral" as const;
+              })()
+            },
+            amenities: {
+              edge: percentileRank,
+              label: (() => {
+                if (percentileRank > 66) return "Above market amenities";
+                if (percentileRank > 33) return "Market-standard amenities";
+                return "Basic amenities";
+              })(),
+              status: (() => {
+                if (percentileRank > 66) return "advantage" as const;
+                if (percentileRank < 33) return "disadvantage" as const;
+                return "neutral" as const;
+              })()
+            }
+          };
+        })(),
+        aiInsights: (() => {
+          const insights = [];
+          if (percentileRank > 75) insights.push("Premium market positioning");
+          else if (percentileRank > 50) insights.push("Strong competitive position");
+          else insights.push("Opportunities for market positioning improvement");
+          
+          if (pricingPowerScore > 70) insights.push("Excellent pricing flexibility");
+          else if (pricingPowerScore < 30) insights.push("Consider pricing adjustments");
+          
+          return insights.length > 0 ? insights : ["Analyze more competitors for detailed insights"];
+        })(),
+        subjectAvgRent: subjectAvgRent,
+        competitorAvgRent: competitorAvgRent,
         subjectAvgSqFt: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredSubjectUnits.length : 0,
         competitorAvgSqFt: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / filteredCompetitorUnits.length : 0
       };
@@ -2086,21 +2164,131 @@ export class DrizzleStorage implements IStorage {
       
       console.log('[FILTER] After filtering - Subject units:', filteredSubjectUnits.length, 'Competitor units:', filteredCompetitorUnits.length);
       
-      // Generate simplified analysis
+      // Calculate average rents for subject and competitor units
+      const subjectAvgRent = filteredSubjectUnits.length > 0 ? 
+        filteredSubjectUnits.reduce((sum, unit) => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return sum + (isNaN(rent) ? 0 : rent);
+        }, 0) / filteredSubjectUnits.length : 0;
+      
+      const competitorAvgRent = filteredCompetitorUnits.length > 0 ? 
+        filteredCompetitorUnits.reduce((sum, unit) => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return sum + (isNaN(rent) ? 0 : rent);
+        }, 0) / filteredCompetitorUnits.length : 0;
+      
+      // Calculate percentile rank based on actual rent comparisons
+      const competitorRents = filteredCompetitorUnits
+        .map(unit => {
+          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
+          return rent;
+        })
+        .filter(r => r > 0)
+        .sort((a, b) => a - b);
+      
+      let percentileRank = 50; // Default for insufficient data
+      let comparisonNote = "Insufficient data for market comparison";
+      
+      if (subjectAvgRent > 0 && competitorRents.length > 0) {
+        if (competitorRents.length <= 2) {
+          // For 1-2 competitors, show exact position
+          const position = competitorRents.filter(r => r < subjectAvgRent).length + 1;
+          const total = competitorRents.length + 1; // Include subject in total
+          percentileRank = Math.round(((position - 1) / competitorRents.length) * 100);
+          comparisonNote = `Position ${position} of ${total} properties`;
+        } else {
+          // For 3+ competitors, calculate true percentile from rent distribution
+          const belowCount = competitorRents.filter(r => r < subjectAvgRent).length;
+          percentileRank = Math.round((belowCount / competitorRents.length) * 100);
+          comparisonNote = `Based on ${competitorRents.length} competitor units`;
+        }
+      } else if (competitorRents.length === 0) {
+        // No competitors - set to 50 and note insufficient data
+        percentileRank = 50;
+        comparisonNote = "No competitor data available for comparison";
+      }
+      
+      // Calculate pricing power score with transparent weights
+      const pricingPowerScore = (() => {
+        // Transparent calculation:
+        // 40% weight: Percentile rank (position in market)
+        // 30% weight: Price difference from market average
+        // 30% weight: Occupancy rate
+        
+        const percentileComponent = percentileRank * 0.40;
+        
+        // Price difference component: normalize to 0-100 scale
+        const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+        const priceDiffComponent = (() => {
+          if (competitorAvgRent === 0) return 50; // No comparison data
+          // Convert to 0-100 scale: -20% diff = 100, 0% = 50, +20% = 0
+          const normalized = 50 - (pricingEdge * 2.5);
+          return Math.min(100, Math.max(0, normalized));
+        })() * 0.30;
+        
+        // Occupancy component: estimate based on available data
+        const subjectAvailableCount = filteredSubjectUnits.filter(unit => 
+          unit.status === 'available' || unit.availabilityDate).length;
+        const subjectOccupancyRate = filteredSubjectUnits.length > 0 ? 
+          ((filteredSubjectUnits.length - subjectAvailableCount) / filteredSubjectUnits.length) * 100 : 50;
+        const occupancyComponent = subjectOccupancyRate * 0.30;
+        
+        // Sum all components for final score
+        const totalScore = percentileComponent + priceDiffComponent + occupancyComponent;
+        
+        return Math.min(100, Math.max(0, Math.round(totalScore)));
+      })();
+      
+      // Calculate market position based on percentile rank
+      const marketPosition = (() => {
+        if (percentileRank >= 67) return "Above Market";
+        if (percentileRank >= 34) return "At Market";
+        return "Below Market";
+      })();
+      
+      // Generate competitive advantages based on calculated values
+      const competitiveAdvantages = [];
+      if (pricingPowerScore > 80) competitiveAdvantages.push("Dominant pricing power in market");
+      else if (pricingPowerScore > 65) competitiveAdvantages.push("Strong market pricing flexibility");
+      else if (percentileRank > 75) competitiveAdvantages.push("Premium market positioning");
+      else if (percentileRank > 60) competitiveAdvantages.push("Above-average market standing");
+      
+      if (subjectAvgRent < competitorAvgRent * 0.9) competitiveAdvantages.push("Value pricing attracts residents");
+      if (competitiveAdvantages.length === 0) {
+        if (percentileRank >= 50) competitiveAdvantages.push("Stable market position");
+        else competitiveAdvantages.push("Competitive entry pricing");
+      }
+      
+      // Generate recommendations based on calculated values
+      const recommendations = [];
+      if (pricingPowerScore < 30) {
+        recommendations.push("Urgent: Realign pricing strategy with market realities");
+      } else if (pricingPowerScore < 50 && subjectAvgRent > competitorAvgRent * 1.1) {
+        recommendations.push("Consider modest rent reductions to improve occupancy");
+      } else if (pricingPowerScore > 70 && subjectAvgRent < competitorAvgRent * 0.95) {
+        recommendations.push("Strong position supports 3-5% rent increases");
+      }
+      
+      if (recommendations.length === 0) {
+        recommendations.push("Maintain current pricing strategy");
+        recommendations.push("Monitor competitor pricing closely");
+      }
+      
+      // Generate analysis with calculated values
       const analysis: FilteredAnalysis = {
-        marketPosition: "Competitive",
-        pricingPowerScore: 75,
-        competitiveAdvantages: ["Modern amenities", "Prime location"],
-        recommendations: ["Consider rental optimization", "Enhance marketing"],
+        marketPosition: marketPosition,
+        pricingPowerScore: pricingPowerScore,
+        competitiveAdvantages: competitiveAdvantages,
+        recommendations: recommendations,
         unitCount: filteredSubjectUnits.length + filteredCompetitorUnits.length,
         avgRent: (filteredSubjectUnits.length + filteredCompetitorUnits.length) > 0 ? 
           [...filteredSubjectUnits, ...filteredCompetitorUnits].reduce((sum, unit) => {
             const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
             return sum + (isNaN(rent) ? 0 : rent);
           }, 0) / (filteredSubjectUnits.length + filteredCompetitorUnits.length) : 0,
-        percentileRank: 70,
+        percentileRank: percentileRank,
         locationScore: 85,
-        amenityScore: 80,
+        amenityScore: percentileRank, // Use percentile rank as proxy for amenity score
         pricePerSqFt: (() => {
           const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
           const validUnitsWithSqft = allUnits.filter(u => u.squareFootage && u.squareFootage > 0);
@@ -2132,23 +2320,106 @@ export class DrizzleStorage implements IStorage {
           isSubject: false,
           availabilityDate: unit.availabilityDate || undefined
         })),
-        competitiveEdges: {
-          pricing: { edge: 5, label: "+5% above market", status: "advantage" },
-          size: { edge: 120, label: "+120 sq ft larger", status: "advantage" },
-          availability: { edge: 2, label: "2 days faster", status: "advantage" },
-          amenities: { edge: 15, label: "Premium amenities", status: "advantage" }
-        },
-        aiInsights: ["Strong competitive position", "Excellent location advantage"],
-        subjectAvgRent: filteredSubjectUnits.length > 0 ? filteredSubjectUnits.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / filteredSubjectUnits.length : 0,
-        competitorAvgRent: filteredCompetitorUnits.length > 0 ? filteredCompetitorUnits.reduce((sum, unit) => {
-          const rent = typeof unit.rent === 'string' ? parseFloat(unit.rent.replace(/[$,]/g, '')) : (unit.rent || 0);
-          return sum + (isNaN(rent) ? 0 : rent);
-        }, 0) / filteredCompetitorUnits.length : 0,
+        competitiveEdges: (() => {
+          // Calculate pricing edge
+          const pricingEdge = competitorAvgRent > 0 ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100 : 0;
+          
+          // Calculate size edge
+          const subjectAvgSqFt = filteredSubjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (filteredSubjectUnits.length || 1);
+          const competitorAvgSqFtCalc = filteredCompetitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (filteredCompetitorUnits.length || 1);
+          const sizeEdge = competitorAvgSqFtCalc > 0 ? subjectAvgSqFt - competitorAvgSqFtCalc : 0;
+          const sizePercentDiff = competitorAvgSqFtCalc > 0 ? ((subjectAvgSqFt - competitorAvgSqFtCalc) / competitorAvgSqFtCalc) * 100 : 0;
+          
+          // Calculate availability
+          const subjectAvailableCount = filteredSubjectUnits.filter(unit => 
+            unit.status === 'available' || unit.availabilityDate).length;
+          const competitorAvailableCount = filteredCompetitorUnits.filter(unit => 
+            unit.status === 'available' || unit.availabilityDate).length;
+          const availabilityEdge = subjectAvailableCount - competitorAvailableCount;
+          
+          const subjectOccupancyRate = filteredSubjectUnits.length > 0 ? 
+            ((filteredSubjectUnits.length - subjectAvailableCount) / filteredSubjectUnits.length) * 100 : 0;
+          const competitorOccupancyRate = filteredCompetitorUnits.length > 0 ?
+            ((filteredCompetitorUnits.length - competitorAvailableCount) / filteredCompetitorUnits.length) * 100 : 0;
+          
+          return {
+            pricing: {
+              edge: Math.round(pricingEdge * 10) / 10,
+              label: (() => {
+                if (Math.abs(pricingEdge) <= 10) return "At market rate";
+                if (pricingEdge > 0) return `${Math.abs(Math.round(pricingEdge))}% above market`;
+                return `${Math.abs(Math.round(pricingEdge))}% below market`;
+              })(),
+              status: (() => {
+                if (pricingEdge > 10) return "disadvantage" as const;
+                if (pricingEdge < -10) return "advantage" as const;
+                return "neutral" as const;
+              })()
+            },
+            size: {
+              edge: Math.round(sizeEdge),
+              label: (() => {
+                if (Math.abs(sizePercentDiff) <= 10) return "Comparable unit sizes";
+                if (sizeEdge > 0) return `${Math.round(sizeEdge)} sqft larger`;
+                return `${Math.abs(Math.round(sizeEdge))} sqft smaller`;
+              })(),
+              status: (() => {
+                if (sizePercentDiff > 10) return "advantage" as const;
+                if (sizePercentDiff < -10) return "disadvantage" as const;
+                return "neutral" as const;
+              })()
+            },
+            availability: {
+              edge: availabilityEdge,
+              label: (() => {
+                const occupancyLabel = subjectOccupancyRate > 0 ? ` (${Math.round(subjectOccupancyRate)}% occupied)` : '';
+                if (Math.abs(availabilityEdge) < 2) return `Balanced availability${occupancyLabel}`;
+                if (availabilityEdge > 0) return `${availabilityEdge} more units available${occupancyLabel}`;
+                return `${Math.abs(availabilityEdge)} fewer units available${occupancyLabel}`;
+              })(),
+              status: (() => {
+                const occupancyDiff = subjectOccupancyRate - competitorOccupancyRate;
+                if (Math.abs(occupancyDiff) > 10) {
+                  return occupancyDiff > 0 ? "advantage" as const : "disadvantage" as const;
+                }
+                return "neutral" as const;
+              })()
+            },
+            amenities: {
+              edge: percentileRank,
+              label: (() => {
+                if (percentileRank > 66) return "Above market amenities";
+                if (percentileRank > 33) return "Market-standard amenities";
+                return "Basic amenities";
+              })(),
+              status: (() => {
+                if (percentileRank > 66) return "advantage" as const;
+                if (percentileRank < 33) return "disadvantage" as const;
+                return "neutral" as const;
+              })()
+            }
+          };
+        })(),
+        aiInsights: (() => {
+          const insights = [];
+          if (percentileRank > 75) insights.push("Premium market positioning");
+          else if (percentileRank > 50) insights.push("Strong competitive position");
+          else insights.push("Opportunities for market positioning improvement");
+          
+          if (pricingPowerScore > 70) insights.push("Excellent pricing flexibility");
+          else if (pricingPowerScore < 30) insights.push("Consider pricing adjustments");
+          
+          return insights.length > 0 ? insights : ["Analyze more competitors for detailed insights"];
+        })(),
+        subjectAvgRent: subjectAvgRent,
+        competitorAvgRent: competitorAvgRent,
         subjectAvgSqFt: subjectUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (subjectUnits.length || 1),
-        competitorAvgSqFt: competitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (competitorUnits.length || 1)
+        competitorAvgSqFt: competitorUnits.reduce((sum, unit) => sum + (unit.squareFootage || 0), 0) / (competitorUnits.length || 1),
+        // Add transparency fields
+        dataPointsUsed: filteredCompetitorUnits.length,
+        subjectAvgRentActual: subjectAvgRent,
+        competitorAvgRentActual: competitorAvgRent,
+        comparisonNote: comparisonNote
       };
       
       return analysis;
