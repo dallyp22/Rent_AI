@@ -138,7 +138,7 @@ const FilteredAnalysisResults = memo(({
 
       {/* Summary Statistics with Animated Numbers */}
       <motion.div 
-        className="grid grid-cols-2 md:grid-cols-4 gap-4"
+        className="grid grid-cols-1 md:grid-cols-3 gap-4"
         variants={itemVariants}
       >
         <motion.div 
@@ -179,26 +179,6 @@ const FilteredAnalysisResults = memo(({
             ${analysis.avgRent.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </motion.div>
           <div className="text-sm text-muted-foreground">Avg Rent</div>
-        </motion.div>
-        
-        <motion.div 
-          className="text-center p-4 bg-muted rounded-lg transition-all hover:shadow-md" 
-          data-testid="location-score"
-          variants={statVariants}
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.98 }}
-        >
-          <motion.div 
-            className="text-2xl font-bold text-primary" 
-            data-testid="location-score-value"
-            key={analysis.locationScore}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
-          >
-            {analysis.locationScore}/100
-          </motion.div>
-          <div className="text-sm text-muted-foreground">Location Score</div>
         </motion.div>
         
         <motion.div 
