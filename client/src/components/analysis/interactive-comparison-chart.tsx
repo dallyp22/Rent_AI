@@ -77,6 +77,20 @@ export default function InteractiveComparisonChart({
       }));
   }, [competitorUnits, metricType]);
 
+  // Color palette for competitor properties
+  const competitorColorPalette = [
+    { bg: 'rgba(239, 68, 68, 0.5)', border: 'rgba(239, 68, 68, 1)' },    // Red
+    { bg: 'rgba(34, 197, 94, 0.5)', border: 'rgba(34, 197, 94, 1)' },    // Green
+    { bg: 'rgba(251, 146, 60, 0.5)', border: 'rgba(251, 146, 60, 1)' },  // Orange
+    { bg: 'rgba(168, 85, 247, 0.5)', border: 'rgba(168, 85, 247, 1)' },  // Purple
+    { bg: 'rgba(236, 72, 153, 0.5)', border: 'rgba(236, 72, 153, 1)' },  // Pink
+    { bg: 'rgba(20, 184, 166, 0.5)', border: 'rgba(20, 184, 166, 1)' },  // Teal
+    { bg: 'rgba(251, 191, 36, 0.5)', border: 'rgba(251, 191, 36, 1)' },  // Amber
+    { bg: 'rgba(99, 102, 241, 0.5)', border: 'rgba(99, 102, 241, 1)' },  // Indigo
+    { bg: 'rgba(107, 114, 128, 0.5)', border: 'rgba(107, 114, 128, 1)' }, // Gray
+    { bg: 'rgba(217, 119, 6, 0.5)', border: 'rgba(217, 119, 6, 1)' },    // Brown
+  ];
+
   // Prepare data for bar chart
   const barData = useMemo(() => {
     const filteredSubjectUnits = metricType === "pricePerSqFt" 
@@ -86,42 +100,70 @@ export default function InteractiveComparisonChart({
       ? competitorUnits.filter(unit => getPricePerSqFt(unit) !== null)
       : competitorUnits;
     
+    // Group competitor units by property name
+    const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
+    filteredCompetitorUnits.forEach(unit => {
+      if (!competitorsByProperty.has(unit.propertyName)) {
+        competitorsByProperty.set(unit.propertyName, []);
+      }
+      competitorsByProperty.get(unit.propertyName)!.push(unit);
+    });
+
+    // Get unique subject property names
+    const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
+    const subjectPropertyName = subjectPropertyNames.size === 1 
+      ? Array.from(subjectPropertyNames)[0] 
+      : 'Your Properties';
+    
     const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
     const barLabels = allUnits.map((unit, index) => {
       const prefix = filteredSubjectUnits.includes(unit) ? 'S' : 'C';
       return `${prefix}${index + 1}: ${truncatePropertyName(unit.propertyName)}`;
     });
 
+    // Create datasets - one for subject property, one for each competitor property
+    const datasets = [];
+    
+    // Add subject property dataset
+    if (filteredSubjectUnits.length > 0) {
+      datasets.push({
+        label: truncatePropertyName(subjectPropertyName, 25),
+        data: allUnits.map(unit => 
+          filteredSubjectUnits.includes(unit) 
+            ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
+            : null
+        ),
+        backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
+        borderColor: 'rgba(59, 130, 246, 1)',
+        borderWidth: 2,
+        categoryPercentage: 0.8,
+        barPercentage: 0.9,
+      });
+    }
+
+    // Add competitor property datasets with unique colors
+    let colorIndex = 0;
+    competitorsByProperty.forEach((units, propertyName) => {
+      const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
+      datasets.push({
+        label: truncatePropertyName(propertyName, 25),
+        data: allUnits.map(unit => 
+          units.includes(unit) 
+            ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
+            : null
+        ),
+        backgroundColor: color.bg,
+        borderColor: color.border,
+        borderWidth: 1,
+        categoryPercentage: 0.8,
+        barPercentage: 0.9,
+      });
+      colorIndex++;
+    });
+
     return {
       labels: barLabels,
-      datasets: [
-        {
-          label: 'Your Units',
-          data: allUnits.map(unit => 
-            filteredSubjectUnits.includes(unit) 
-              ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
-              : null
-          ),
-          backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue
-          borderColor: 'rgba(59, 130, 246, 1)',
-          borderWidth: 2,
-          categoryPercentage: 0.8,
-          barPercentage: 0.9,
-        },
-        {
-          label: 'Competitor Units',
-          data: allUnits.map(unit => 
-            filteredCompetitorUnits.includes(unit) 
-              ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
-              : null
-          ),
-          backgroundColor: 'rgba(239, 68, 68, 0.4)', // Red
-          borderColor: 'rgba(239, 68, 68, 0.8)',
-          borderWidth: 1,
-          categoryPercentage: 0.8,
-          barPercentage: 0.9,
-        }
-      ],
+      datasets,
     };
   }, [subjectUnits, competitorUnits, metricType]);
 
