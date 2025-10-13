@@ -285,14 +285,6 @@ export default function PropertySelectionMatrix() {
             Create analysis sessions and select properties for competitive analysis
           </p>
         </div>
-        <Button
-          onClick={() => setIsCreateSessionDialogOpen(true)}
-          className="flex items-center gap-2"
-          data-testid="button-create-session"
-        >
-          <Plus className="h-4 w-4" />
-          New Analysis Session
-        </Button>
       </div>
 
       {/* Statistics Cards */}
@@ -362,7 +354,18 @@ export default function PropertySelectionMatrix() {
         {/* Analysis Sessions List */}
         <Card data-testid="card-sessions-list">
           <CardHeader>
-            <CardTitle>Analysis Sessions</CardTitle>
+            <div className="flex justify-between items-center">
+              <CardTitle>Analysis Sessions</CardTitle>
+              <Button
+                onClick={() => setIsCreateSessionDialogOpen(true)}
+                size="sm"
+                className="flex items-center gap-2"
+                data-testid="button-create-session"
+              >
+                <Plus className="h-3 w-3" />
+                New Session
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[400px] w-full">
