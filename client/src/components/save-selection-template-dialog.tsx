@@ -31,7 +31,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Loader2, Save, FileTemplate } from "lucide-react";
+import { Loader2, Save, FileText } from "lucide-react";
 import type { PropertyProfile } from "@shared/schema";
 
 // Icon options for templates
@@ -117,7 +117,7 @@ export default function SaveSelectionTemplateDialog({
         title: "Template Saved Successfully",
         description: (
           <div className="flex items-center gap-2">
-            <FileTemplate className="h-4 w-4" />
+            <FileText className="h-4 w-4" />
             <span>Template "{data.name}" has been saved</span>
           </div>
         ),

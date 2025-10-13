@@ -5,6 +5,22 @@ import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,12 +44,15 @@ import {
   X,
   FileText,
   History,
-  ChevronRight
+  ChevronRight,
+  MoreVertical,
+  Pencil
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
+import EditSelectionTemplateDialog from "@/components/edit-selection-template-dialog";
 import type { 
   AnalysisSession, 
   InsertAnalysisSession, 
@@ -70,6 +89,12 @@ export default function PropertySelectionMatrix() {
   const [editingSession, setEditingSession] = useState<AnalysisSession | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
   const [propertySelections, setPropertySelections] = useState<Record<string, PropertySelection>>({});
+  
+  // Template edit/delete states
+  const [editingTemplate, setEditingTemplate] = useState<SavedSelectionTemplate | null>(null);
+  const [isEditTemplateDialogOpen, setIsEditTemplateDialogOpen] = useState(false);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+  const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
   // Form for session creation/editing
   const form = useForm<SessionFormData>({
@@ -136,6 +161,36 @@ export default function PropertySelectionMatrix() {
         description: "Failed to apply template. Please try again.",
         variant: "destructive",
       });
+    }
+  });
+
+  // Delete template mutation
+  const deleteTemplateMutation = useMutation({
+    mutationFn: async (templateId: string): Promise<void> => {
+      const res = await apiRequest("DELETE", `/api/saved-selection-templates/${templateId}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || "Failed to delete template");
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/saved-selection-templates"] });
+      toast({
+        title: "Template Deleted",
+        description: "The template has been deleted successfully.",
+      });
+      setIsDeleteAlertOpen(false);
+      setDeletingTemplateId(null);
+    },
+    onError: (error) => {
+      console.error("Error deleting template:", error);
+      toast({
+        title: "Deletion Failed",
+        description: error instanceof Error ? error.message : "Failed to delete template. Please try again.",
+        variant: "destructive",
+      });
+      setIsDeleteAlertOpen(false);
+      setDeletingTemplateId(null);
     }
   });
 
@@ -308,6 +363,22 @@ export default function PropertySelectionMatrix() {
 
   const handleApplyTemplate = (templateId: string) => {
     applyTemplateMutation.mutate(templateId);
+  };
+
+  const handleEditTemplate = (template: SavedSelectionTemplate) => {
+    setEditingTemplate(template);
+    setIsEditTemplateDialogOpen(true);
+  };
+
+  const handleDeleteTemplate = (templateId: string) => {
+    setDeletingTemplateId(templateId);
+    setIsDeleteAlertOpen(true);
+  };
+
+  const confirmDeleteTemplate = () => {
+    if (deletingTemplateId) {
+      deleteTemplateMutation.mutate(deletingTemplateId);
+    }
   };
 
   const isPropertySelected = (propertyId: string): boolean => {
@@ -484,7 +555,7 @@ export default function PropertySelectionMatrix() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {templates.map((template) => (
-                <Card key={template.id} className="hover:shadow-lg transition-shadow" data-testid={`template-card-${template.id}`}>
+                <Card key={template.id} className="hover:shadow-lg transition-shadow relative" data-testid={`template-card-${template.id}`}>
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
@@ -495,9 +566,41 @@ export default function PropertySelectionMatrix() {
                           </CardDescription>
                         )}
                       </div>
-                      {template.icon && (
-                        <div className="text-2xl ml-2">{template.icon}</div>
-                      )}
+                      <div className="flex items-start gap-2">
+                        {template.icon && (
+                          <div className="text-2xl">{template.icon}</div>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              data-testid={`button-template-menu-${template.id}`}
+                            >
+                              <span className="sr-only">Open menu</span>
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleEditTemplate(template)}
+                              data-testid={`menu-edit-template-${template.id}`}
+                            >
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDeleteTemplate(template.id)}
+                              className="text-destructive focus:text-destructive"
+                              data-testid={`menu-delete-template-${template.id}`}
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -521,22 +624,9 @@ export default function PropertySelectionMatrix() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex justify-between">
+                  <CardFooter>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        toast({
-                          title: "Coming Soon",
-                          description: "Template editing will be available soon.",
-                        });
-                      }}
-                    >
-                      <Edit className="h-4 w-4 mr-1" />
-                      Edit
-                    </Button>
-                    <Button
-                      size="sm"
+                      className="w-full"
                       onClick={() => handleApplyTemplate(template.id)}
                       disabled={applyTemplateMutation.isPending}
                       data-testid={`button-apply-template-${template.id}`}
@@ -919,6 +1009,51 @@ export default function PropertySelectionMatrix() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit Template Dialog */}
+      <EditSelectionTemplateDialog
+        template={editingTemplate}
+        isOpen={isEditTemplateDialogOpen}
+        onClose={() => {
+          setIsEditTemplateDialogOpen(false);
+          setEditingTemplate(null);
+        }}
+        onSuccess={() => {
+          setIsEditTemplateDialogOpen(false);
+          setEditingTemplate(null);
+        }}
+      />
+
+      {/* Delete Template Confirmation */}
+      <AlertDialog open={isDeleteAlertOpen} onOpenChange={setIsDeleteAlertOpen}>
+        <AlertDialogContent data-testid="alert-dialog-delete-template">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this template? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setIsDeleteAlertOpen(false);
+                setDeletingTemplateId(null);
+              }}
+              data-testid="button-cancel-delete"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteTemplate}
+              disabled={deleteTemplateMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              data-testid="button-confirm-delete"
+            >
+              {deleteTemplateMutation.isPending ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
