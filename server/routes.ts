@@ -7807,7 +7807,32 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       }
 
       const templates = await storage.getSavedSelectionTemplatesByUser(userId);
-      res.json(templates);
+      
+      // Enrich each template with property counts
+      const templatesWithCounts = await Promise.all(templates.map(async (template) => {
+        const propertyProfiles = await storage.getPropertyProfilesInTemplate(template.id);
+        
+        // Count subjects and competitors based on roles
+        let subjectCount = 0;
+        let competitorCount = 0;
+        
+        propertyProfiles.forEach((profile: any) => {
+          if (profile.role === 'subject') {
+            subjectCount++;
+          } else {
+            competitorCount++;
+          }
+        });
+        
+        return {
+          ...template,
+          subjectCount,
+          competitorCount,
+          propertyCount: propertyProfiles.length // Total count
+        };
+      }));
+      
+      res.json(templatesWithCounts);
     } catch (error) {
       console.error("Error fetching saved selection templates:", error);
       res.status(500).json({ 
@@ -7943,25 +7968,31 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       
       // Update property profiles if provided
       if (propertyProfileIds !== undefined && Array.isArray(propertyProfileIds)) {
-        // Get current property profiles
+        console.log('Updating property profiles for template:', templateId);
+        console.log('New property profiles:', propertyProfileIds);
+        
+        // Get current property profiles to remove them all first
         const currentProfiles = await storage.getPropertyProfilesInTemplate(templateId);
-        const currentProfileIds = new Set(currentProfiles.map(p => p.id));
         
-        // Determine profiles to add and remove
-        const newProfileIds = new Set(propertyProfileIds.map(p => p.propertyProfileId));
-        const profilesToRemove = currentProfiles.filter(p => !newProfileIds.has(p.id));
-        const profilesToAdd = propertyProfileIds.filter(p => !currentProfileIds.has(p.propertyProfileId));
-        
-        // Remove profiles no longer in the template
-        for (const profile of profilesToRemove) {
+        // Remove all existing property profile relationships
+        // This ensures a clean slate and avoids complex comparison logic
+        for (const profile of currentProfiles) {
           await storage.removePropertyProfileFromTemplate(templateId, profile.id);
         }
         
-        // Add new profiles
-        for (const { propertyProfileId, role } of profilesToAdd) {
+        // Add all the new property profile relationships
+        for (const { propertyProfileId, role } of propertyProfileIds) {
           // Verify user owns each property profile
           const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
-          if (!propertyProfile || propertyProfile.userId !== userId) {
+          if (!propertyProfile) {
+            console.error(`Property profile not found: ${propertyProfileId}`);
+            return res.status(404).json({ 
+              message: `Property profile ${propertyProfileId} not found` 
+            });
+          }
+          
+          if (propertyProfile.userId !== userId) {
+            console.error(`Access denied to property profile: ${propertyProfileId}`);
             return res.status(403).json({ 
               message: `Access denied to property profile ${propertyProfileId}` 
             });
@@ -7973,6 +8004,8 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
             role: role || 'competitor'
           });
         }
+        
+        console.log(`Successfully updated ${propertyProfileIds.length} property profiles for template ${templateId}`);
       }
       
       // Get the complete updated template with property profiles

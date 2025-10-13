@@ -3187,7 +3187,11 @@ export class DrizzleStorage implements IStorage {
       .innerJoin(propertyProfiles, eq(templatePropertyProfiles.propertyProfileId, propertyProfiles.id))
       .where(eq(templatePropertyProfiles.templateId, templateId));
       
-      return relations.map(r => r.propertyProfile);
+      // Return property profiles with the role from the junction table attached
+      return relations.map(r => ({
+        ...r.propertyProfile,
+        role: r.role // Add the role from the template-property relationship
+      }));
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error getting property profiles in template:', error);
       throw new Error(`Failed to get property profiles in template: ${error instanceof Error ? error.message : 'Unknown error'}`);
