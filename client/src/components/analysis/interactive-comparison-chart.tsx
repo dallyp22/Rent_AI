@@ -474,7 +474,7 @@ export default function InteractiveComparisonChart({
             <div className="mt-4 text-xs text-muted-foreground text-center">
               {chartType === "scatter" 
                 ? "Bubble size represents bedroom count. Hover over points for detailed unit information."
-                : "S = Subject (Your) Units, C = Competitor Units. Hover over bars for detailed unit information."}
+                : "Each property has its own color. S = Subject (Your) Units, C = Competitor Units. Hover over bars for detailed information."}
             </div>
           </>
         ) : (
