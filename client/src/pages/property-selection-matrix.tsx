@@ -144,15 +144,28 @@ export default function PropertySelectionMatrix() {
 
   // Apply template mutation
   const applyTemplateMutation = useMutation({
-    mutationFn: async (templateId: string): Promise<{ sessionId: string }> => {
+    mutationFn: async (templateId: string): Promise<{ 
+      sessionId: string; 
+      scrapingInitiated?: boolean;
+      propertiesToScrape?: number;
+      message?: string;
+    }> => {
       const res = await apiRequest("POST", `/api/saved-selection-templates/${templateId}/apply`, {});
       return res.json();
     },
     onSuccess: (data) => {
-      toast({
-        title: "Template Applied",
-        description: "New analysis session created from template.",
-      });
+      // Show appropriate toast message based on scraping status
+      if (data.scrapingInitiated && data.propertiesToScrape) {
+        toast({
+          title: "Template Applied Successfully",
+          description: `Created new session and started scraping ${data.propertiesToScrape} properties. Data will be ready shortly.`,
+        });
+      } else {
+        toast({
+          title: "Template Applied",
+          description: data.message || "New analysis session created from template.",
+        });
+      }
       // Navigate to the summarize page with the new session ID
       setLocation(`/session/summarize/${data.sessionId}`);
     },

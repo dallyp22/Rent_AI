@@ -8044,11 +8044,38 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
       // Get the created session
       const session = await storage.getAnalysisSession(sessionId);
       
+      if (!session) {
+        return res.status(500).json({ message: "Failed to create session from template" });
+      }
+      
+      // Get all property profiles in the newly created session
+      const propertyProfiles = await storage.getPropertyProfilesInSession(sessionId);
+      const profilesToScrape = propertyProfiles.filter(profile => profile.url);
+      
+      // If there are properties with URLs, trigger automatic scraping
+      if (profilesToScrape.length > 0) {
+        console.log(`[TEMPLATE_APPLY] Starting automatic scraping for ${profilesToScrape.length} properties in new session: ${session.name}`);
+        
+        // Trigger background scraping for all properties in the session
+        // This is non-blocking - scraping happens in the background
+        scrapingJobProcessor.processSessionScrapingJobs(sessionId).catch(error => {
+          console.error(`[TEMPLATE_APPLY] Background scraping failed for session ${sessionId}:`, error);
+        });
+        
+        console.log(`[TEMPLATE_APPLY] Scraping initiated for session ${sessionId}`);
+      } else {
+        console.log(`[TEMPLATE_APPLY] No properties with URLs to scrape in session ${sessionId}`);
+      }
+      
       res.json({
         success: true,
         sessionId,
         session,
-        message: "Analysis session created successfully from template"
+        scrapingInitiated: profilesToScrape.length > 0,
+        propertiesToScrape: profilesToScrape.length,
+        message: profilesToScrape.length > 0 
+          ? `Analysis session created and scraping started for ${profilesToScrape.length} properties`
+          : "Analysis session created successfully from template"
       });
     } catch (error) {
       console.error("Error applying saved selection template:", error);
