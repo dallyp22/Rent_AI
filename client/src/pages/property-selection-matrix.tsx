@@ -368,7 +368,7 @@ export default function PropertySelectionMatrix() {
             </div>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="h-[600px] w-full">
+            <ScrollArea className="h-[calc(100vh-400px)] w-full">
               {sessions.length === 0 ? (
                 <div className="text-center text-muted-foreground py-8" data-testid="empty-sessions">
                   <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
