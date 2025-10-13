@@ -7794,6 +7794,271 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
+  // ============================================================================
+  // Saved Selection Template Routes
+  // ============================================================================
+  
+  // GET /api/saved-selection-templates - Get all templates for the current user
+  app.get("/api/saved-selection-templates", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const templates = await storage.getSavedSelectionTemplatesByUser(userId);
+      res.json(templates);
+    } catch (error) {
+      console.error("Error fetching saved selection templates:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch saved selection templates", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // GET /api/saved-selection-templates/:id - Get a specific template
+  app.get("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const templateId = req.params.id;
+      const template = await storage.getSavedSelectionTemplate(templateId);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Verify user owns this template
+      if (template.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to template" });
+      }
+
+      // Get the property profiles in this template
+      const propertyProfiles = await storage.getPropertyProfilesInTemplate(templateId);
+      
+      res.json({
+        ...template,
+        propertyProfiles
+      });
+    } catch (error) {
+      console.error("Error fetching saved selection template:", error);
+      res.status(500).json({ 
+        message: "Failed to fetch saved selection template", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/saved-selection-templates - Create a new template
+  app.post("/api/saved-selection-templates", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const { name, description, icon, propertyProfileIds } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ message: "Template name is required" });
+      }
+      
+      // Create the template
+      const template = await storage.createSavedSelectionTemplate({
+        userId,
+        name,
+        description,
+        icon
+      });
+      
+      // Add property profiles to the template if provided
+      if (propertyProfileIds && Array.isArray(propertyProfileIds)) {
+        for (const { propertyProfileId, role } of propertyProfileIds) {
+          // Verify user owns each property profile
+          const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+          if (!propertyProfile || propertyProfile.userId !== userId) {
+            // Rollback by deleting the template
+            await storage.deleteSavedSelectionTemplate(template.id);
+            return res.status(403).json({ 
+              message: `Access denied to property profile ${propertyProfileId}` 
+            });
+          }
+          
+          await storage.addPropertyProfileToTemplate({
+            templateId: template.id,
+            propertyProfileId,
+            role: role || 'competitor'
+          });
+        }
+      }
+      
+      // Get the complete template with property profiles
+      const propertyProfiles = await storage.getPropertyProfilesInTemplate(template.id);
+      
+      res.json({
+        ...template,
+        propertyProfiles
+      });
+    } catch (error) {
+      console.error("Error creating saved selection template:", error);
+      res.status(500).json({ 
+        message: "Failed to create saved selection template", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // PUT /api/saved-selection-templates/:id - Update a template
+  app.put("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const templateId = req.params.id;
+      const template = await storage.getSavedSelectionTemplate(templateId);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Verify user owns this template
+      if (template.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to template" });
+      }
+      
+      const { name, description, icon, propertyProfileIds } = req.body;
+      
+      // Update the template metadata
+      const updatedTemplate = await storage.updateSavedSelectionTemplate(templateId, {
+        name,
+        description,
+        icon
+      });
+      
+      // Update property profiles if provided
+      if (propertyProfileIds !== undefined && Array.isArray(propertyProfileIds)) {
+        // Get current property profiles
+        const currentProfiles = await storage.getPropertyProfilesInTemplate(templateId);
+        const currentProfileIds = new Set(currentProfiles.map(p => p.id));
+        
+        // Determine profiles to add and remove
+        const newProfileIds = new Set(propertyProfileIds.map(p => p.propertyProfileId));
+        const profilesToRemove = currentProfiles.filter(p => !newProfileIds.has(p.id));
+        const profilesToAdd = propertyProfileIds.filter(p => !currentProfileIds.has(p.propertyProfileId));
+        
+        // Remove profiles no longer in the template
+        for (const profile of profilesToRemove) {
+          await storage.removePropertyProfileFromTemplate(templateId, profile.id);
+        }
+        
+        // Add new profiles
+        for (const { propertyProfileId, role } of profilesToAdd) {
+          // Verify user owns each property profile
+          const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
+          if (!propertyProfile || propertyProfile.userId !== userId) {
+            return res.status(403).json({ 
+              message: `Access denied to property profile ${propertyProfileId}` 
+            });
+          }
+          
+          await storage.addPropertyProfileToTemplate({
+            templateId,
+            propertyProfileId,
+            role: role || 'competitor'
+          });
+        }
+      }
+      
+      // Get the complete updated template with property profiles
+      const propertyProfiles = await storage.getPropertyProfilesInTemplate(templateId);
+      
+      res.json({
+        ...updatedTemplate,
+        propertyProfiles
+      });
+    } catch (error) {
+      console.error("Error updating saved selection template:", error);
+      res.status(500).json({ 
+        message: "Failed to update saved selection template", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // DELETE /api/saved-selection-templates/:id - Delete a template
+  app.delete("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const templateId = req.params.id;
+      const template = await storage.getSavedSelectionTemplate(templateId);
+      
+      if (!template) {
+        return res.status(404).json({ message: "Template not found" });
+      }
+      
+      // Verify user owns this template
+      if (template.userId !== userId) {
+        return res.status(403).json({ message: "Access denied to template" });
+      }
+      
+      // Delete the template (will cascade delete relationships)
+      const deleted = await storage.deleteSavedSelectionTemplate(templateId);
+      
+      if (!deleted) {
+        return res.status(500).json({ message: "Failed to delete template" });
+      }
+      
+      res.json({ message: "Template deleted successfully" });
+    } catch (error) {
+      console.error("Error deleting saved selection template:", error);
+      res.status(500).json({ 
+        message: "Failed to delete saved selection template", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
+  // POST /api/saved-selection-templates/:id/apply - Create a new analysis session from a template
+  app.post("/api/saved-selection-templates/:id/apply", isAuthenticatedAny, async (req: any, res) => {
+    try {
+      const userId = getAuthenticatedUserId(req);
+      if (!userId) {
+        return res.status(401).json({ message: "User not authenticated" });
+      }
+
+      const templateId = req.params.id;
+      
+      // Create a new session from the template
+      const sessionId = await storage.createSessionFromTemplate(templateId, userId);
+      
+      // Get the created session
+      const session = await storage.getAnalysisSession(sessionId);
+      
+      res.json({
+        success: true,
+        sessionId,
+        session,
+        message: "Analysis session created successfully from template"
+      });
+    } catch (error) {
+      console.error("Error applying saved selection template:", error);
+      res.status(500).json({ 
+        message: "Failed to apply saved selection template", 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

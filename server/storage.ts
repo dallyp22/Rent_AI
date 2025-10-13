@@ -39,7 +39,12 @@ import {
   type InsertTagDefinition,
   // User authentication types
   type User,
-  type UpsertUser
+  type UpsertUser,
+  // Saved selection template types
+  type SavedSelectionTemplate,
+  type InsertSavedSelectionTemplate,
+  type TemplatePropertyProfile,
+  type InsertTemplatePropertyProfile
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { db } from "./database";
@@ -59,7 +64,9 @@ import {
   scrapingJobs,
   scrapedProperties,
   scrapedUnits,
-  users
+  users,
+  savedSelectionTemplates,
+  templatePropertyProfiles
 } from "@shared/schema";
 import { eq, and, inArray, desc, asc, sql } from "drizzle-orm";
 
@@ -231,6 +238,18 @@ export interface IStorage {
   toggleCompetitiveRelationship(id: string): Promise<CompetitiveRelationship | undefined>;
   deleteCompetitiveRelationship(id: string): Promise<boolean>;
 
+  // Saved Selection Template Operations
+  createSavedSelectionTemplate(template: InsertSavedSelectionTemplate): Promise<SavedSelectionTemplate>;
+  getSavedSelectionTemplate(id: string): Promise<SavedSelectionTemplate | undefined>;
+  getSavedSelectionTemplatesByUser(userId: string): Promise<SavedSelectionTemplate[]>;
+  updateSavedSelectionTemplate(id: string, updates: Partial<SavedSelectionTemplate>): Promise<SavedSelectionTemplate | undefined>;
+  deleteSavedSelectionTemplate(id: string): Promise<boolean>;
+  addPropertyProfileToTemplate(templatePropertyProfile: InsertTemplatePropertyProfile): Promise<TemplatePropertyProfile>;
+  removePropertyProfileFromTemplate(templateId: string, propertyProfileId: string): Promise<boolean>;
+  getPropertyProfilesInTemplate(templateId: string): Promise<PropertyProfile[]>;
+  getTemplatesForPropertyProfile(propertyProfileId: string): Promise<SavedSelectionTemplate[]>;
+  createSessionFromTemplate(templateId: string, userId: string): Promise<string>;
+
   // User authentication operations - MANDATORY for Replit Auth
   getUser(id: string): Promise<User | undefined>;
   getUsersByEmailAndAuthProvider(email: string, authProvider: string): Promise<User[]>;
@@ -240,6 +259,22 @@ export interface IStorage {
   setResetToken(userId: string, token: string, expires: Date): Promise<void>;
   getUserByResetToken(token: string): Promise<User | undefined>;
   clearResetToken(userId: string): Promise<void>;
+  
+  // Saved Selection Templates
+  createSavedSelectionTemplate(template: InsertSavedSelectionTemplate): Promise<SavedSelectionTemplate>;
+  getSavedSelectionTemplate(id: string): Promise<SavedSelectionTemplate | undefined>;
+  getSavedSelectionTemplatesByUser(userId: string): Promise<SavedSelectionTemplate[]>;
+  updateSavedSelectionTemplate(id: string, updates: Partial<SavedSelectionTemplate>): Promise<SavedSelectionTemplate | undefined>;
+  deleteSavedSelectionTemplate(id: string): Promise<boolean>;
+  
+  // Template Property Profiles (many-to-many relationships)
+  addPropertyProfileToTemplate(templatePropertyProfile: InsertTemplatePropertyProfile): Promise<TemplatePropertyProfile>;
+  removePropertyProfileFromTemplate(templateId: string, propertyProfileId: string): Promise<boolean>;
+  getPropertyProfilesInTemplate(templateId: string): Promise<PropertyProfile[]>;
+  getTemplatesForPropertyProfile(propertyProfileId: string): Promise<SavedSelectionTemplate[]>;
+  
+  // Create analysis session from template
+  createSessionFromTemplate(templateId: string, userId: string): Promise<AnalysisSession>;
 }
 
 // DrizzleStorage class for actual database operations
@@ -3044,6 +3079,186 @@ export class DrizzleStorage implements IStorage {
     } catch (error) {
       console.error('[DRIZZLE_STORAGE] Error deleting competitive relationship:', error);
       throw new Error(`Failed to delete competitive relationship: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  // Saved Selection Template Methods
+  async createSavedSelectionTemplate(template: InsertSavedSelectionTemplate): Promise<SavedSelectionTemplate> {
+    try {
+      const [createdTemplate] = await db.insert(savedSelectionTemplates).values(template).returning();
+      
+      return createdTemplate;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error creating saved selection template:', error);
+      throw new Error(`Failed to create saved selection template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getSavedSelectionTemplate(id: string): Promise<SavedSelectionTemplate | undefined> {
+    try {
+      const [template] = await db.select().from(savedSelectionTemplates).where(eq(savedSelectionTemplates.id, id));
+      return template;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting saved selection template:', error);
+      throw new Error(`Failed to get saved selection template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getSavedSelectionTemplatesByUser(userId: string): Promise<SavedSelectionTemplate[]> {
+    try {
+      return await db.select().from(savedSelectionTemplates)
+        .where(eq(savedSelectionTemplates.userId, userId))
+        .orderBy(desc(savedSelectionTemplates.createdAt));
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting saved selection templates by user:', error);
+      throw new Error(`Failed to get saved selection templates by user: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async updateSavedSelectionTemplate(id: string, updates: Partial<SavedSelectionTemplate>): Promise<SavedSelectionTemplate | undefined> {
+    try {
+      const [updatedTemplate] = await db.update(savedSelectionTemplates)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(savedSelectionTemplates.id, id))
+        .returning();
+      
+      return updatedTemplate;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error updating saved selection template:', error);
+      throw new Error(`Failed to update saved selection template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async deleteSavedSelectionTemplate(id: string): Promise<boolean> {
+    try {
+      // Use a transaction to delete both the template and its relationships
+      await db.transaction(async (tx) => {
+        // First delete all property profile relationships
+        await tx.delete(templatePropertyProfiles)
+          .where(eq(templatePropertyProfiles.templateId, id));
+        
+        // Then delete the template itself
+        await tx.delete(savedSelectionTemplates)
+          .where(eq(savedSelectionTemplates.id, id));
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error deleting saved selection template:', error);
+      throw new Error(`Failed to delete saved selection template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async addPropertyProfileToTemplate(templatePropertyProfile: InsertTemplatePropertyProfile): Promise<TemplatePropertyProfile> {
+    try {
+      const [createdRelation] = await db.insert(templatePropertyProfiles).values(templatePropertyProfile).returning();
+      
+      return createdRelation;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error adding property profile to template:', error);
+      throw new Error(`Failed to add property profile to template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async removePropertyProfileFromTemplate(templateId: string, propertyProfileId: string): Promise<boolean> {
+    try {
+      const result = await db.delete(templatePropertyProfiles)
+        .where(
+          and(
+            eq(templatePropertyProfiles.templateId, templateId),
+            eq(templatePropertyProfiles.propertyProfileId, propertyProfileId)
+          )
+        );
+      
+      return result.rowCount > 0;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error removing property profile from template:', error);
+      throw new Error(`Failed to remove property profile from template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getPropertyProfilesInTemplate(templateId: string): Promise<PropertyProfile[]> {
+    try {
+      const relations = await db.select({
+        propertyProfile: propertyProfiles,
+        role: templatePropertyProfiles.role
+      })
+      .from(templatePropertyProfiles)
+      .innerJoin(propertyProfiles, eq(templatePropertyProfiles.propertyProfileId, propertyProfiles.id))
+      .where(eq(templatePropertyProfiles.templateId, templateId));
+      
+      return relations.map(r => r.propertyProfile);
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting property profiles in template:', error);
+      throw new Error(`Failed to get property profiles in template: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async getTemplatesForPropertyProfile(propertyProfileId: string): Promise<SavedSelectionTemplate[]> {
+    try {
+      const relations = await db.select({
+        template: savedSelectionTemplates
+      })
+      .from(templatePropertyProfiles)
+      .innerJoin(savedSelectionTemplates, eq(templatePropertyProfiles.templateId, savedSelectionTemplates.id))
+      .where(eq(templatePropertyProfiles.propertyProfileId, propertyProfileId));
+      
+      return relations.map(r => r.template);
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error getting templates for property profile:', error);
+      throw new Error(`Failed to get templates for property profile: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  async createSessionFromTemplate(templateId: string, userId: string): Promise<string> {
+    try {
+      // Get the template
+      const template = await this.getSavedSelectionTemplate(templateId);
+      if (!template) {
+        throw new Error('Template not found');
+      }
+      
+      // Verify template belongs to user
+      if (template.userId !== userId) {
+        throw new Error('Unauthorized: Template does not belong to user');
+      }
+      
+      // Get all property profiles in the template
+      const templatePropertyRelations = await db.select({
+        propertyProfile: propertyProfiles,
+        role: templatePropertyProfiles.role
+      })
+      .from(templatePropertyProfiles)
+      .innerJoin(propertyProfiles, eq(templatePropertyProfiles.propertyProfileId, propertyProfiles.id))
+      .where(eq(templatePropertyProfiles.templateId, templateId));
+      
+      if (templatePropertyRelations.length === 0) {
+        throw new Error('Template has no property profiles');
+      }
+      
+      // Create a new analysis session with today's date
+      const today = new Date();
+      const sessionName = `${template.name} - ${today.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+      
+      const session = await this.createAnalysisSession({
+        name: sessionName,
+        description: `Created from template: ${template.name}`,
+        userId
+      });
+      
+      // Add all property profiles to the new session with their roles
+      for (const { propertyProfile, role } of templatePropertyRelations) {
+        await this.addPropertyProfileToSession({
+          sessionId: session.id,
+          propertyProfileId: propertyProfile.id,
+          role
+        });
+      }
+      
+      return session.id;
+    } catch (error) {
+      console.error('[DRIZZLE_STORAGE] Error creating session from template:', error);
+      throw new Error(`Failed to create session from template: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 }
