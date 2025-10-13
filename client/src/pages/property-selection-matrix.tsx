@@ -53,6 +53,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
 import EditSelectionTemplateDialog from "@/components/edit-selection-template-dialog";
+import CreateSelectionTemplateDialog from "@/components/create-selection-template-dialog";
 import type { 
   AnalysisSession, 
   InsertAnalysisSession, 
@@ -93,6 +94,7 @@ export default function PropertySelectionMatrix() {
   // Template edit/delete states
   const [editingTemplate, setEditingTemplate] = useState<SavedSelectionTemplate | null>(null);
   const [isEditTemplateDialogOpen, setIsEditTemplateDialogOpen] = useState(false);
+  const [isCreateTemplateDialogOpen, setIsCreateTemplateDialogOpen] = useState(false);
   const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
@@ -518,12 +520,7 @@ export default function PropertySelectionMatrix() {
             <Button 
               className="flex items-center gap-2" 
               data-testid="button-add-template"
-              onClick={() => {
-                toast({
-                  title: "Coming Soon",
-                  description: "Template creation feature will be available soon.",
-                });
-              }}
+              onClick={() => setIsCreateTemplateDialogOpen(true)}
             >
               <Plus className="h-4 w-4" />
               Add New Template
@@ -540,12 +537,7 @@ export default function PropertySelectionMatrix() {
                 </p>
                 <Button 
                   variant="outline"
-                  onClick={() => {
-                    toast({
-                      title: "Coming Soon",
-                      description: "Template creation feature will be available soon.",
-                    });
-                  }}
+                  onClick={() => setIsCreateTemplateDialogOpen(true)}
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   Create First Template
@@ -1022,6 +1014,13 @@ export default function PropertySelectionMatrix() {
           setIsEditTemplateDialogOpen(false);
           setEditingTemplate(null);
         }}
+      />
+
+      {/* Create Template Dialog */}
+      <CreateSelectionTemplateDialog
+        isOpen={isCreateTemplateDialogOpen}
+        onClose={() => setIsCreateTemplateDialogOpen(false)}
+        onSuccess={() => setIsCreateTemplateDialogOpen(false)}
       />
 
       {/* Delete Template Confirmation */}
