@@ -12,6 +12,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import OptimizationTable from "@/components/optimization-table";
 import OptimizationControls from "@/components/optimization-controls";
+import SaveSelectionTemplateDialog from "@/components/save-selection-template-dialog";
 import { OptimizationProgressModal } from "@/components/optimization-progress-modal";
 import { exportToExcel, type ExcelExportData } from "@/lib/excel-export";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
@@ -118,6 +119,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
   const [currentModifiedPrices, setCurrentModifiedPrices] = useState<Record<string, number>>({});
   const [showOptimizationModal, setShowOptimizationModal] = useState(false);
   const [optimizationStage, setOptimizationStage] = useState(1);
+  const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   
   // Query for session data when in session mode
   const sessionQuery = useQuery<AnalysisSession & { propertyProfiles: PropertyProfile[] }>({
@@ -785,9 +787,23 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
               </>
             )}
           </div>
-          <Badge variant={isSessionMode ? "default" : "secondary"}>
-            {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {/* Save as Template button - only show in session mode with valid sessionId */}
+            {isSessionMode && params.sessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSaveTemplateDialogOpen(true)}
+                data-testid="button-save-as-template"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save as Template
+              </Button>
+            )}
+            <Badge variant={isSessionMode ? "default" : "secondary"}>
+              {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+            </Badge>
+          </div>
         </div>
       </div>
 
@@ -861,6 +877,21 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           onClose={() => {
             setShowOptimizationModal(false);
             setOptimizationStage(1);
+          }}
+        />
+      )}
+      
+      {/* Save Selection Template Dialog */}
+      {isSessionMode && params.sessionId && (
+        <SaveSelectionTemplateDialog
+          sessionId={params.sessionId}
+          isOpen={isSaveTemplateDialogOpen}
+          onClose={() => setIsSaveTemplateDialogOpen(false)}
+          onSuccess={() => {
+            toast({
+              title: "Template Saved",
+              description: "You can now use this template to quickly create similar analysis sessions.",
+            });
           }}
         />
       )}

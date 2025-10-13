@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3 } from "lucide-react";
+import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3, Save } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
 import PropertyFilterSidebar from "@/components/property-filter-sidebar";
+import SaveSelectionTemplateDialog from "@/components/save-selection-template-dialog";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
+import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import type { FilterCriteria, FilteredAnalysis, AnalysisSession, PropertyProfile } from "@shared/schema";
 
@@ -32,6 +34,7 @@ type SessionWithPropertyProfiles = AnalysisSession & {
 
 export default function Analyze({ params }: { params: { id?: string, sessionId?: string } }) {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [filters, setFilters] = useState<FilterCriteria>({
     bedroomTypes: [],
     priceRange: { min: 500, max: 5000 },  // Widened range to capture all units
@@ -42,6 +45,7 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
   const [analysisData, setAnalysisData] = useState<FilteredAnalysis | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isDebouncing, setIsDebouncing] = useState(false);
+  const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Determine session mode and ID based on URL pattern
   const isSessionMode = !!params.sessionId;
@@ -249,9 +253,23 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
                 </>
               )}
             </div>
-            <Badge variant={isSessionMode ? "default" : "secondary"}>
-              {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
-            </Badge>
+            <div className="flex items-center gap-3">
+              {/* Save as Template button - only show in session mode with valid sessionId */}
+              {isSessionMode && params.sessionId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsSaveTemplateDialogOpen(true)}
+                  data-testid="button-save-as-template"
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  Save as Template
+                </Button>
+              )}
+              <Badge variant={isSessionMode ? "default" : "secondary"}>
+                {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+              </Badge>
+            </div>
           </div>
 
           {/* Portfolio Properties Summary for Session Mode */}
@@ -437,6 +455,21 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
           </div>
         </div>
       </div>
+      
+      {/* Save Selection Template Dialog */}
+      {isSessionMode && params.sessionId && (
+        <SaveSelectionTemplateDialog
+          sessionId={params.sessionId}
+          isOpen={isSaveTemplateDialogOpen}
+          onClose={() => setIsSaveTemplateDialogOpen(false)}
+          onSuccess={() => {
+            toast({
+              title: "Template Saved",
+              description: "You can now use this template to quickly create similar analysis sessions.",
+            });
+          }}
+        />
+      )}
     </motion.div>
   );
 }

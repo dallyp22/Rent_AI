@@ -7,12 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
+import SaveSelectionTemplateDialog from "@/components/save-selection-template-dialog";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile, ScrapedUnit } from "@shared/schema";
 
@@ -544,6 +545,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   const [scrapingResults, setScrapingResults] = useState<ScrapingResult[]>([]);
   const [showVacancyChart, setShowVacancyChart] = useState(false);
   const [isSessionMode, setIsSessionMode] = useState(false);
+  const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const { toast } = useToast();
   
   // Determine the current mode and ID
@@ -1016,9 +1018,23 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               </>
             )}
           </div>
-          <Badge variant={isSessionMode ? "default" : "secondary"}>
-            {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
-          </Badge>
+          <div className="flex items-center gap-3">
+            {/* Save as Template button - only show in session mode with valid sessionId */}
+            {isSessionMode && params.sessionId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsSaveTemplateDialogOpen(true)}
+                data-testid="button-save-as-template"
+              >
+                <Save className="h-4 w-4 mr-2" />
+                Save as Template
+              </Button>
+            )}
+            <Badge variant={isSessionMode ? "default" : "secondary"}>
+              {isSessionMode ? 'Portfolio Mode' : 'Single Property'}
+            </Badge>
+          </div>
         </div>
       </div>
 
@@ -1736,6 +1752,21 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
         </>
       )}
         </div>
+      )}
+      
+      {/* Save Selection Template Dialog */}
+      {isSessionMode && params.sessionId && (
+        <SaveSelectionTemplateDialog
+          sessionId={params.sessionId}
+          isOpen={isSaveTemplateDialogOpen}
+          onClose={() => setIsSaveTemplateDialogOpen(false)}
+          onSuccess={() => {
+            toast({
+              title: "Template Saved",
+              description: "You can now use this template to quickly create similar analysis sessions.",
+            });
+          }}
+        />
       )}
     </div>
   );
