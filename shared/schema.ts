@@ -87,6 +87,42 @@ export const sessionPropertyProfiles = pgTable("session_property_profiles", {
   roleCheck: check("session_property_profiles_role_check", sql`${table.role} IN ('subject', 'competitor')`)
 }));
 
+// Saved selection templates for reusable property configurations
+export const savedSelectionTemplates = pgTable("saved_selection_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  name: text("name").notNull(), // e.g., "Downtown Portfolio", "Class A Competition Set"
+  description: text("description"),
+  icon: text("icon"), // Optional icon name for visual distinction
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  userIdIdx: index("saved_selection_templates_user_id_idx").on(table.userId),
+  nameIdx: index("saved_selection_templates_name_idx").on(table.name),
+  createdAtIdx: index("saved_selection_templates_created_at_idx").on(table.createdAt),
+  // Unique constraint to prevent duplicate template names per user
+  nameUserUnique: unique("saved_selection_templates_name_user_unique").on(table.name, table.userId)
+}));
+
+// Junction table for templates and property profiles
+export const templatePropertyProfiles = pgTable("template_property_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateId: varchar("template_id").references(() => savedSelectionTemplates.id).notNull(),
+  propertyProfileId: varchar("property_profile_id").references(() => propertyProfiles.id).notNull(),
+  role: text("role").notNull(), // "subject" | "competitor"
+  createdAt: timestamp("created_at").defaultNow()
+}, (table) => ({
+  // Indexes for performance
+  templateIdIdx: index("template_property_profiles_template_id_idx").on(table.templateId),
+  propertyProfileIdIdx: index("template_property_profiles_property_profile_id_idx").on(table.propertyProfileId),
+  roleIdx: index("template_property_profiles_role_idx").on(table.role),
+  // Unique constraint to prevent duplicate property profiles in same template
+  templatePropertyUnique: unique("template_property_profiles_template_property_unique").on(table.templateId, table.propertyProfileId),
+  // Check constraint to ensure role is valid
+  roleCheck: check("template_property_profiles_role_check", sql`${table.role} IN ('subject', 'competitor')`)
+}));
+
 // Legacy properties table (maintained for backward compatibility)
 export const properties = pgTable("properties", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -557,3 +593,21 @@ export type FilteredAnalysis = z.infer<typeof filteredAnalysisSchema>;
 // User authentication types
 export type User = typeof users.$inferSelect;
 export type UpsertUser = z.infer<typeof insertUserSchema>;
+
+// Saved selection template types
+export const insertSavedSelectionTemplateSchema = createInsertSchema(savedSelectionTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
+export type InsertSavedSelectionTemplate = z.infer<typeof insertSavedSelectionTemplateSchema>;
+export type SavedSelectionTemplate = typeof savedSelectionTemplates.$inferSelect;
+
+export const insertTemplatePropertyProfileSchema = createInsertSchema(templatePropertyProfiles).omit({
+  id: true,
+  createdAt: true
+});
+
+export type InsertTemplatePropertyProfile = z.infer<typeof insertTemplatePropertyProfileSchema>;
+export type TemplatePropertyProfile = typeof templatePropertyProfiles.$inferSelect;
