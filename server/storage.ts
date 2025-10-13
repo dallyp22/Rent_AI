@@ -1928,6 +1928,91 @@ export class DrizzleStorage implements IStorage {
       
       console.log('[DRIZZLE_STORAGE] Subject units:', subjectUnits.length, 'Competitor units:', competitorUnits.length);
       
+      // Check if we have no competitors - return 0% adjustments for all units
+      if (competitorUnits.length === 0) {
+        console.log('[DRIZZLE_STORAGE] No competitor units available - returning 0% adjustments for all units');
+        
+        // Generate 0% adjustment recommendations for all subject units
+        const unitRecommendations = [];
+        
+        // Get property units with internal data (tags, bedrooms, bathrooms)
+        const propertyUnitsMap = new Map<string, Map<string, any>>();
+        
+        for (const profile of subjectProfiles) {
+          const propertyUnits = await this.getPropertyUnitsByProfile(profile.id);
+          const unitMap = new Map(propertyUnits.map(u => [u.unitNumber, {
+            tag: u.tag,
+            bedrooms: u.bedrooms,
+            bathrooms: u.bathrooms,
+            squareFootage: u.squareFootage,
+            optimizationPriority: u.optimizationPriority
+          }]));
+          propertyUnitsMap.set(profile.id, unitMap);
+        }
+        
+        for (const unit of subjectUnits) {
+          const currentRent = parseFloat(unit.rent || '0');
+          if (currentRent <= 0) continue;
+          
+          // Find matching property profile
+          const matchingProfile = subjectProfiles.find(p => {
+            const scrapedProperty = scrapedProperties.get(unit.propertyId);
+            return scrapedProperty?.url === p.url;
+          });
+          
+          // Get internal unit data
+          let internalData = null;
+          if (matchingProfile && unit.unitNumber) {
+            const propertyUnitMap = propertyUnitsMap.get(matchingProfile.id);
+            if (propertyUnitMap) {
+              internalData = propertyUnitMap.get(unit.unitNumber);
+            }
+          }
+          
+          // Use internal bedrooms if available, otherwise use scraped
+          const bedrooms = internalData?.bedrooms || unit.bedrooms || 1;
+          const unitType = `${bedrooms}BR`;
+          
+          unitRecommendations.push({
+            unitNumber: unit.unitNumber || `Unit-${unit.id.substring(0, 6)}`,
+            unitType: unitType,
+            tag: internalData?.tag || null,
+            bedrooms: bedrooms,
+            bathrooms: internalData?.bathrooms || unit.bathrooms || 1,
+            squareFootage: internalData?.squareFootage || unit.squareFootage || 0,
+            currentRent: currentRent,
+            recommendedRent: currentRent, // No change - same as current
+            marketAverage: currentRent, // No market data available
+            change: 0, // No change
+            annualImpact: 0, // No impact
+            pricingPowerScore: 50, // Neutral score
+            adjustmentReason: 'No market comparison data available - maintaining current pricing',
+            confidenceLevel: 'Low',
+            reasoning: 'Market comparison requires competitor data. Add competitor properties for pricing recommendations.',
+            propertyName: unit.propertyName,
+            propertyProfileId: matchingProfile?.id,
+            status: unit.status,
+            availabilityDate: unit.availabilityDate
+          });
+        }
+        
+        // Return early with 0% adjustments
+        return {
+          unitRecommendations,
+          totalIncrease: 0,
+          affectedUnits: 0,
+          avgIncrease: 0,
+          riskLevel: 'Low',
+          marketInsights: {
+            occupancyImpact: 'No pricing changes - occupancy impact neutral',
+            competitivePosition: 'Unable to determine market position without competitor data',
+            timeToLease: 'Standard market lease-up times',
+            avgPricingPowerScore: 50,
+            marketDataQuality: 'No competitor data available'
+          }
+        };
+      }
+      
       // Calculate market averages by unit type
       const marketData = new Map<string, { sum: number; count: number; values: number[]; avg: number }>();
       
