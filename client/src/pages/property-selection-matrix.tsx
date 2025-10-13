@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { 
   Plus, 
   Edit, 
@@ -24,16 +25,20 @@ import {
   Calendar,
   CheckCircle2,
   Circle,
-  X
+  X,
+  FileText,
+  History,
+  ChevronRight
 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 import type { 
   AnalysisSession, 
   InsertAnalysisSession, 
-  PropertyProfile 
+  PropertyProfile,
+  SavedSelectionTemplate 
 } from "@shared/schema";
 
 // Form schema for creating analysis sessions
@@ -51,8 +56,16 @@ interface PropertySelection {
   competitorIds: string[];
 }
 
+// Template with property counts
+interface TemplateWithCounts extends SavedSelectionTemplate {
+  subjectCount: number;
+  competitorCount: number;
+}
+
 export default function PropertySelectionMatrix() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
+  const [viewMode, setViewMode] = useState<"templates" | "history">("templates");
   const [isCreateSessionDialogOpen, setIsCreateSessionDialogOpen] = useState(false);
   const [editingSession, setEditingSession] = useState<AnalysisSession | null>(null);
   const [selectedSession, setSelectedSession] = useState<string | null>(null);
@@ -67,9 +80,24 @@ export default function PropertySelectionMatrix() {
     }
   });
 
+  // Fetch saved selection templates
+  const { data: templates = [], isLoading: isLoadingTemplates } = useQuery<TemplateWithCounts[]>({
+    queryKey: ["/api/saved-selection-templates"],
+    enabled: viewMode === "templates",
+    queryFn: async () => {
+      const response = await fetch("/api/saved-selection-templates");
+      if (!response.ok) {
+        throw new Error("Failed to fetch templates");
+      }
+      const data = await response.json();
+      return data;
+    }
+  });
+
   // Fetch all analysis sessions
   const { data: sessions = [], isLoading: isLoadingSessions } = useQuery<AnalysisSession[]>({
     queryKey: ["/api/analysis-sessions"],
+    enabled: viewMode === "history"
   });
 
   // Fetch all property profiles
@@ -84,7 +112,31 @@ export default function PropertySelectionMatrix() {
   // Fetch property profiles for selected session
   const { data: sessionProperties = [] } = useQuery<PropertyProfile[]>({
     queryKey: ["/api/analysis-sessions", selectedSession, "properties"],
-    enabled: !!selectedSession,
+    enabled: !!selectedSession && viewMode === "history",
+  });
+
+  // Apply template mutation
+  const applyTemplateMutation = useMutation({
+    mutationFn: async (templateId: string): Promise<{ sessionId: string }> => {
+      const res = await apiRequest("POST", `/api/saved-selection-templates/${templateId}/apply`, {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Template Applied",
+        description: "New analysis session created from template.",
+      });
+      // Navigate to the summarize page with the new session ID
+      setLocation(`/session/summarize/${data.sessionId}`);
+    },
+    onError: (error) => {
+      console.error("Error applying template:", error);
+      toast({
+        title: "Application Failed",
+        description: "Failed to apply template. Please try again.",
+        variant: "destructive",
+      });
+    }
   });
 
   // Create session mutation
@@ -254,6 +306,10 @@ export default function PropertySelectionMatrix() {
     }
   };
 
+  const handleApplyTemplate = (templateId: string) => {
+    applyTemplateMutation.mutate(templateId);
+  };
+
   const isPropertySelected = (propertyId: string): boolean => {
     return sessionProperties.some(p => p.id === propertyId);
   };
@@ -264,7 +320,9 @@ export default function PropertySelectionMatrix() {
     return { subjects, competitors };
   };
 
-  if (isLoadingSessions || isLoadingProfiles) {
+  const isLoading = viewMode === "templates" ? isLoadingTemplates : (isLoadingSessions || isLoadingProfiles);
+
+  if (isLoading) {
     return (
       <div className="space-y-6" data-testid="property-selection-matrix-loading">
         <div className="flex justify-center items-center h-64">
@@ -273,6 +331,10 @@ export default function PropertySelectionMatrix() {
       </div>
     );
   }
+
+  // Calculate statistics based on current view
+  const totalCount = viewMode === "templates" ? templates.length : sessions.length;
+  const currentViewLabel = viewMode === "templates" ? "Templates" : "Sessions";
 
   return (
     <div className="space-y-6" data-testid="property-selection-matrix-page">
@@ -287,19 +349,37 @@ export default function PropertySelectionMatrix() {
         </div>
       </div>
 
+      {/* View Mode Toggle */}
+      <div className="flex justify-center">
+        <ToggleGroup type="single" value={viewMode} onValueChange={(value) => value && setViewMode(value as "templates" | "history")}>
+          <ToggleGroupItem value="templates" aria-label="Saved Selections" data-testid="toggle-templates">
+            <FileText className="h-4 w-4 mr-2" />
+            Saved Selections
+          </ToggleGroupItem>
+          <ToggleGroupItem value="history" aria-label="Session History" data-testid="toggle-history">
+            <History className="h-4 w-4 mr-2" />
+            Session History
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
       {/* Statistics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card data-testid="card-total-sessions">
+        <Card data-testid="card-total-count">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Sessions</CardTitle>
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium">Total {currentViewLabel}</CardTitle>
+            {viewMode === "templates" ? (
+              <FileText className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <Calendar className="h-4 w-4 text-muted-foreground" />
+            )}
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-sessions-count">
-              {sessions.length}
+            <div className="text-2xl font-bold" data-testid="text-total-count">
+              {totalCount}
             </div>
             <p className="text-xs text-muted-foreground">
-              Analysis sessions
+              {viewMode === "templates" ? "Saved templates" : "Analysis sessions"}
             </p>
           </CardContent>
         </Card>
@@ -336,242 +416,375 @@ export default function PropertySelectionMatrix() {
 
         <Card data-testid="card-selected-properties">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Selected Properties</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              {viewMode === "history" ? "Selected Properties" : "Total Properties"}
+            </CardTitle>
             <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-selected-count">
-              {selectedSession ? getSelectedPropertiesCount().subjects + getSelectedPropertiesCount().competitors : 0}
+              {viewMode === "history" && selectedSession 
+                ? getSelectedPropertiesCount().subjects + getSelectedPropertiesCount().competitors 
+                : subjectProperties.length + competitorProperties.length}
             </div>
             <p className="text-xs text-muted-foreground">
-              In current session
+              {viewMode === "history" && selectedSession ? "In current session" : "Total available"}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Analysis Sessions List */}
-        <Card data-testid="card-sessions-list">
-          <CardHeader>
-            <div className="flex justify-between items-center">
-              <CardTitle>Analysis Sessions</CardTitle>
-              <Button
-                onClick={() => setIsCreateSessionDialogOpen(true)}
-                size="sm"
-                className="flex items-center gap-2"
-                data-testid="button-create-session"
-              >
-                <Plus className="h-3 w-3" />
-                New Session
-              </Button>
+      {/* Main Content Area */}
+      {viewMode === "templates" ? (
+        /* Saved Selections View */
+        <div className="space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              <h2 className="text-xl font-semibold">Saved Selection Templates</h2>
+              <Badge variant="secondary">{templates.length} templates</Badge>
             </div>
-          </CardHeader>
-          <CardContent>
-            <ScrollArea className="h-[calc(100vh-400px)] w-full">
-              {sessions.length === 0 ? (
-                <div className="text-center text-muted-foreground py-8" data-testid="empty-sessions">
-                  <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>No analysis sessions yet</p>
-                  <p className="text-sm">Create your first session to get started</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {sessions.map((session) => (
-                    <div
-                      key={session.id}
-                      className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                        selectedSession === session.id 
-                          ? "border-primary bg-primary/10" 
-                          : "border-border hover:bg-accent"
-                      }`}
-                      onClick={() => setSelectedSession(session.id)}
-                      data-testid={`session-item-${session.id}`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-sm">{session.name}</h4>
-                          {session.description && (
-                            <p className="text-xs text-muted-foreground mt-1 truncate">
-                              {session.description}
-                            </p>
-                          )}
-                          <div className="text-xs text-muted-foreground mt-2">
-                            Created {session.createdAt ? new Date(session.createdAt).toLocaleDateString() : 'Unknown'}
-                          </div>
+            <Button 
+              className="flex items-center gap-2" 
+              data-testid="button-add-template"
+              onClick={() => {
+                toast({
+                  title: "Coming Soon",
+                  description: "Template creation feature will be available soon.",
+                });
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add New Template
+            </Button>
+          </div>
+
+          {templates.length === 0 ? (
+            <Card className="h-[calc(100vh-400px)] flex items-center justify-center">
+              <div className="text-center p-8">
+                <FileText className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+                <h3 className="text-lg font-medium mb-2">No Saved Templates Yet</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Create your first selection template to quickly set up analysis sessions
+                </p>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    toast({
+                      title: "Coming Soon",
+                      description: "Template creation feature will be available soon.",
+                    });
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create First Template
+                </Button>
+              </div>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {templates.map((template) => (
+                <Card key={template.id} className="hover:shadow-lg transition-shadow" data-testid={`template-card-${template.id}`}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <CardTitle className="text-lg">{template.name}</CardTitle>
+                        {template.description && (
+                          <CardDescription className="mt-2">
+                            {template.description}
+                          </CardDescription>
+                        )}
+                      </div>
+                      {template.icon && (
+                        <div className="text-2xl ml-2">{template.icon}</div>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex flex-col gap-2">
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1">
+                          <Target className="h-4 w-4 text-primary" />
+                          <span className="text-sm font-medium">
+                            {template.subjectCount || 0} Subjects
+                          </span>
                         </div>
-                        <div className="flex gap-1 ml-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditSession(session);
-                            }}
-                            data-testid={`button-edit-session-${session.id}`}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteSession(session.id);
-                            }}
-                            data-testid={`button-delete-session-${session.id}`}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
+                        <div className="flex items-center gap-1">
+                          <Users className="h-4 w-4 text-secondary" />
+                          <span className="text-sm font-medium">
+                            {template.competitorCount || 0} Competitors
+                          </span>
                         </div>
                       </div>
+                      <div className="text-xs text-muted-foreground">
+                        Created {template.createdAt ? new Date(template.createdAt).toLocaleDateString() : 'Unknown'}
+                      </div>
                     </div>
-                  ))}
-                </div>
-              )}
-            </ScrollArea>
-          </CardContent>
-        </Card>
-
-        {/* Property Selection Matrix */}
-        <div className="lg:col-span-2">
-          <Card data-testid="card-property-matrix">
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        toast({
+                          title: "Coming Soon",
+                          description: "Template editing will be available soon.",
+                        });
+                      }}
+                    >
+                      <Edit className="h-4 w-4 mr-1" />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => handleApplyTemplate(template.id)}
+                      disabled={applyTemplateMutation.isPending}
+                      data-testid={`button-apply-template-${template.id}`}
+                    >
+                      {applyTemplateMutation.isPending ? "Applying..." : (
+                        <>
+                          <ChevronRight className="h-4 w-4 mr-1" />
+                          Apply Template
+                        </>
+                      )}
+                    </Button>
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Session History View (existing functionality) */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Analysis Sessions List */}
+          <Card data-testid="card-sessions-list">
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Property Selection Matrix</CardTitle>
-                {selectedSession && (
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" data-testid="badge-selected-subjects">
-                      {getSelectedPropertiesCount().subjects} Subjects
-                    </Badge>
-                    <Badge variant="outline" data-testid="badge-selected-competitors">
-                      {getSelectedPropertiesCount().competitors} Competitors
-                    </Badge>
-                    <Link href={`/session/summarize/${selectedSession}`}>
-                      <Button size="sm" data-testid="button-start-analysis">
-                        <Play className="h-4 w-4 mr-2" />
-                        Start Analysis
-                      </Button>
-                    </Link>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <History className="h-5 w-5 text-primary" />
+                  <CardTitle>Analysis Sessions</CardTitle>
+                  <Badge variant="secondary">{sessions.length} sessions</Badge>
+                </div>
+                <Button
+                  onClick={() => setIsCreateSessionDialogOpen(true)}
+                  size="sm"
+                  className="flex items-center gap-2"
+                  data-testid="button-create-session"
+                >
+                  <Plus className="h-3 w-3" />
+                  New
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              {!selectedSession ? (
-                <div className="text-center text-muted-foreground py-16" data-testid="no-session-selected">
-                  <Building2 className="h-16 w-16 mx-auto mb-4 opacity-50" />
-                  <h3 className="font-medium mb-2">No Session Selected</h3>
-                  <p className="text-sm">
-                    Select an analysis session from the list on the left to view and manage property selections
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Subject Properties Section */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Target className="h-5 w-5 text-primary" />
-                      <h3 className="font-medium">Subject Properties</h3>
-                      <Badge variant="secondary">
-                        {subjectProperties.length} available
-                      </Badge>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {subjectProperties.map((property) => (
-                        <div
-                          key={property.id}
-                          className="flex items-center space-x-3 p-3 rounded-lg border bg-card"
-                          data-testid={`subject-property-${property.id}`}
-                        >
-                          <Checkbox
-                            checked={isPropertySelected(property.id)}
-                            onCheckedChange={(checked) => 
-                              handlePropertySelection(property.id, !!checked, 'subject')
-                            }
-                            data-testid={`checkbox-subject-${property.id}`}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium text-sm truncate">{property.name}</h4>
-                            <p className="text-xs text-muted-foreground truncate">{property.address}</p>
-                            {property.totalUnits && (
-                              <Badge variant="outline" className="mt-1 text-xs">
-                                {property.totalUnits} units
-                              </Badge>
+              <ScrollArea className="h-[calc(100vh-400px)] w-full">
+                {sessions.length === 0 ? (
+                  <div className="text-center text-muted-foreground py-8" data-testid="empty-sessions">
+                    <History className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                    <p>No analysis sessions yet</p>
+                    <p className="text-sm">Create your first session to get started</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {sessions.map((session) => (
+                      <div
+                        key={session.id}
+                        className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                          selectedSession === session.id 
+                            ? "border-primary bg-primary/10" 
+                            : "border-border hover:bg-accent"
+                        }`}
+                        onClick={() => setSelectedSession(session.id)}
+                        data-testid={`session-item-${session.id}`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <h4 className="font-medium text-sm">{session.name}</h4>
+                            {session.description && (
+                              <p className="text-xs text-muted-foreground mt-1 truncate">
+                                {session.description}
+                              </p>
                             )}
+                            <div className="text-xs text-muted-foreground mt-2">
+                              Created {session.createdAt ? new Date(session.createdAt).toLocaleDateString() : 'Unknown'}
+                            </div>
+                          </div>
+                          <div className="flex gap-1 ml-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditSession(session);
+                              }}
+                              data-testid={`button-edit-session-${session.id}`}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSession(session.id);
+                              }}
+                              data-testid={`button-delete-session-${session.id}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
                           </div>
                         </div>
-                      ))}
-                      {subjectProperties.length === 0 && (
-                        <div className="col-span-2 text-center text-muted-foreground py-8" data-testid="no-subject-properties">
-                          <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>No subject properties available</p>
-                          <p className="text-sm">Add subject properties in Property Profiles</p>
-                        </div>
-                      )}
-                    </div>
+                      </div>
+                    ))}
                   </div>
+                )}
+              </ScrollArea>
+            </CardContent>
+          </Card>
 
-                  <Separator />
-
-                  {/* Competitor Properties Section */}
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Users className="h-5 w-5 text-secondary" />
-                      <h3 className="font-medium">Competitor Properties</h3>
-                      <Badge variant="secondary">
-                        {competitorProperties.length} available
+          {/* Property Selection Matrix */}
+          <div className="lg:col-span-2">
+            <Card data-testid="card-property-matrix">
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle>Property Selection Matrix</CardTitle>
+                  {selectedSession && (
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" data-testid="badge-selected-subjects">
+                        {getSelectedPropertiesCount().subjects} Subjects
                       </Badge>
+                      <Badge variant="outline" data-testid="badge-selected-competitors">
+                        {getSelectedPropertiesCount().competitors} Competitors
+                      </Badge>
+                      <Button 
+                        size="sm" 
+                        data-testid="button-start-analysis"
+                        onClick={() => setLocation(`/session/summarize/${selectedSession}`)}
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Start Analysis
+                      </Button>
                     </div>
-                    <ScrollArea className="h-[300px]">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-4">
-                        {competitorProperties.map((property) => (
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {!selectedSession ? (
+                  <div className="text-center text-muted-foreground py-16" data-testid="no-session-selected">
+                    <Building2 className="h-16 w-16 mx-auto mb-4 opacity-50" />
+                    <h3 className="font-medium mb-2">No Session Selected</h3>
+                    <p className="text-sm">
+                      Select an analysis session from the list on the left to view and manage property selections
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    {/* Subject Properties Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Target className="h-5 w-5 text-primary" />
+                        <h3 className="font-medium">Subject Properties</h3>
+                        <Badge variant="secondary">
+                          {subjectProperties.length} available
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {subjectProperties.map((property) => (
                           <div
                             key={property.id}
                             className="flex items-center space-x-3 p-3 rounded-lg border bg-card"
-                            data-testid={`competitor-property-${property.id}`}
+                            data-testid={`subject-property-${property.id}`}
                           >
                             <Checkbox
                               checked={isPropertySelected(property.id)}
                               onCheckedChange={(checked) => 
-                                handlePropertySelection(property.id, !!checked, 'competitor')
+                                handlePropertySelection(property.id, !!checked, 'subject')
                               }
-                              data-testid={`checkbox-competitor-${property.id}`}
+                              data-testid={`checkbox-subject-${property.id}`}
                             />
                             <div className="flex-1 min-w-0">
                               <h4 className="font-medium text-sm truncate">{property.name}</h4>
                               <p className="text-xs text-muted-foreground truncate">{property.address}</p>
-                              <div className="flex gap-1 mt-1">
-                                {property.totalUnits && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {property.totalUnits} units
-                                  </Badge>
-                                )}
-                                {property.distance && (
-                                  <Badge variant="outline" className="text-xs">
-                                    {property.distance} mi
-                                  </Badge>
-                                )}
-                              </div>
+                              {property.totalUnits && (
+                                <Badge variant="outline" className="mt-1 text-xs">
+                                  {property.totalUnits} units
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         ))}
-                        {competitorProperties.length === 0 && (
-                          <div className="col-span-2 text-center text-muted-foreground py-8" data-testid="no-competitor-properties">
-                            <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No competitor properties available</p>
-                            <p className="text-sm">Add competitor properties in Property Profiles</p>
+                        {subjectProperties.length === 0 && (
+                          <div className="col-span-2 text-center text-muted-foreground py-8" data-testid="no-subject-properties">
+                            <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                            <p>No subject properties available</p>
+                            <p className="text-sm">Add subject properties in Property Profiles</p>
                           </div>
                         )}
                       </div>
-                    </ScrollArea>
+                    </div>
+
+                    <Separator />
+
+                    {/* Competitor Properties Section */}
+                    <div>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Users className="h-5 w-5 text-secondary" />
+                        <h3 className="font-medium">Competitor Properties</h3>
+                        <Badge variant="secondary">
+                          {competitorProperties.length} available
+                        </Badge>
+                      </div>
+                      <ScrollArea className="h-[300px]">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-4">
+                          {competitorProperties.map((property) => (
+                            <div
+                              key={property.id}
+                              className="flex items-center space-x-3 p-3 rounded-lg border bg-card"
+                              data-testid={`competitor-property-${property.id}`}
+                            >
+                              <Checkbox
+                                checked={isPropertySelected(property.id)}
+                                onCheckedChange={(checked) => 
+                                  handlePropertySelection(property.id, !!checked, 'competitor')
+                                }
+                                data-testid={`checkbox-competitor-${property.id}`}
+                              />
+                              <div className="flex-1 min-w-0">
+                                <h4 className="font-medium text-sm truncate">{property.name}</h4>
+                                <p className="text-xs text-muted-foreground truncate">{property.address}</p>
+                                <div className="flex gap-1 mt-1">
+                                  {property.totalUnits && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {property.totalUnits} units
+                                    </Badge>
+                                  )}
+                                  {property.distance && (
+                                    <Badge variant="outline" className="text-xs">
+                                      {property.distance} mi
+                                    </Badge>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                          {competitorProperties.length === 0 && (
+                            <div className="col-span-2 text-center text-muted-foreground py-8" data-testid="no-competitor-properties">
+                              <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                              <p>No competitor properties available</p>
+                              <p className="text-sm">Add competitor properties in Property Profiles</p>
+                            </div>
+                          )}
+                        </div>
+                      </ScrollArea>
+                    </div>
                   </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Create Session Dialog */}
       <Dialog open={isCreateSessionDialogOpen} onOpenChange={setIsCreateSessionDialogOpen}>
