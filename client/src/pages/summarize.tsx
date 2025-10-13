@@ -14,6 +14,7 @@ import CompetitorSelection from "@/components/competitor-selection";
 import RentComparisonChart from "@/components/rent-comparison-chart";
 import UnitListingsTable from "@/components/unit-listings-table";
 import SaveSelectionTemplateDialog from "@/components/save-selection-template-dialog";
+import { ScrapingProgressModal } from "@/components/scraping-progress-modal";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile, ScrapedUnit } from "@shared/schema";
 
@@ -544,21 +545,19 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   const [scrapingStage, setScrapingStage] = useState<'none' | 'scraping' | 'completed' | 'error'>('none');
   const [scrapingResults, setScrapingResults] = useState<ScrapingResult[]>([]);
   const [showVacancyChart, setShowVacancyChart] = useState(false);
-  const [isSessionMode, setIsSessionMode] = useState(false);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
+  const [isScrapingModalOpen, setIsScrapingModalOpen] = useState(false);
   const { toast } = useToast();
   
-  // Determine the current mode and ID
+  // Determine the current mode and ID - use immediate detection instead of useEffect
   const currentId = params.sessionId || params.id || '';
-  const isSessionModeDetected = !!params.sessionId;
-  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(currentId, isSessionModeDetected);
+  const isSessionMode = window.location.pathname.includes('/session/summarize/') || !!params.sessionId;
+  const { state: workflowState, saveState: saveWorkflowState, loadState: loadWorkflowState } = useWorkflowState(currentId, isSessionMode);
   
-  // Detect session mode based on URL pattern
+  // Log mode detection
   useEffect(() => {
-    const isSession = window.location.pathname.includes('/session/summarize/');
-    setIsSessionMode(isSession);
-    console.log('[SUMMARIZE] Mode detected:', isSession ? 'Session-based multi-property' : 'Legacy single-property');
-  }, []);
+    console.log('[SUMMARIZE] Mode detected:', isSessionMode ? 'Session-based multi-property' : 'Legacy single-property');
+  }, [isSessionMode]);
 
   // Legacy single-property query
   const propertyQuery = useQuery<PropertyWithAnalysis>({
@@ -576,6 +575,56 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
     queryKey: ['/api/competitors'],
     enabled: !isSessionMode, // Only for legacy mode
   });
+
+  // NEW: Query to check scraping status for session mode
+  const scrapingStatusQuery = useQuery({
+    queryKey: [`/api/analysis-sessions/${params.sessionId}/scraping-status`],
+    enabled: isSessionMode && !!params.sessionId,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      // Only poll while scraping is in progress
+      if (data?.overallStatus === 'processing' || data?.overallStatus === 'pending') {
+        return 2000; // Poll every 2 seconds
+      }
+      return false; // Stop polling when complete
+    }
+  });
+
+  // NEW: Check scraping status when page loads and when status changes
+  useEffect(() => {
+    if (isSessionMode && scrapingStatusQuery.data) {
+      const status = scrapingStatusQuery.data.overallStatus;
+      console.log('[SESSION_SCRAPING] Current scraping status:', status);
+      
+      // Show modal if scraping is in progress
+      if (status === 'pending' || status === 'processing') {
+        console.log('[SESSION_SCRAPING] Scraping in progress, showing modal');
+        setIsScrapingModalOpen(true);
+        setScrapingStage('scraping');
+      } else if (status === 'completed') {
+        console.log('[SESSION_SCRAPING] Scraping already completed, skipping new scraping');
+        setScrapingStage('completed');
+        setShowVacancyChart(true);
+        // Ensure modal is closed when completed
+        setIsScrapingModalOpen(false);
+        // Invalidate queries to refresh data
+        queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId, 'scraped-units'] });
+        queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId, 'vacancy-summary'] });
+      } else if (status === 'failed' || status === 'partial') {
+        console.log('[SESSION_SCRAPING] Scraping failed or partial');
+        setScrapingStage('error');
+        setIsScrapingModalOpen(false);
+        
+        if (status === 'partial') {
+          toast({
+            title: "Partial Scraping Completion",
+            description: "Some properties could not be scraped. Check the results for more details.",
+            variant: "destructive"
+          });
+        }
+      }
+    }
+  }, [isSessionMode, scrapingStatusQuery.data, params.sessionId]);
 
   // Load workflow state on mount and restore selections
   useEffect(() => {
@@ -1765,6 +1814,35 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
               title: "Template Saved",
               description: "You can now use this template to quickly create similar analysis sessions.",
             });
+          }}
+        />
+      )}
+      
+      {/* Scraping Progress Modal - Shows while scraping is in progress */}
+      {isSessionMode && params.sessionId && (
+        <ScrapingProgressModal
+          isOpen={isScrapingModalOpen}
+          sessionId={params.sessionId}
+          onComplete={() => {
+            console.log('[SCRAPING_MODAL] Scraping completed, refreshing data');
+            setIsScrapingModalOpen(false);
+            setScrapingStage('completed');
+            setShowVacancyChart(true);
+            
+            // Invalidate all relevant queries to refresh data
+            queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId] });
+            queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId, 'scraped-units'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/analysis-sessions', params.sessionId, 'vacancy-summary'] });
+            queryClient.invalidateQueries({ queryKey: [`/api/analysis-sessions/${params.sessionId}/scraping-status`] });
+            
+            toast({
+              title: "Scraping Completed",
+              description: "Property data has been successfully scraped and is now available.",
+            });
+          }}
+          onClose={() => {
+            console.log('[SCRAPING_MODAL] Modal closed');
+            setIsScrapingModalOpen(false);
           }}
         />
       )}
