@@ -1290,11 +1290,9 @@ Please provide your analysis in this exact JSON format:
         });
       }
 
+      // Allow analysis with or without competitors
       if (competitorProfiles.length === 0) {
-        return res.status(400).json({ 
-          message: "No competitor properties selected in this session",
-          suggestion: "Please select at least one competitor property in the Property Selection Matrix"
-        });
+        console.log('[SESSION_ANALYSIS] ℹ️ No competitor properties - proceeding with subject-only analysis');
       }
 
       // Generate multi-property analysis
@@ -2081,9 +2079,9 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       const competitorIdsArray = Array.isArray(competitorIds) ? competitorIds : 
                                  competitorIds ? [competitorIds] : [];
 
+      // Allow vacancy summary with or without competitors
       if (competitorIdsArray.length === 0) {
-        console.error('[VACANCY_SUMMARY] ❌ No competitor IDs provided');
-        return res.status(400).json({ message: "At least one competitorId is required" });
+        console.log('[VACANCY_SUMMARY] ℹ️ No competitor IDs provided - proceeding with subject-only analysis');
       }
 
       console.log(`[VACANCY_SUMMARY] Processing ${competitorIdsArray.length} competitors`);
@@ -2117,9 +2115,12 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         });
       }
 
-      const competitorProperties = await storage.getSelectedScrapedProperties(competitorIdsArray as string[]);
-      if (competitorProperties.length === 0) {
-        return res.status(404).json({ message: "No competitor properties found" });
+      // Get competitor properties if provided (can be empty for subject-only analysis)
+      const competitorProperties = competitorIdsArray.length > 0 ? 
+        await storage.getSelectedScrapedProperties(competitorIdsArray as string[]) : [];
+      
+      if (competitorIdsArray.length > 0 && competitorProperties.length === 0) {
+        console.log('[VACANCY_SUMMARY] ⚠️ Competitor IDs provided but no properties found');
       }
 
       // Helper function to normalize unit types
@@ -4431,11 +4432,9 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         });
       }
 
+      // Allow vacancy summary with or without competitors
       if (competitorProfiles.length === 0) {
-        return res.status(400).json({ 
-          message: "No competitor properties found in this session",
-          suggestion: "Please add competitor properties to the analysis session"
-        });
+        console.log('[SESSION_VACANCY_SUMMARY] ℹ️ No competitor properties - proceeding with subject-only analysis');
       }
 
       // Helper function to calculate vacancy data for a property profile

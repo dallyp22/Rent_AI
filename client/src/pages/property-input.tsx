@@ -274,18 +274,14 @@ export default function PropertyInput() {
       return;
     }
 
-    if (propertySelection.competitorCount === 0) {
-      toast({
-        title: "No Competitor Properties Selected",
-        description: "Please select at least one competitor property for comparison.",
-        variant: "destructive",
-      });
-      return;
-    }
+    // Allow analysis with just subject properties (no competitors required)
+    const analysisType = propertySelection.competitorCount === 0 ? 
+      "Subject-only analysis" : 
+      `Analysis session with ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties`;
 
     createAnalysisSessionMutation.mutate({
       name: `Portfolio Analysis - ${new Date().toLocaleDateString()}`,
-      description: `Analysis session with ${propertySelection.subjectCount} subject and ${propertySelection.competitorCount} competitor properties`
+      description: analysisType
     });
   };
 

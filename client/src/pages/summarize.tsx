@@ -1589,7 +1589,9 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                 </div>
                 {vacancyQuery.data && (
                   <Badge variant="secondary" className="text-xs">
-                    {vacancyQuery.data.competitors.length + 1} Properties Analyzed
+                    {vacancyQuery.data.competitors.length > 0 
+                      ? `${vacancyQuery.data.competitors.length + 1} Properties Analyzed`
+                      : `Subject Property Analysis`}
                   </Badge>
                 )}
               </div>
@@ -1609,7 +1611,9 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                       <span>Key Market Insights</span>
                     </CardTitle>
                     <CardDescription>
-                      Market analysis based on {vacancyQuery.data.competitors.length} competitor properties
+                      {vacancyQuery.data.competitors.length > 0 
+                        ? `Market analysis based on ${vacancyQuery.data.competitors.length} competitor properties`
+                        : `Property performance analysis without market comparison`}
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1617,18 +1621,24 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                       {/* Subject Property vs Market */}
                       <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                         <div className="flex items-center space-x-2 mb-2">
-                          {vacancyQuery.data.subjectProperty.vacancyRate < vacancyQuery.data.marketInsights.competitorAvgVacancies ? (
+                          {vacancyQuery.data.competitors.length > 0 && vacancyQuery.data.subjectProperty.vacancyRate < vacancyQuery.data.marketInsights.competitorAvgVacancies ? (
                             <TrendingDown className="h-4 w-4 text-green-600" />
-                          ) : (
+                          ) : vacancyQuery.data.competitors.length > 0 ? (
                             <TrendingUp className="h-4 w-4 text-red-600" />
+                          ) : (
+                            <Building2 className="h-4 w-4 text-blue-600" />
                           )}
-                          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">Market Position</span>
+                          <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                            {vacancyQuery.data.competitors.length > 0 ? "Market Position" : "Property Status"}
+                          </span>
                         </div>
                         <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
                           {vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}% Vacancy
                         </div>
                         <div className="text-xs text-blue-600 dark:text-blue-400">
-                          {vacancyQuery.data.marketInsights.subjectVsMarket}
+                          {vacancyQuery.data.competitors.length > 0 
+                            ? vacancyQuery.data.marketInsights.subjectVsMarket
+                            : "Current vacancy rate"}
                         </div>
                       </div>
 
@@ -1646,19 +1656,21 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                         </div>
                       </div>
 
-                      {/* Market Avg Vacancy */}
-                      <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                        <div className="flex items-center space-x-2 mb-2">
-                          <AlertCircle className="h-4 w-4 text-amber-600" />
-                          <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Market Average</span>
+                      {/* Market Avg Vacancy - Only show when competitors exist */}
+                      {vacancyQuery.data.competitors.length > 0 && (
+                        <div className="p-4 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
+                          <div className="flex items-center space-x-2 mb-2">
+                            <AlertCircle className="h-4 w-4 text-amber-600" />
+                            <span className="text-sm font-medium text-amber-700 dark:text-amber-300">Market Average</span>
+                          </div>
+                          <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
+                            {vacancyQuery.data.marketInsights.competitorAvgVacancies.toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-amber-600 dark:text-amber-400">
+                            Competitor avg vacancy
+                          </div>
                         </div>
-                        <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
-                          {vacancyQuery.data.marketInsights.competitorAvgVacancies.toFixed(1)}%
-                        </div>
-                        <div className="text-xs text-amber-600 dark:text-amber-400">
-                          Competitor avg vacancy
-                        </div>
-                      </div>
+                      )}
 
                       {/* Total Market Vacancies */}
                       <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
@@ -1680,8 +1692,12 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                     {/* Detailed insights text */}
                     <div className="prose max-w-none">
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        Your property <strong>{vacancyQuery.data.subjectProperty.name}</strong> has a vacancy rate of <strong>{vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}%</strong>, 
-                        which is <strong>{vacancyQuery.data.marketInsights.subjectVsMarket.toLowerCase()}</strong>. 
+                        Your property <strong>{vacancyQuery.data.subjectProperty.name}</strong> has a vacancy rate of <strong>{vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}%</strong>
+                        {vacancyQuery.data.competitors.length > 0 && (
+                          <>
+                            , which is <strong>{vacancyQuery.data.marketInsights.subjectVsMarket.toLowerCase()}</strong>
+                          </>
+                        )}. 
                         The <strong>{vacancyQuery.data.marketInsights.strongestUnitType}</strong> unit type shows the strongest performance with the lowest vacancy rate. 
                         Consider focusing optimization efforts on underperforming unit types while leveraging the success of your strongest units.
                       </p>
