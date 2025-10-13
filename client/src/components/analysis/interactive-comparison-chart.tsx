@@ -77,7 +77,7 @@ export default function InteractiveComparisonChart({
       }));
   }, [competitorUnits, metricType]);
 
-  // Color palette for competitor properties
+  // Color palette for competitor properties (20 distinct colors)
   const competitorColorPalette = [
     { bg: 'rgba(239, 68, 68, 0.5)', border: 'rgba(239, 68, 68, 1)' },    // Red
     { bg: 'rgba(34, 197, 94, 0.5)', border: 'rgba(34, 197, 94, 1)' },    // Green
@@ -89,6 +89,17 @@ export default function InteractiveComparisonChart({
     { bg: 'rgba(99, 102, 241, 0.5)', border: 'rgba(99, 102, 241, 1)' },  // Indigo
     { bg: 'rgba(107, 114, 128, 0.5)', border: 'rgba(107, 114, 128, 1)' }, // Gray
     { bg: 'rgba(217, 119, 6, 0.5)', border: 'rgba(217, 119, 6, 1)' },    // Brown
+    // Additional 10 distinct colors (11-20)
+    { bg: 'rgba(6, 182, 212, 0.5)', border: 'rgba(6, 182, 212, 1)' },    // Cyan
+    { bg: 'rgba(245, 158, 11, 0.5)', border: 'rgba(245, 158, 11, 1)' },  // Yellow-Orange
+    { bg: 'rgba(139, 92, 246, 0.5)', border: 'rgba(139, 92, 246, 1)' },  // Violet
+    { bg: 'rgba(236, 252, 203, 0.5)', border: 'rgba(163, 230, 53, 1)' }, // Lime
+    { bg: 'rgba(219, 39, 119, 0.5)', border: 'rgba(219, 39, 119, 1)' },  // Rose
+    { bg: 'rgba(59, 7, 100, 0.5)', border: 'rgba(59, 7, 100, 1)' },      // Deep Purple
+    { bg: 'rgba(254, 215, 170, 0.5)', border: 'rgba(251, 113, 133, 1)' }, // Peach
+    { bg: 'rgba(13, 148, 136, 0.5)', border: 'rgba(13, 148, 136, 1)' },  // Emerald
+    { bg: 'rgba(244, 63, 94, 0.5)', border: 'rgba(244, 63, 94, 1)' },    // Crimson
+    { bg: 'rgba(8, 145, 178, 0.5)', border: 'rgba(8, 145, 178, 1)' },    // Sky Blue
   ];
 
   // Prepare data for bar chart
