@@ -444,7 +444,7 @@ export default function PropertySelectionMatrix() {
                     <Badge variant="outline" data-testid="badge-selected-competitors">
                       {getSelectedPropertiesCount().competitors} Competitors
                     </Badge>
-                    <Link href={`/analyze/${selectedSession}`}>
+                    <Link href={`/session/summarize/${selectedSession}`}>
                       <Button size="sm" data-testid="button-start-analysis">
                         <Play className="h-4 w-4 mr-2" />
                         Start Analysis
