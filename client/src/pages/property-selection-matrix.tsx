@@ -636,10 +636,10 @@ export default function PropertySelectionMatrix() {
                       disabled={applyTemplateMutation.isPending}
                       data-testid={`button-apply-template-${template.id}`}
                     >
-                      {applyTemplateMutation.isPending ? "Applying..." : (
+                      {applyTemplateMutation.isPending ? "Running Analysis..." : (
                         <>
                           <ChevronRight className="h-4 w-4 mr-1" />
-                          Apply Template
+                          Run Analysis
                         </>
                       )}
                     </Button>
