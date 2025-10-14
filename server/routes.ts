@@ -597,8 +597,38 @@ function parseDirectPropertyData(scrapezyResult: any): {
       try {
         const parsed = JSON.parse(resultText);
         
-        // Extract property information
-        if (parsed.property && typeof parsed.property === 'object') {
+        // Check if this is the flat format (The Flats on Howard format)
+        if (parsed.property_name || parsed.available_units) {
+          console.log('[PARSE_DIRECT_PROPERTY] Detected flat JSON format (property_name/available_units)');
+          
+          // Extract property information from flat format
+          propertyData.property = {
+            name: parsed.property_name || parsed.name || 'Property Name Not Available',
+            address: parsed.address || 'Address Not Available',
+            amenities: Array.isArray(parsed.amenities) ? parsed.amenities : [],
+            builtYear: parseNumber(parsed.year_built || parsed.built_year || parsed.yearBuilt),
+            totalUnits: parseNumber(parsed.total_units || parsed.totalUnits),
+            petPolicy: parsed.pet_policy || parsed.petPolicy || undefined
+          };
+          
+          // Extract units from available_units array
+          if (Array.isArray(parsed.available_units)) {
+            propertyData.units = parsed.available_units
+              .filter((unit: any) => unit && typeof unit === 'object')
+              .map((unit: any) => ({
+                unitNumber: unit.unit_number || unit.unitNumber || undefined,
+                floorPlanName: unit.floor_plan_name || unit.floorPlanName || undefined,
+                unitType: unit.unit_type || unit.unitType || `${unit.bedrooms || 0} Bedroom`,
+                bedrooms: parseNumber(unit.bedrooms || unit.beds),
+                bathrooms: normalizeBathrooms(unit.bathrooms || unit.baths),
+                squareFootage: normalizeSquareFootage(unit.square_feet || unit.squareFootage || unit.sqft),
+                rent: normalizeRent(unit.monthly_rent || unit.rent || unit.price),
+                availabilityDate: normalizeAvailability(unit.availability_date || unit.availabilityDate || 'Now')
+              }));
+          }
+        } 
+        // Standard nested format (property.name, units)
+        else if (parsed.property && typeof parsed.property === 'object') {
           const prop = parsed.property;
           propertyData.property = {
             name: prop.name || prop.title || 'Property Name Not Available',
@@ -610,7 +640,7 @@ function parseDirectPropertyData(scrapezyResult: any): {
           };
         }
         
-        // Extract units information
+        // Extract units information (standard format)
         if (Array.isArray(parsed.units)) {
           propertyData.units = parsed.units
             .filter((unit: any) => unit && typeof unit === 'object' && (unit.unitType || unit.unit_type || unit.type))
