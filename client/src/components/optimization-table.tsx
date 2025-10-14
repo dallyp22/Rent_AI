@@ -28,7 +28,7 @@ interface UnitWithDetails extends PropertyUnit {
 }
 
 type SortDirection = 'asc' | 'desc' | null;
-type SortColumn = 'unit' | 'tag' | 'property' | 'type' | 'powerScore' | 'current' | 'aiRec' | 'marketAvg' | 'newPrice' | 'change' | 'annual' | null;
+type SortColumn = 'unit' | 'tag' | 'property' | 'type' | 'current' | 'aiRec' | 'marketAvg' | 'newPrice' | 'change' | 'annual' | null;
 
 // Function to get power score badge with color coding
 const getPowerScoreBadge = (score: number | undefined) => {
@@ -91,9 +91,6 @@ const TableRow = memo(({ unit, modifiedPrices, handlePriceChange, handleQuickAdj
       </td>
       <td className="px-4 py-3" data-testid={`unit-type-${unit.unitNumber}`}>
         {unit.unitType}
-      </td>
-      <td className="px-4 py-3" data-testid={`power-score-${unit.unitNumber}`}>
-        {getPowerScoreBadge(unitWithDetails.pricingPowerScore)}
       </td>
       <td className="px-4 py-3" data-testid={`current-rent-${unit.unitNumber}`}>
         {formatCurrency(currentRent)}
@@ -515,10 +512,6 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
           aValue = a.unitType || '';
           bValue = b.unitType || '';
           break;
-        case 'powerScore':
-          aValue = (a as UnitWithDetails).pricingPowerScore !== undefined ? (a as UnitWithDetails).pricingPowerScore : -1;
-          bValue = (b as UnitWithDetails).pricingPowerScore !== undefined ? (b as UnitWithDetails).pricingPowerScore : -1;
-          break;
         case 'current':
           aValue = parseFloat(a.currentRent);
           bValue = parseFloat(b.currentRent);
@@ -836,17 +829,6 @@ function OptimizationTable({ units, report, onPricesChange, onExportToExcel, isE
                     {sortColumn === 'type' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
                     {sortColumn === 'type' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
                     {sortColumn !== 'type' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
-                  </div>
-                </th>
-                <th 
-                  className="px-4 py-3 text-left font-semibold cursor-pointer hover:bg-accent transition-colors group"
-                  onClick={() => handleColumnClick('powerScore')}
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Power Score</span>
-                    {sortColumn === 'powerScore' && sortDirection === 'asc' && <ChevronUp className="w-4 h-4" />}
-                    {sortColumn === 'powerScore' && sortDirection === 'desc' && <ChevronDown className="w-4 h-4" />}
-                    {sortColumn !== 'powerScore' && <ChevronUp className="w-4 h-4 opacity-0 group-hover:opacity-30" />}
                   </div>
                 </th>
                 <th 

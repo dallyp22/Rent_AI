@@ -111,7 +111,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'TAG', key: 'tag', width: 20 },
     { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
-    { header: 'Power Score', key: 'powerScore', width: 12 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
     { header: 'AI Recommended', key: 'recommendedRent', width: 18 },
@@ -152,7 +151,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'TAG',
     'Property',
     'Unit Type',
-    'Power Score',
     'Square Footage',
     'Current Rent',
     'AI Recommended',
@@ -188,7 +186,6 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.tag || '-',
       unit.propertyName || '',
       unit.unitType,
-      formatPowerScore(unit.pricingPowerScore),
       formatSquareFootage(unit.squareFootage),
       unit.currentRent,
       unit.recommendedRent || unit.currentRent,
@@ -200,48 +197,9 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.reasoning || 'No additional notes'
     ]);
     
-    // Apply conditional formatting for Power Score column
-    const powerScoreCell = row.getCell(5); // Power Score column
-    if (unit.pricingPowerScore !== undefined && unit.pricingPowerScore !== null) {
-      const score = unit.pricingPowerScore;
-      if (score >= 80) {
-        // Premium position (80-100) - green
-        powerScoreCell.font = { color: { argb: 'FF059669' }, bold: true };
-        powerScoreCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFDCFCE7' }
-        };
-      } else if (score >= 60) {
-        // Good position (60-80) - blue
-        powerScoreCell.font = { color: { argb: 'FF2563EB' }, bold: true };
-        powerScoreCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFDBEAFE' }
-        };
-      } else if (score >= 40) {
-        // Average position (40-60) - yellow
-        powerScoreCell.font = { color: { argb: 'FFA16207' }, bold: true };
-        powerScoreCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFEF3C7' }
-        };
-      } else {
-        // Below market (0-40) - orange
-        powerScoreCell.font = { color: { argb: 'FFEA580C' }, bold: true };
-        powerScoreCell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FFFED7AA' }
-        };
-      }
-    }
-    
     // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(10); // Monthly Change column (with new Power Score and Adjustment Reason columns)
-    const impactCell = row.getCell(11); // Annual Impact column (with new Power Score and Adjustment Reason columns)
+    const changeCell = row.getCell(9); // Monthly Change column (adjusted after removing Power Score)
+    const impactCell = row.getCell(10); // Annual Impact column (adjusted after removing Power Score)
     
     if (unit.change > 0) {
       // Positive change - green
