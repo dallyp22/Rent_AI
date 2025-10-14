@@ -1779,6 +1779,12 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         }
       }
 
+      // Cap avgIncrease to prevent database overflow (field limit: -999.99 to 999.99)
+      const cappedAvgIncrease = Math.max(-999.99, Math.min(999.99, optimizationData.avgIncrease));
+      if (optimizationData.avgIncrease !== cappedAvgIncrease) {
+        console.log(`[OPTIMIZE] Capping avgIncrease from ${optimizationData.avgIncrease} to ${cappedAvgIncrease} to fit database field`);
+      }
+
       // Create optimization report
       const report = await storage.createOptimizationReport({
         propertyId,
@@ -1787,7 +1793,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         timeline: `Target Occupancy: ${targetOccupancy}%`,
         totalIncrease: optimizationData.totalIncrease.toString(),
         affectedUnits: optimizationData.affectedUnits,
-        avgIncrease: optimizationData.avgIncrease.toString(),
+        avgIncrease: cappedAvgIncrease.toString(),
         riskLevel: optimizationData.riskLevel
       });
 
@@ -5004,6 +5010,12 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         }
       };
 
+      // Cap avgIncrease to prevent database overflow (field limit: -999.99 to 999.99)
+      const cappedAvgIncrease = Math.max(-999.99, Math.min(999.99, portfolioSummary.avgIncrease));
+      if (portfolioSummary.avgIncrease !== cappedAvgIncrease) {
+        console.log(`[SESSION_OPTIMIZE] Capping avgIncrease from ${portfolioSummary.avgIncrease} to ${cappedAvgIncrease} to fit database field`);
+      }
+
       const optimizationReport = await storage.createOptimizationReport({
         sessionId,
         goal,
@@ -5011,7 +5023,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         timeline: "30-60 days",
         totalIncrease: portfolioSummary.totalIncrease.toString(),
         affectedUnits: portfolioSummary.affectedUnits,
-        avgIncrease: portfolioSummary.avgIncrease.toString(),
+        avgIncrease: cappedAvgIncrease.toString(),
         riskLevel: portfolioSummary.riskLevel,
         // Store the optimized units and portfolio summary
         optimizedUnits: updatedUnits,
