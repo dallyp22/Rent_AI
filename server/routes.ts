@@ -218,9 +218,33 @@ async function callScrapezyScrapeDirectProperty(url: string): Promise<any> {
     throw new Error("Scrapezy API key not configured");
   }
 
-  const prompt = `Extract detailed apartment property information from this apartments.com property page. Extract: 1) Property name/title, 2) Full address, 3) All available unit types/floor plans with details including: unit number (if available), floor plan name, unit type (Studio, 1BR, 2BR, etc.), bedrooms count, bathrooms count, square footage, monthly rent price, availability date. 4) Property amenities list, 5) Property details like year built, total units, pet policy. Return as JSON with structure: {"property": {"name": "", "address": "", "amenities": [], "builtYear": null, "totalUnits": null, "petPolicy": ""}, "units": [{"unitNumber": "", "floorPlanName": "", "unitType": "", "bedrooms": 0, "bathrooms": 0, "squareFootage": 0, "rent": 0, "availabilityDate": ""}]}`;
+  // Special handling for The Flats on Howard - use simpler prompt to avoid JSON parsing issues
+  let prompt;
+  if (url.includes('flats-on-howard') || url.includes('5q2rrcq')) {
+    console.log(`🎯 [SCRAPEZY_DIRECT] Using special simplified prompt for The Flats on Howard`);
+    prompt = `Extract apartment information from this property page including:
+    - Property name (should be "The Flats on Howard" or similar)
+    - Full street address in Omaha, NE
+    - All available apartments with: number of bedrooms, bathrooms, square feet, monthly rent price
+    - List of amenities if shown
+    - Year built and total units if available
+    Format the response as: 
+    Property: [name]
+    Address: [full address]
+    Amenities: [list amenities separated by commas]
+    Year Built: [year or "not available"]
+    Total Units: [number or "not available"]
+    
+    Available Units:
+    - Unit 1: [bedrooms] bed, [bathrooms] bath, [sqft] sq ft, $[rent]/month
+    - Unit 2: [bedrooms] bed, [bathrooms] bath, [sqft] sq ft, $[rent]/month
+    (continue for all available units)`;
+  } else {
+    // Use the original detailed prompt for all other properties
+    prompt = `Extract detailed apartment property information from this apartments.com property page. Extract: 1) Property name/title, 2) Full address, 3) All available unit types/floor plans with details including: unit number (if available), floor plan name, unit type (Studio, 1BR, 2BR, etc.), bedrooms count, bathrooms count, square footage, monthly rent price, availability date. 4) Property amenities list, 5) Property details like year built, total units, pet policy. Return as JSON with structure: {"property": {"name": "", "address": "", "amenities": [], "builtYear": null, "totalUnits": null, "petPolicy": ""}, "units": [{"unitNumber": "", "floorPlanName": "", "unitType": "", "bedrooms": 0, "bathrooms": 0, "squareFootage": 0, "rent": 0, "availabilityDate": ""}]}`;
+  }
   
-  console.log(`🚀 [SCRAPEZY_DIRECT] Using direct property scraping prompt`);
+  console.log(`🚀 [SCRAPEZY_DIRECT] Using ${url.includes('flats-on-howard') || url.includes('5q2rrcq') ? 'special' : 'direct'} property scraping prompt`);
 
   // Create job
   console.log(`🚀 [SCRAPEZY_DIRECT] Creating scraping job...`);
@@ -616,16 +640,84 @@ function parseDirectPropertyData(scrapezyResult: any): {
         
       } catch (parseError) {
         console.warn('[PARSE_DIRECT_PROPERTY] Failed to parse JSON result, trying fallback parsing');
-        // Fallback: try to extract basic info from text
-        const lines = resultText.split('\n');
-        for (const line of lines) {
-          if (line.includes('BR') || line.includes('Studio') || line.includes('bedroom')) {
-            propertyData.units.push({
-              unitType: line.trim(),
-              bedrooms: extractBedroomCount(line),
-              bathrooms: normalizeBathrooms(extractBathroomCount(line)),
-              rent: normalizeRent(extractRentPrice(line))
-            });
+        
+        // Check if this is The Flats on Howard text format
+        if (resultText.includes('Property:') && resultText.includes('Available Units:')) {
+          console.log('[PARSE_DIRECT_PROPERTY] Detected Flats on Howard text format, parsing...');
+          
+          const lines = resultText.split('\n');
+          let currentSection = '';
+          
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            
+            // Parse property name
+            if (trimmedLine.startsWith('Property:')) {
+              propertyData.property.name = trimmedLine.replace('Property:', '').trim() || 'The Flats on Howard';
+            }
+            // Parse address
+            else if (trimmedLine.startsWith('Address:')) {
+              propertyData.property.address = trimmedLine.replace('Address:', '').trim();
+            }
+            // Parse amenities
+            else if (trimmedLine.startsWith('Amenities:')) {
+              const amenitiesText = trimmedLine.replace('Amenities:', '').trim();
+              if (amenitiesText && amenitiesText.toLowerCase() !== 'not available') {
+                propertyData.property.amenities = amenitiesText.split(',').map(a => a.trim()).filter(a => a);
+              }
+            }
+            // Parse year built
+            else if (trimmedLine.startsWith('Year Built:')) {
+              const yearText = trimmedLine.replace('Year Built:', '').trim();
+              if (yearText && yearText.toLowerCase() !== 'not available') {
+                propertyData.property.builtYear = parseNumber(yearText);
+              }
+            }
+            // Parse total units
+            else if (trimmedLine.startsWith('Total Units:')) {
+              const unitsText = trimmedLine.replace('Total Units:', '').trim();
+              if (unitsText && unitsText.toLowerCase() !== 'not available') {
+                propertyData.property.totalUnits = parseNumber(unitsText);
+              }
+            }
+            // Section marker
+            else if (trimmedLine === 'Available Units:') {
+              currentSection = 'units';
+            }
+            // Parse unit lines (e.g., "- Unit 1: 2 bed, 1 bath, 950 sq ft, $1500/month")
+            else if (currentSection === 'units' && trimmedLine.startsWith('-')) {
+              const unitMatch = trimmedLine.match(/[-–]\s*(?:Unit\s*\d+:)?\s*(\d+)\s*bed(?:room)?s?\s*,?\s*(\d+(?:\.\d+)?)\s*bath(?:room)?s?\s*,?\s*(\d+)\s*sq\s*ft\s*,?\s*\$?([\d,]+)(?:\/month)?/i);
+              
+              if (unitMatch) {
+                const [, beds, baths, sqft, rent] = unitMatch;
+                propertyData.units.push({
+                  unitType: `${beds} Bedroom`,
+                  bedrooms: parseNumber(beds),
+                  bathrooms: normalizeBathrooms(baths),
+                  squareFootage: normalizeSquareFootage(sqft),
+                  rent: normalizeRent(rent.replace(/,/g, '')),
+                  availabilityDate: 'Now'
+                });
+              }
+            }
+          }
+          
+          // If we got the property name, we successfully parsed the text format
+          if (propertyData.property.name !== 'Property Name Not Available') {
+            console.log('[PARSE_DIRECT_PROPERTY] Successfully parsed Flats on Howard text format');
+          }
+        } else {
+          // Original fallback for other properties
+          const lines = resultText.split('\n');
+          for (const line of lines) {
+            if (line.includes('BR') || line.includes('Studio') || line.includes('bedroom')) {
+              propertyData.units.push({
+                unitType: line.trim(),
+                bedrooms: extractBedroomCount(line),
+                bathrooms: normalizeBathrooms(extractBathroomCount(line)),
+                rent: normalizeRent(extractRentPrice(line))
+              });
+            }
           }
         }
       }
