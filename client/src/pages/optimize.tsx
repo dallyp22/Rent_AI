@@ -480,6 +480,18 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           ? subjectProperties[0].address 
           : `Portfolio (${subjectProperties.length} properties)`;
         
+        // Deduplicate units based on propertyProfileId + unitNumber combination
+        const uniqueUnitsMap = new Map();
+        optimization.units.forEach(unit => {
+          const uniqueKey = `${unit.propertyProfileId}_${unit.unitNumber}`;
+          if (!uniqueUnitsMap.has(uniqueKey)) {
+            uniqueUnitsMap.set(uniqueKey, unit);
+          }
+        });
+        const deduplicatedUnits = Array.from(uniqueUnitsMap.values());
+        
+        console.log(`[EXCEL_EXPORT] Deduplicating units: ${optimization.units.length} → ${deduplicatedUnits.length}`);
+        
         exportData = {
           propertyInfo: {
             address: portfolioAddress,
@@ -487,7 +499,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units: totalUnits,
             builtYear: Math.min(...subjectProperties.map(p => p.builtYear || new Date().getFullYear())),
           },
-          units: optimization.units.map(unit => {
+          units: deduplicatedUnits.map(unit => {
             // Use modified price if available, otherwise use recommended rent
             const adjustedPrice = currentModifiedPrices[unit.id] || 
               (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
@@ -522,7 +534,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             let affectedUnits = 0;
             let totalCurrentRent = 0;
             
-            optimization.units.forEach(unit => {
+            deduplicatedUnits.forEach(unit => {
               const currentRent = parseFloat(unit.currentRent);
               totalCurrentRent += currentRent;
               
@@ -561,6 +573,17 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           return;
         }
 
+        // Deduplicate units based on unitNumber for single property
+        const uniqueUnitsMap = new Map();
+        optimization.units.forEach(unit => {
+          if (!uniqueUnitsMap.has(unit.unitNumber)) {
+            uniqueUnitsMap.set(unit.unitNumber, unit);
+          }
+        });
+        const deduplicatedUnits = Array.from(uniqueUnitsMap.values());
+        
+        console.log(`[EXCEL_EXPORT] Deduplicating units: ${optimization.units.length} → ${deduplicatedUnits.length}`);
+        
         exportData = {
           propertyInfo: {
             address: property.address,
@@ -568,7 +591,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units: property.totalUnits || 0,
             builtYear: property.builtYear || 0,
           },
-          units: optimization.units.map(unit => {
+          units: deduplicatedUnits.map(unit => {
             // Use modified price if available, otherwise use recommended rent
             const adjustedPrice = currentModifiedPrices[unit.id] || 
               (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
@@ -598,7 +621,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             let affectedUnits = 0;
             let totalCurrentRent = 0;
             
-            optimization.units.forEach(unit => {
+            deduplicatedUnits.forEach(unit => {
               const currentRent = parseFloat(unit.currentRent);
               totalCurrentRent += currentRent;
               
