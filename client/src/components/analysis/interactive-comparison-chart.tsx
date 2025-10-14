@@ -56,27 +56,6 @@ export default function InteractiveComparisonChart({
     return name.length > maxLength ? name.substring(0, maxLength) + '...' : name;
   };
 
-  // Prepare data for scatter chart
-  const subjectScatterData = useMemo(() => {
-    return subjectUnits
-      .filter(unit => metricType === "unitPrice" || getPricePerSqFt(unit) !== null)
-      .map(unit => ({
-        x: unit.squareFootage || 0,
-        y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
-        unitInfo: unit
-      }));
-  }, [subjectUnits, metricType]);
-
-  const competitorScatterData = useMemo(() => {
-    return competitorUnits
-      .filter(unit => metricType === "unitPrice" || getPricePerSqFt(unit) !== null)
-      .map(unit => ({
-        x: unit.squareFootage || 0,
-        y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
-        unitInfo: unit
-      }));
-  }, [competitorUnits, metricType]);
-
   // Color palette for competitor properties (20 distinct colors)
   const competitorColorPalette = [
     { bg: 'rgba(239, 68, 68, 0.5)', border: 'rgba(239, 68, 68, 1)' },    // Red
@@ -179,35 +158,76 @@ export default function InteractiveComparisonChart({
   }, [subjectUnits, competitorUnits, metricType]);
 
   const scatterData = useMemo(() => {
-    return {
-      datasets: [
-        {
-          label: 'Your Units',
-          data: subjectScatterData,
-          backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue
-          borderColor: 'rgba(59, 130, 246, 1)',
-          borderWidth: 2,
-          pointStyle: 'circle',
-          pointRadius: (context: any) => {
-            const unit = context.raw?.unitInfo;
-            return unit ? 4 + (unit.bedrooms * 2) : 6;
-          },
+    const datasets: any[] = [];
+    
+    // Filter units based on metric type
+    const filteredSubjectUnits = metricType === "pricePerSqFt" 
+      ? subjectUnits.filter(unit => getPricePerSqFt(unit) !== null)
+      : subjectUnits;
+    const filteredCompetitorUnits = metricType === "pricePerSqFt"
+      ? competitorUnits.filter(unit => getPricePerSqFt(unit) !== null)
+      : competitorUnits;
+
+    // Get unique subject property names for labeling
+    const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
+    const subjectPropertyLabel = subjectPropertyNames.size === 1 
+      ? Array.from(subjectPropertyNames)[0] 
+      : 'Your Properties';
+
+    // Group competitor units by property name
+    const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
+    filteredCompetitorUnits.forEach(unit => {
+      if (!competitorsByProperty.has(unit.propertyName)) {
+        competitorsByProperty.set(unit.propertyName, []);
+      }
+      competitorsByProperty.get(unit.propertyName)!.push(unit);
+    });
+
+    // Add subject property dataset (all subject properties in one blue dataset)
+    if (filteredSubjectUnits.length > 0) {
+      datasets.push({
+        label: truncatePropertyName(subjectPropertyLabel, 25),
+        data: filteredSubjectUnits.map(unit => ({
+          x: unit.squareFootage || 0,
+          y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+          unitInfo: unit
+        })),
+        backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
+        borderColor: 'rgba(59, 130, 246, 1)',
+        borderWidth: 2,
+        pointStyle: 'circle',
+        pointRadius: (context: any) => {
+          const unit = context.raw?.unitInfo;
+          return unit ? 4 + (unit.bedrooms * 2) : 6;
         },
-        {
-          label: 'Competitor Units',
-          data: competitorScatterData,
-          backgroundColor: 'rgba(239, 68, 68, 0.4)', // Red
-          borderColor: 'rgba(239, 68, 68, 0.8)',
-          borderWidth: 1,
-          pointStyle: 'circle',
-          pointRadius: (context: any) => {
-            const unit = context.raw?.unitInfo;
-            return unit ? 4 + (unit.bedrooms * 2) : 6;
-          },
-        }
-      ],
-    };
-  }, [subjectScatterData, competitorScatterData]);
+      });
+    }
+
+    // Add competitor property datasets with unique colors
+    let colorIndex = 0;
+    competitorsByProperty.forEach((units, propertyName) => {
+      const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
+      datasets.push({
+        label: truncatePropertyName(propertyName, 25),
+        data: units.map(unit => ({
+          x: unit.squareFootage || 0,
+          y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+          unitInfo: unit
+        })),
+        backgroundColor: color.bg,
+        borderColor: color.border,
+        borderWidth: 1,
+        pointStyle: 'circle',
+        pointRadius: (context: any) => {
+          const unit = context.raw?.unitInfo;
+          return unit ? 4 + (unit.bedrooms * 2) : 6;
+        },
+      });
+      colorIndex++;
+    });
+
+    return { datasets };
+  }, [subjectUnits, competitorUnits, metricType]);
 
   const scatterOptions = useMemo(() => ({
     responsive: true,
