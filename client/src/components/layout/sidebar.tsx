@@ -284,7 +284,7 @@ export default function Sidebar() {
                   <div key={navItem.name}>
                     <div
                       className={`flex items-center px-3 py-2 rounded-md font-medium transition-colors ${
-                        (isActive || hasActiveChild)
+                        isActive
                           ? "bg-primary text-primary-foreground"
                           : "hover:bg-accent text-muted-foreground hover:text-foreground"
                       }`}
