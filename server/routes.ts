@@ -4827,6 +4827,36 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
         stats.avg = Math.round(stats.sum / stats.count);
       }
       
+      // Deduplicate units based on propertyProfileId + unitNumber combination
+      // This prevents the same unit from appearing multiple times in the export
+      const uniqueUnitsMap = new Map();
+      const duplicateUnits = [];
+      
+      for (const unit of allUnits) {
+        const uniqueKey = `${unit.propertyProfileId}_${unit.unitNumber}`;
+        if (!uniqueUnitsMap.has(uniqueKey)) {
+          uniqueUnitsMap.set(uniqueKey, unit);
+        } else {
+          duplicateUnits.push({
+            propertyProfileId: unit.propertyProfileId,
+            unitNumber: unit.unitNumber,
+            propertyName: unit.propertyName
+          });
+        }
+      }
+      
+      if (duplicateUnits.length > 0) {
+        console.log(`[SESSION_OPTIMIZE_DEDUP] Found ${duplicateUnits.length} duplicate units, keeping first occurrence of each`);
+        console.log(`[SESSION_OPTIMIZE_DEDUP] Duplicate units:`, duplicateUnits.map(d => `${d.propertyName}:${d.unitNumber}`).join(', '));
+      }
+      
+      // Replace allUnits with deduplicated units
+      const originalCount = allUnits.length;
+      allUnits.length = 0; // Clear the array
+      allUnits.push(...Array.from(uniqueUnitsMap.values()));
+      
+      console.log(`[SESSION_OPTIMIZE_DEDUP] Deduplication complete: ${originalCount} units → ${allUnits.length} unique units`);
+      
       // Log final merge summary across all properties
       let totalMatchedUnits = 0;
       let totalUnitsWithTags = 0;
@@ -4838,7 +4868,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
       
       console.log(`[SESSION_OPTIMIZE_MERGE] ====== FINAL MERGE SUMMARY ======`);
       console.log(`[SESSION_OPTIMIZE_MERGE] Total subject properties processed: ${subjectProfiles.length}`);
-      console.log(`[SESSION_OPTIMIZE_MERGE] Total units across portfolio: ${allUnits.length}`);
+      console.log(`[SESSION_OPTIMIZE_MERGE] Total units across portfolio: ${allUnits.length} (after deduplication)`);
       console.log(`[SESSION_OPTIMIZE_MERGE] Total units with TAGs from propertyUnits: ${totalUnitsWithTags}`);
       console.log(`[SESSION_OPTIMIZE_MERGE] TAG coverage: ${allUnits.length > 0 ? ((totalUnitsWithTags / allUnits.length) * 100).toFixed(1) : 0}%`);
       console.log(`[SESSION_OPTIMIZE_MERGE] Market averages calculated from: ${competitorUnits.length} competitor units`);
