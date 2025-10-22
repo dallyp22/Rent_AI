@@ -227,7 +227,10 @@ const calculateBedroomMetrics = (
     }
     
     // Calculate vacancy rate using the bedroom total from unit mix (or fallback to scraped units)
-    const vacancyRate = bedroomTotal > 0 ? (availableUnits.length / bedroomTotal) * 100 : 0;
+    // If we only have scraped units and no unitMixBreakdown, we can't accurately calculate vacancy rate
+    // since we don't know the actual total units (only the ones that were scraped/available)
+    const canCalculateVacancy = unitMixBreakdown !== null && unitMixBreakdown !== undefined && bedroomTotal > 0;
+    const vacancyRate = canCalculateVacancy ? (availableUnits.length / bedroomTotal) * 100 : -1;
     
     // Calculate average rent (only for units with rent data)
     const unitsWithRent = groupUnits.filter(unit => unit.rent && Number(unit.rent) > 0);
@@ -279,12 +282,14 @@ const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse
     // Use Property Profile's totalUnits instead of scraped units count
     const totalUnits = propertyData.totalUnits || 0;
     const availableUnits = propertyData.units.filter(unit => unit.status === 'available').length;
-    const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    // Only calculate vacancy rate if we have a valid totalUnits from the property profile
+    // If totalUnits is 0 or missing, we can't accurately calculate vacancy rate
+    const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : -1;
     
     console.log(`🔍 [ORGANIZE_UNITS] Calculated values for ${propertyData.propertyName}:`, {
       totalUnits,
       availableUnits,
-      vacancyRate: vacancyRate.toFixed(2) + '%',
+      vacancyRate: vacancyRate >= 0 ? vacancyRate.toFixed(2) + '%' : 'N/A',
       hasUnitMixBreakdown: !!propertyData.unitMixBreakdown
     });
     
@@ -309,7 +314,7 @@ const organizeUnitsByProperty = (scrapedUnitsData: CanonicalScrapedUnitsResponse
     console.log(`🔍 [ORGANIZE_UNITS] Final result for ${propertyData.propertyName}:`, {
       totalUnits: result.totalUnits,
       availableUnits: result.availableUnits,
-      vacancyRate: result.vacancyRate.toFixed(2) + '%'
+      vacancyRate: result.vacancyRate >= 0 ? result.vacancyRate.toFixed(2) + '%' : 'N/A'
     });
     
     return result;
@@ -338,9 +343,12 @@ const organizeLegacyUnitsByProperty = (vacancyData: VacancyData): PropertyUnitsO
     } as ScrapedUnit));
     
     const bedroomTypes = calculateBedroomMetrics(subjectUnits);
-    const totalUnits = subjectUnits.length;
+    const totalUnits = vacancyData.subjectProperty.totalUnits || subjectUnits.length;
     const availableUnits = subjectUnits.filter(unit => unit.status === 'available').length;
-    const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+    // Only calculate vacancy rate if we have totalUnits from the property profile (not just scraped units)
+    const vacancyRate = vacancyData.subjectProperty.totalUnits && vacancyData.subjectProperty.totalUnits > 0 
+      ? (availableUnits / vacancyData.subjectProperty.totalUnits) * 100 
+      : -1;
     
     properties.push({
       propertyId: vacancyData.subjectProperty.id,
@@ -373,9 +381,12 @@ const organizeLegacyUnitsByProperty = (vacancyData: VacancyData): PropertyUnitsO
       } as ScrapedUnit));
       
       const bedroomTypes = calculateBedroomMetrics(competitorUnits);
-      const totalUnits = competitorUnits.length;
+      const totalUnits = competitor.totalUnits || competitorUnits.length;
       const availableUnits = competitorUnits.filter(unit => unit.status === 'available').length;
-      const vacancyRate = totalUnits > 0 ? (availableUnits / totalUnits) * 100 : 0;
+      // Only calculate vacancy rate if we have totalUnits from the property profile
+      const vacancyRate = competitor.totalUnits && competitor.totalUnits > 0 
+        ? (availableUnits / competitor.totalUnits) * 100 
+        : -1;
       
       properties.push({
         propertyId: competitor.id,
@@ -439,7 +450,7 @@ const BedroomTabsView = ({ propertyData }: { propertyData: PropertyUnitsOrganize
               <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
                 <div className="text-sm font-medium text-amber-700 dark:text-amber-300">Vacancy Rate</div>
                 <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
-                  {bedroomType.vacancyRate.toFixed(1)}%
+                  {bedroomType.vacancyRate >= 0 ? `${bedroomType.vacancyRate.toFixed(1)}%` : 'N/A'}
                 </div>
               </div>
               
@@ -964,7 +975,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
         unit.type,
         unit.totalUnits.toString(),
         unit.availableUnits.toString(),
-        unit.vacancyRate.toFixed(1),
+        unit.vacancyRate >= 0 ? unit.vacancyRate.toFixed(1) : 'N/A',
         Math.round(unit.avgRent).toString(),
         Math.round(unit.avgSqFt).toString(),
         Math.round(unit.rentRange.min).toString(),
@@ -980,7 +991,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
           unit.type,
           unit.totalUnits.toString(),
           unit.availableUnits.toString(),
-          unit.vacancyRate.toFixed(1),
+          unit.vacancyRate >= 0 ? unit.vacancyRate.toFixed(1) : 'N/A',
           Math.round(unit.avgRent).toString(),
           Math.round(unit.avgSqFt).toString(),
           Math.round(unit.rentRange.min).toString(),
@@ -1148,7 +1159,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                           <div className="text-right">
                             <div className="text-lg font-bold">{propertyData.totalUnits} Total Units</div>
                             <div className="text-sm text-muted-foreground">
-                              {propertyData.availableUnits} available • {propertyData.vacancyRate.toFixed(1)}% vacancy
+                              {propertyData.availableUnits} available • {propertyData.vacancyRate >= 0 ? `${propertyData.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
                             </div>
                           </div>
                         </div>
@@ -1408,7 +1419,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                               ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
                               : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
                           }`}>
-                            {property.vacancyRate.toFixed(1)}% vacancy
+                            {property.vacancyRate >= 0 ? `${property.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
                           </div>
                         </div>
                       </div>
@@ -1621,7 +1632,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                       {/* Subject Property vs Market */}
                       <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
                         <div className="flex items-center space-x-2 mb-2">
-                          {vacancyQuery.data.competitors.length > 0 && vacancyQuery.data.subjectProperty.vacancyRate < vacancyQuery.data.marketInsights.competitorAvgVacancies ? (
+                          {vacancyQuery.data.competitors.length > 0 && vacancyQuery.data.subjectProperty.vacancyRate >= 0 && vacancyQuery.data.subjectProperty.vacancyRate < vacancyQuery.data.marketInsights.competitorAvgVacancies ? (
                             <TrendingDown className="h-4 w-4 text-green-600" />
                           ) : vacancyQuery.data.competitors.length > 0 ? (
                             <TrendingUp className="h-4 w-4 text-red-600" />
@@ -1633,7 +1644,9 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                           </span>
                         </div>
                         <div className="text-lg font-bold text-blue-900 dark:text-blue-100">
-                          {vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}% Vacancy
+                          {vacancyQuery.data.subjectProperty.vacancyRate >= 0 
+                            ? `${vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}% Vacancy`
+                            : 'Vacancy N/A'}
                         </div>
                         <div className="text-xs text-blue-600 dark:text-blue-400">
                           {vacancyQuery.data.competitors.length > 0 
@@ -1692,7 +1705,12 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                     {/* Detailed insights text */}
                     <div className="prose max-w-none">
                       <p className="text-sm text-muted-foreground leading-relaxed">
-                        Your property <strong>{vacancyQuery.data.subjectProperty.name}</strong> has a vacancy rate of <strong>{vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}%</strong>
+                        Your property <strong>{vacancyQuery.data.subjectProperty.name}</strong> 
+                        {vacancyQuery.data.subjectProperty.vacancyRate >= 0 ? (
+                          <>has a vacancy rate of <strong>{vacancyQuery.data.subjectProperty.vacancyRate.toFixed(1)}%</strong></>
+                        ) : (
+                          <>has insufficient data to calculate vacancy rate</>
+                        )}
                         {vacancyQuery.data.competitors.length > 0 && (
                           <>
                             , which is <strong>{vacancyQuery.data.marketInsights.subjectVsMarket.toLowerCase()}</strong>
@@ -1755,7 +1773,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                               <div className="text-right">
                                 <div className="text-lg font-bold">{propertyData.totalUnits} Total Units</div>
                                 <div className="text-sm text-muted-foreground">
-                                  {propertyData.availableUnits} available • {propertyData.vacancyRate.toFixed(1)}% vacancy
+                                  {propertyData.availableUnits} available • {propertyData.vacancyRate >= 0 ? `${propertyData.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
                                 </div>
                               </div>
                             </div>
