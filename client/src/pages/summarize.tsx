@@ -50,6 +50,7 @@ interface VacancyData {
     id: string;
     name: string;
     vacancyRate: number;
+    totalUnits?: number;
     unitTypes: UnitTypeData[];
     units?: Unit[];
   };
@@ -57,6 +58,7 @@ interface VacancyData {
     id: string;
     name: string;
     vacancyRate: number;
+    totalUnits?: number;
     unitTypes: UnitTypeData[];
     units?: Unit[];
   }[];
@@ -588,7 +590,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   });
 
   // NEW: Query to check scraping status for session mode
-  const scrapingStatusQuery = useQuery({
+  const scrapingStatusQuery = useQuery<{ overallStatus: string }>({
     queryKey: [`/api/analysis-sessions/${params.sessionId}/scraping-status`],
     enabled: isSessionMode && !!params.sessionId,
     refetchInterval: (query) => {
