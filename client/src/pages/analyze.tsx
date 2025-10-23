@@ -36,7 +36,7 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [filters, setFilters] = useState<FilterCriteria>({
-    bedroomTypes: [],
+    bedroomTypes: ["1BR"],  // Default to showing 1BR units
     priceRange: { min: 500, max: 5000 },  // Widened range to capture all units
     availability: "60days",  // Most inclusive option to show all units
     squareFootageRange: { min: 200, max: 3000 },  // Expanded range for all unit sizes
