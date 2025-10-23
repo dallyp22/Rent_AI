@@ -33,12 +33,14 @@ interface InteractiveComparisonChartProps {
   subjectUnits: UnitComparison[];
   competitorUnits: UnitComparison[];
   isLoading?: boolean;
+  selectedBedroomTypes?: string[];
 }
 
 export default function InteractiveComparisonChart({ 
   subjectUnits, 
   competitorUnits,
-  isLoading = false 
+  isLoading = false,
+  selectedBedroomTypes = []
 }: InteractiveComparisonChartProps) {
   // State for chart type and metric type
   const [chartType, setChartType] = useState<"scatter" | "bar">("scatter");
@@ -392,7 +394,23 @@ export default function InteractiveComparisonChart({
       <CardHeader>
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
-            <CardTitle>Unit-Level Market Comparison</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>Unit-Level Market Comparison</CardTitle>
+              {selectedBedroomTypes.length > 0 && (
+                <div className="flex gap-1.5">
+                  {selectedBedroomTypes.map(type => (
+                    <Badge 
+                      key={type} 
+                      variant="default" 
+                      className="text-xs"
+                      data-testid={`bedroom-type-indicator-${type.toLowerCase()}`}
+                    >
+                      {type}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <Badge variant="secondary" data-testid="subject-units-count">
                 {subjectUnits.length} Your Units
