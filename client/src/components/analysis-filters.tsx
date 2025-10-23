@@ -77,6 +77,12 @@ const AnalysisFilters = memo(({
     [filters.amenities, filters.leaseTerms, filters.floorLevel, filters.renovationStatus]
   );
 
+  // Check if all bedroom types are selected
+  const allBedroomTypesSelected = useMemo(() => 
+    bedroomTypes.every(type => filters.bedroomTypes.includes(type)),
+    [filters.bedroomTypes]
+  );
+
   const handleBedroomChange = useCallback((bedroom: string, checked: boolean) => {
     const newBedroomTypes = checked 
       ? [...filters.bedroomTypes, bedroom as any]
@@ -85,6 +91,14 @@ const AnalysisFilters = memo(({
     onFiltersChange({
       ...filters,
       bedroomTypes: newBedroomTypes
+    });
+  }, [filters, onFiltersChange]);
+
+  // Handle Select All/Deselect All for bedroom types
+  const handleSelectAllBedrooms = useCallback((checked: boolean) => {
+    onFiltersChange({
+      ...filters,
+      bedroomTypes: checked ? [...bedroomTypes] : []
     });
   }, [filters, onFiltersChange]);
 
@@ -178,6 +192,24 @@ const AnalysisFilters = memo(({
           {/* Bedroom Type Filters */}
           <div className="space-y-3" data-testid="bedroom-filters">
             <Label className="text-sm font-semibold">Unit Types</Label>
+            
+            {/* Select All Checkbox */}
+            <div className="flex items-center space-x-2 mb-2" data-testid="bedroom-filter-select-all">
+              <Checkbox
+                id="bedroom-select-all"
+                checked={allBedroomTypesSelected}
+                onCheckedChange={(checked) => handleSelectAllBedrooms(checked as boolean)}
+                data-testid="checkbox-select-all"
+              />
+              <Label 
+                htmlFor="bedroom-select-all" 
+                className="text-sm cursor-pointer font-medium"
+                data-testid="label-select-all"
+              >
+                Select All
+              </Label>
+            </div>
+            
             <div className="grid grid-cols-2 gap-2">
               {bedroomTypes.map((type) => (
                 <div key={type} className="flex items-center space-x-2" data-testid={`bedroom-filter-${type.toLowerCase()}`}>
