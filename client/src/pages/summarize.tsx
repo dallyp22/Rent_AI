@@ -203,36 +203,44 @@ const calculateBedroomMetrics = (
     const scrapedUnitsInType = groupUnits.length;
     
     // Get the total units for this bedroom type from unit mix breakdown
-    let bedroomTotal = scrapedUnitsInType; // Default to scraped units count
+    let bedroomTotal = 0;
+    let hasAccurateTotalUnits = false;
     
     if (unitMixBreakdown) {
       // Map the bedroom type key to the correct unit mix field
       switch (key) {
         case 'studio':
-          bedroomTotal = unitMixBreakdown.studio || scrapedUnitsInType;
+          bedroomTotal = unitMixBreakdown.studio;
           break;
         case 'oneBed':
-          bedroomTotal = unitMixBreakdown.oneBedroom || scrapedUnitsInType;
+          bedroomTotal = unitMixBreakdown.oneBedroom;
           break;
         case 'twoBed':
-          bedroomTotal = unitMixBreakdown.twoBedroom || scrapedUnitsInType;
+          bedroomTotal = unitMixBreakdown.twoBedroom;
           break;
         case 'threeBed':
-          bedroomTotal = unitMixBreakdown.threeBedroom || scrapedUnitsInType;
+          bedroomTotal = unitMixBreakdown.threeBedroom;
           break;
         case 'fourPlusBed':
-          bedroomTotal = unitMixBreakdown.fourPlusBedroom || scrapedUnitsInType;
+          bedroomTotal = unitMixBreakdown.fourPlusBedroom;
           break;
         default:
-          bedroomTotal = scrapedUnitsInType;
+          bedroomTotal = 0;
       }
+      hasAccurateTotalUnits = bedroomTotal > 0;
     }
     
-    // Calculate vacancy rate using the bedroom total from unit mix (or fallback to scraped units)
-    // If we only have scraped units and no unitMixBreakdown, we can't accurately calculate vacancy rate
-    // since we don't know the actual total units (only the ones that were scraped/available)
-    const canCalculateVacancy = unitMixBreakdown !== null && unitMixBreakdown !== undefined && bedroomTotal > 0;
-    const vacancyRate = canCalculateVacancy ? (availableUnits.length / bedroomTotal) * 100 : -1;
+    // If we don't have accurate total units from unitMixBreakdown, use scraped units count
+    // but mark that we can't calculate accurate vacancy rate
+    if (!hasAccurateTotalUnits) {
+      bedroomTotal = scrapedUnitsInType;
+    }
+    
+    // Calculate vacancy rate only if we have accurate total units from unitMixBreakdown
+    // When we only have scraped units (typically only available ones), we can't determine true vacancy
+    const vacancyRate = hasAccurateTotalUnits && bedroomTotal > 0 
+      ? (availableUnits.length / bedroomTotal) * 100 
+      : -1;
     
     // Calculate average rent (only for units with rent data)
     const unitsWithRent = groupUnits.filter(unit => unit.rent && Number(unit.rent) > 0);
