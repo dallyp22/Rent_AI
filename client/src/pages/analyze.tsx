@@ -389,6 +389,7 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
                 <FilteredAnalysisResults 
                   analysis={analysisData!}
                   isLoading={analysisMutation.isPending || isDebouncing}
+                  selectedBedroomTypes={filters.bedroomTypes}
                 />
               </motion.div>
             )}
