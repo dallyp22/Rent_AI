@@ -9,6 +9,7 @@ import type { FilteredAnalysis } from "@shared/schema";
 interface FilteredAnalysisResultsProps {
   analysis: FilteredAnalysis;
   isLoading?: boolean;
+  selectedBedroomTypes?: string[];
 }
 
 // Skeleton Loading Component
@@ -34,7 +35,8 @@ const LoadingSkeleton = memo(() => (
 
 const FilteredAnalysisResults = memo(({ 
   analysis, 
-  isLoading = false 
+  isLoading = false,
+  selectedBedroomTypes = []
 }: FilteredAnalysisResultsProps) => {
   // Handle loading state or missing analysis data
   if (isLoading || !analysis) {
@@ -130,6 +132,7 @@ const FilteredAnalysisResults = memo(({
                 subjectUnits={analysis.subjectUnits}
                 competitorUnits={analysis.competitorUnits}
                 isLoading={isLoading}
+                selectedBedroomTypes={selectedBedroomTypes}
               />
             </motion.div>
           </AnimatePresence>
