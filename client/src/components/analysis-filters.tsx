@@ -95,10 +95,12 @@ const AnalysisFilters = memo(({
   }, [filters, onFiltersChange]);
 
   // Handle Select All/Deselect All for bedroom types
-  const handleSelectAllBedrooms = useCallback((checked: boolean) => {
+  const handleSelectAllBedrooms = useCallback((checked: boolean | "indeterminate") => {
+    // Convert indeterminate to false and ensure we handle the state properly
+    const isChecked = checked === true;
     onFiltersChange({
       ...filters,
-      bedroomTypes: checked ? [...bedroomTypes] : []
+      bedroomTypes: isChecked ? [...bedroomTypes] : []
     });
   }, [filters, onFiltersChange]);
 
@@ -198,7 +200,7 @@ const AnalysisFilters = memo(({
               <Checkbox
                 id="bedroom-select-all"
                 checked={allBedroomTypesSelected}
-                onCheckedChange={(checked) => handleSelectAllBedrooms(checked as boolean)}
+                onCheckedChange={handleSelectAllBedrooms}
                 data-testid="checkbox-select-all"
               />
               <Label 
