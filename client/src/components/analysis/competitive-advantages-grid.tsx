@@ -1,6 +1,12 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { DollarSign, Square, Calendar } from "lucide-react";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { DollarSign, Square, Calendar, Info } from "lucide-react";
 import type { CompetitiveEdges } from "@shared/schema";
 
 interface CompetitiveAdvantagesGridProps {
@@ -48,6 +54,7 @@ export default function CompetitiveAdvantagesGrid({
   ];
 
   return (
+    <TooltipProvider>
     <div 
       className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" 
       data-testid="competitive-advantages-grid"
@@ -64,6 +71,61 @@ export default function CompetitiveAdvantagesGrid({
               <div className="flex items-center justify-center gap-2">
                 {edge.icon}
                 <span className="font-semibold text-sm">{edge.title}</span>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button 
+                      type="button"
+                      className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                      aria-label={`${edge.title} explanation`}
+                    >
+                      <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-xs p-3 space-y-2">
+                    {edge.key === "pricing" && (
+                      <>
+                        <div className="font-medium">Pricing Advantage</div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p>Shows how your average rent compares to competitors.</p>
+                          <p className="pt-1">• <strong>Negative %</strong> - You charge less than market (pricing advantage)</p>
+                          <p>• <strong>0%</strong> - You're at market rate</p>
+                          <p>• <strong>Positive %</strong> - You charge more than market (may need adjustment)</p>
+                        </div>
+                        <div className="text-xs text-muted-foreground pt-2 italic">
+                          Example: -19% means your rents are 19% below competitor average
+                        </div>
+                      </>
+                    )}
+                    {edge.key === "size" && (
+                      <>
+                        <div className="font-medium">Size Advantage</div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p>Compares your average unit size to competitors.</p>
+                          <p className="pt-1">• <strong>Positive sq ft</strong> - Your units are larger (space advantage)</p>
+                          <p>• <strong>0 sq ft</strong> - Similar sized units</p>
+                          <p>• <strong>Negative sq ft</strong> - Your units are smaller</p>
+                        </div>
+                        <div className="text-xs text-muted-foreground pt-2 italic">
+                          Larger units typically command higher rents but may be harder to lease
+                        </div>
+                      </>
+                    )}
+                    {edge.key === "availability" && (
+                      <>
+                        <div className="font-medium">Availability Advantage</div>
+                        <div className="text-sm text-muted-foreground space-y-1">
+                          <p>Compares available units between you and competitors.</p>
+                          <p className="pt-1">• <strong>More units</strong> - You have more availability (may indicate pricing is too high)</p>
+                          <p>• <strong>Equal</strong> - Similar availability levels</p>
+                          <p>• <strong>Fewer units</strong> - You have less availability (opportunity to raise prices)</p>
+                        </div>
+                        <div className="text-xs text-muted-foreground pt-2 italic">
+                          Lower availability often indicates stronger demand and pricing power
+                        </div>
+                      </>
+                    )}
+                  </TooltipContent>
+                </Tooltip>
               </div>
               <div className="flex justify-center">
                 <Badge 
@@ -117,5 +179,6 @@ export default function CompetitiveAdvantagesGrid({
         </Card>
       ))}
     </div>
+    </TooltipProvider>
   );
 }
