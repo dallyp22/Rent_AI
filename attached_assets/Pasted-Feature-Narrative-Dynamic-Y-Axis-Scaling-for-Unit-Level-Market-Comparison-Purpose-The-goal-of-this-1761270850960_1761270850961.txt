@@ -1,0 +1,43 @@
+Feature Narrative: Dynamic Y-Axis Scaling for Unit-Level Market Comparison
+Purpose
+
+The goal of this feature is to make the Unit-Level Market Comparison chart visually communicate meaningful pricing differences between our units and competitor properties.
+Rather than showing an equalized range that flattens variation, the Y-axis should dynamically zoom into the active data range — allowing viewers to instantly perceive where we lead, lag, or align in the market.
+
+User Story
+
+As a portfolio manager or analyst,
+I want the chart to automatically adjust its Y-axis scale based on the range of unit prices displayed,
+so that I can immediately see how our rents compare to competitors without losing clarity or overemphasizing extremes.
+
+Behavioral Narrative
+
+When the user loads the Unit-Level Market Comparison view:
+
+The system reads all active rent data points (both our units and competitors).
+
+It determines the minimum and maximum rent values currently visible.
+
+The Y-axis dynamically adjusts to a focused range — slightly below the lowest value and slightly above the highest (typically ±5–10%).
+
+This creates a zoomed-in frame where even modest price differences appear visually meaningful.
+
+If the dataset expands (e.g., more units added, or competitor data changes), the Y-axis auto-rescales to maintain this relationship without manual updates.
+
+UX Intent
+
+The chart should visually emphasize competitive positioning without misrepresenting data.
+
+Small but material rent differences ($100–$300) should be clearly visible.
+
+The visual frame should always “feel” balanced — not clipped or exaggerated.
+
+Users should intuitively understand where their property sits in the market at a glance.
+
+Design Logic
+Step	Logic	Example
+1	Detect dataset min/max	min = $950, max = $1,450
+2	Apply buffer	lower bound = min × 0.95 → $902.5; upper bound = max × 1.05 → $1,522.5
+3	Render dynamic axis domain	domain={[dataMin => dataMin * 0.95, dataMax => dataMax * 1.05]}
+4	Format axis labels	$1,000, $1,200, $1,400
+5	Auto-adjust on dataset change	When new data is loaded, recompute range before rendering.
