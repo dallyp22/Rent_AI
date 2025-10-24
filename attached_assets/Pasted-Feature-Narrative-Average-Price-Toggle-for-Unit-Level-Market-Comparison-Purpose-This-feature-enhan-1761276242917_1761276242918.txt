@@ -1,0 +1,119 @@
+Feature Narrative: Average Price Toggle for Unit-Level Market Comparison
+Purpose
+
+This feature enhances the Unit-Level Market Comparison chart by allowing users to toggle between two data perspectives:
+
+Vacancy-Level View: Displays each individual available unit.
+
+Average by Unit Type View: Aggregates and displays the average rent for each unit type (Studio, 1BR, 2BR, 3BR) within each property.
+
+The goal is to help users shift seamlessly between granular vacancy data and higher-level pricing intelligence for strategic comparison.
+
+User Story
+
+As a property manager or analyst,
+I want to toggle between individual unit pricing and averaged unit-type pricing by property,
+so that I can quickly understand both detailed and summarized market positions for my portfolio and competitors.
+
+UX Flow Narrative
+
+Initial State — Vacancies View
+
+When the chart first loads, the default mode displays all vacancies.
+
+Each bar represents an individual vacant unit, grouped by property and color-coded by property name.
+
+The legend indicates which property each color represents.
+
+The X-axis labels display the unit identifiers (e.g., “S1: TipTop Apartments”).
+
+The Y-axis dynamically scales to the visible data, ensuring rent differences are visually distinct.
+
+User Interaction — Toggling the View
+
+The user sees a toggle control at the top of the chart with two options:
+“Vacancies” and “Avg by Unit Type.”
+
+When the user switches to “Avg by Unit Type,” the chart transitions smoothly:
+
+The system groups all units by (Property, Unit Type) pairs.
+
+It calculates the average rent for each pair and replaces individual bars with a summarized bar.
+
+The legend remains property-based for consistency, while the bars within each property display distinct colors for each unit type.
+
+Visual Behavior — Average View
+
+Each property becomes a grouped category on the X-axis.
+
+Within each group, up to four bars appear (Studio, 1BR, 2BR, 3BR), color-coded for clarity.
+
+Bars are spaced evenly within property groups to ensure readability.
+
+Missing unit types (e.g., a property with no Studios) are simply omitted—no empty placeholders.
+
+Hovering over a bar reveals a tooltip showing:
+
+Property name
+
+Unit type
+
+Average monthly rent
+
+Optionally, the number of units contributing to that average (for transparency).
+
+Return to Vacancy-Level View
+
+When toggling back to “Vacancies,” the chart reverts to individual unit bars.
+
+The system restores the original dataset with all available units, keeping the same Y-axis scaling logic and color mapping.
+
+This ensures users can transition freely between detailed and summarized perspectives without losing context.
+
+Data & Technical Behavior
+Mode	Data Source	Aggregation	X-Axis Key	Y-Axis Metric	Example Output
+Vacancies	All available units	None	Unit Identifier	Monthly Rent	“S1: TipTop Apartments – $1,450”
+Avg by Unit Type	Grouped by Property + Unit Type	avg(monthlyRent)	Property Name	Avg Monthly Rent	“TipTop Apartments – 1BR Avg $1,520”
+
+The toggle switches between the raw unit dataset and an aggregated dataset generated in-memory (client-side).
+
+The Y-axis domain dynamically adjusts with each dataset to emphasize visible differences (±5–10% buffer on min/max).
+
+The chart preserves formatting and label style between modes for continuity.
+
+UX Goals
+
+Provide a dual-layer pricing lens: micro (unit-level) and macro (average-level).
+
+Reduce visual clutter while surfacing meaningful comparisons.
+
+Maintain dynamic responsiveness — the chart should adapt gracefully to any data size, from a single property to dozens.
+
+Keep interactions fast, intuitive, and reversible — users should never feel like they “left” a view.
+
+Design Notes
+
+Toggle Placement: Inline above the chart controls, next to “Chart Type” and “Metric.”
+
+Default State: “Vacancies” view active on first load.
+
+Transition: Use smooth bar morphing animation to reinforce continuity between states.
+
+Accessibility: Toggle should be keyboard-navigable and clearly labeled (“View: Vacancies | Avg by Unit Type”).
+
+Legend Behavior:
+
+Remains constant (per property) to maintain orientation.
+
+Tooltip differentiates unit types when in average mode.
+
+Y-Axis Behavior:
+
+Dynamic scaling for both modes using (dataMin * 0.95, dataMax * 1.05) domain.
+
+Labels formatted as $X,XXX for rent or $X.XX for price per square foot.
+
+User Experience Outcome
+
+With this feature, users can toggle between micro detail and macro insights in a single click — seeing not only what’s available but also how each property is priced strategically across unit types.
+The visualization transforms from operational to analytical in one action, supporting both leasing decisions and market benchmarking.
