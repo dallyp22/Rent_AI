@@ -464,6 +464,7 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
         // Session mode - portfolio export
         const sessionData = sessionQuery.data;
         const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
+        const competitorProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'competitor') || [];
         
         if (subjectProperties.length === 0) {
           toast({
@@ -474,13 +475,59 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           return;
         }
 
+        // Fetch competitor units data from scraped-units endpoint
+        let competitorUnits: any[] = [];
+        if (competitorProperties.length > 0) {
+          try {
+            const scrapedUnitsResponse = await apiRequest('GET', `/api/analysis-sessions/${sessionId}/scraped-units`);
+            if (scrapedUnitsResponse.ok) {
+              const scrapedData = await scrapedUnitsResponse.json();
+              
+              // Filter to get only competitor properties
+              const competitorScrapedData = scrapedData.filter((property: any) => {
+                return competitorProperties.some(cp => cp.id === property.propertyId);
+              });
+              
+              // Extract units from competitor properties
+              competitorScrapedData.forEach((property: any) => {
+                if (property.units && Array.isArray(property.units)) {
+                  property.units.forEach((unit: any) => {
+                    competitorUnits.push({
+                      propertyName: property.propertyName,
+                      propertyType: 'Competitor', // Add property type identifier
+                      unitNumber: unit.unitNumber || unit.floorPlanName || 'N/A',
+                      unitType: unit.unitType || 'Unknown',
+                      squareFootage: unit.squareFootage || undefined,
+                      currentRent: unit.rent || 0,
+                      status: unit.availabilityDate?.toLowerCase().includes('available') ? 'available' : 'occupied',
+                      availabilityDate: unit.availabilityDate || null,
+                      // No optimization fields for competitors
+                      tag: undefined,
+                      recommendedRent: undefined,
+                      adjustmentReason: undefined,
+                      change: 0,
+                      annualImpact: 0,
+                      reasoning: 'Market comparison property'
+                    });
+                  });
+                }
+              });
+              
+              console.log(`[EXCEL_EXPORT] Found ${competitorUnits.length} competitor units`);
+            }
+          } catch (error) {
+            console.error('[EXCEL_EXPORT] Failed to fetch competitor units:', error);
+            // Continue without competitor data if fetch fails
+          }
+        }
+
         // For portfolio mode, create a combined export
         const totalUnits = subjectProperties.reduce((sum, p) => sum + (p.totalUnits || 0), 0);
         const portfolioAddress = subjectProperties.length === 1 
           ? subjectProperties[0].address 
           : `Portfolio (${subjectProperties.length} properties)`;
         
-        // Deduplicate units based on propertyProfileId + unitNumber combination
+        // Deduplicate subject units based on propertyProfileId + unitNumber combination
         const uniqueUnitsMap = new Map();
         optimization.units.forEach(unit => {
           const uniqueKey = `${unit.propertyProfileId}_${unit.unitNumber}`;
@@ -488,9 +535,47 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             uniqueUnitsMap.set(uniqueKey, unit);
           }
         });
-        const deduplicatedUnits = Array.from(uniqueUnitsMap.values());
+        const deduplicatedSubjectUnits = Array.from(uniqueUnitsMap.values());
         
-        console.log(`[EXCEL_EXPORT] Deduplicating units: ${optimization.units.length} → ${deduplicatedUnits.length}`);
+        console.log(`[EXCEL_EXPORT] Deduplicating subject units: ${optimization.units.length} → ${deduplicatedSubjectUnits.length}`);
+        
+        // Prepare subject units with optimization data and property type
+        const subjectUnitsData = deduplicatedSubjectUnits.map(unit => {
+          // Use modified price if available, otherwise use recommended rent
+          const adjustedPrice = currentModifiedPrices[unit.id] || 
+            (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
+          const currentRent = parseFloat(unit.currentRent);
+          const change = adjustedPrice - currentRent;
+          
+          // Find the property name for this unit based on propertyProfileId
+          const propertyProfile = sessionData?.propertyProfiles?.find(
+            p => p.id === unit.propertyProfileId
+          );
+          
+          return {
+            propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
+            propertyType: 'Subject', // Add property type identifier
+            unitNumber: unit.unitNumber,
+            tag: unit.tag ?? undefined,
+            unitType: unit.unitType,
+            squareFootage: (unit as any).squareFootage || undefined,
+            currentRent: currentRent,
+            recommendedRent: adjustedPrice,
+            adjustmentReason: unit.adjustmentReason || undefined,
+            change: change,
+            annualImpact: change * 12,
+            status: unit.status,
+            availabilityDate: (unit as any).availabilityDate || null,
+            reasoning: currentModifiedPrices[unit.id] 
+              ? 'User-adjusted pricing recommendation' 
+              : 'AI-generated portfolio optimization recommendation'
+          };
+        });
+        
+        // Combine subject and competitor units
+        const allUnits = [...subjectUnitsData, ...competitorUnits];
+        
+        console.log(`[EXCEL_EXPORT] Total units for export: ${allUnits.length} (${subjectUnitsData.length} subject, ${competitorUnits.length} competitor)`);
         
         exportData = {
           propertyInfo: {
@@ -499,42 +584,14 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             units: totalUnits,
             builtYear: Math.min(...subjectProperties.map(p => p.builtYear || new Date().getFullYear())),
           },
-          units: deduplicatedUnits.map(unit => {
-            // Use modified price if available, otherwise use recommended rent
-            const adjustedPrice = currentModifiedPrices[unit.id] || 
-              (unit.recommendedRent ? parseFloat(unit.recommendedRent) : parseFloat(unit.currentRent));
-            const currentRent = parseFloat(unit.currentRent);
-            const change = adjustedPrice - currentRent;
-            
-            // Find the property name for this unit based on propertyProfileId
-            const propertyProfile = sessionData?.propertyProfiles?.find(
-              p => p.id === unit.propertyProfileId
-            );
-            
-            return {
-              propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
-              unitNumber: unit.unitNumber,
-              tag: unit.tag ?? undefined,
-              unitType: unit.unitType,
-              squareFootage: (unit as any).squareFootage || undefined,
-              currentRent: currentRent,
-              recommendedRent: adjustedPrice,
-              change: change,
-              annualImpact: change * 12,
-              status: unit.status,
-              availabilityDate: (unit as any).availabilityDate || null,
-              reasoning: currentModifiedPrices[unit.id] 
-                ? 'User-adjusted pricing recommendation' 
-                : 'AI-generated portfolio optimization recommendation'
-            };
-          }),
+          units: allUnits,
           summary: (() => {
-            // Recalculate summary based on adjusted prices
+            // Recalculate summary based on adjusted prices (only for subject units, not competitors)
             let totalIncrease = 0;
             let affectedUnits = 0;
             let totalCurrentRent = 0;
             
-            deduplicatedUnits.forEach(unit => {
+            deduplicatedSubjectUnits.forEach(unit => {
               const currentRent = parseFloat(unit.currentRent);
               totalCurrentRent += currentRent;
               

@@ -63,6 +63,7 @@ export interface ExcelExportData {
   };
   units: Array<{
     propertyName?: string;
+    propertyType?: 'Subject' | 'Competitor'; // Add property type to distinguish
     unitNumber: string;
     tag?: string;
     unitType: string;
@@ -107,9 +108,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   
   // Set column widths
   worksheet.columns = [
+    { header: 'Property Type', key: 'propertyType', width: 15 },
+    { header: 'Property', key: 'propertyName', width: 25 },
     { header: 'Unit Number', key: 'unitNumber', width: 15 },
     { header: 'TAG', key: 'tag', width: 20 },
-    { header: 'Property', key: 'propertyName', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
@@ -147,9 +149,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   
   // Add header row for units table
   const headerRow = worksheet.addRow([
+    'Property Type',
+    'Property',
     'Unit Number',
     'TAG',
-    'Property',
     'Unit Type',
     'Square Footage',
     'Current Rent',
@@ -181,58 +184,75 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
   
   // Add unit data with conditional formatting
   data.units.forEach((unit) => {
+    // For competitor properties, show different values in optimization columns
+    const isCompetitor = unit.propertyType === 'Competitor';
+    
     const row = worksheet.addRow([
+      unit.propertyType || 'Subject',
+      unit.propertyName || '',
       unit.unitNumber,
       unit.tag || '-',
-      unit.propertyName || '',
       unit.unitType,
       formatSquareFootage(unit.squareFootage),
       unit.currentRent,
-      unit.recommendedRent || unit.currentRent,
-      unit.adjustmentReason || '',
-      unit.change,
-      unit.annualImpact,
+      isCompetitor ? '-' : (unit.recommendedRent || unit.currentRent),
+      isCompetitor ? '-' : (unit.adjustmentReason || ''),
+      isCompetitor ? '-' : unit.change,
+      isCompetitor ? '-' : unit.annualImpact,
       unit.status,
       formatAvailabilityDate(unit.availabilityDate, unit.status),
       unit.reasoning || 'No additional notes'
     ]);
     
-    // Apply conditional formatting based on change amount
-    const changeCell = row.getCell(9); // Monthly Change column (adjusted after removing Power Score)
-    const impactCell = row.getCell(10); // Annual Impact column (adjusted after removing Power Score)
+    // Apply conditional formatting based on change amount (only for subject properties)
+    const changeCell = row.getCell(10); // Monthly Change column (adjusted for Property Type column)
+    const impactCell = row.getCell(11); // Annual Impact column (adjusted for Property Type column)
     
-    if (unit.change > 0) {
-      // Positive change - green
-      changeCell.font = { color: { argb: 'FF059669' }, bold: true };
-      changeCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFDCFCE7' }
-      };
-      impactCell.font = { color: { argb: 'FF059669' }, bold: true };
-      impactCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFDCFCE7' }
-      };
-    } else if (unit.change < 0) {
-      // Negative change - red
-      changeCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-      changeCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFFEF2F2' }
-      };
-      impactCell.font = { color: { argb: 'FFDC2626' }, bold: true };
-      impactCell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFFEF2F2' }
-      };
-    } else {
-      // No change - gray
-      changeCell.font = { color: { argb: 'FF6B7280' } };
-      impactCell.font = { color: { argb: 'FF6B7280' } };
+    if (!isCompetitor) {
+      if (unit.change > 0) {
+        // Positive change - green
+        changeCell.font = { color: { argb: 'FF059669' }, bold: true };
+        changeCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDCFCE7' }
+        };
+        impactCell.font = { color: { argb: 'FF059669' }, bold: true };
+        impactCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFDCFCE7' }
+        };
+      } else if (unit.change < 0) {
+        // Negative change - red
+        changeCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+        changeCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEF2F2' }
+        };
+        impactCell.font = { color: { argb: 'FFDC2626' }, bold: true };
+        impactCell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFFEF2F2' }
+        };
+      } else {
+        // No change - gray
+        changeCell.font = { color: { argb: 'FF6B7280' } };
+        impactCell.font = { color: { argb: 'FF6B7280' } };
+      }
+    }
+    
+    // Style competitor rows differently (light blue background)
+    if (isCompetitor) {
+      row.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFF0F9FF' } // Light blue for competitor rows
+        };
+      });
     }
     
     // Add borders to all cells
@@ -245,11 +265,13 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       };
     });
     
-    // Format currency cells
-    row.getCell(7).numFmt = '"$"#,##0.00'; // Current Rent (column 7)
-    row.getCell(8).numFmt = '"$"#,##0.00'; // AI Recommended (column 8)
-    row.getCell(10).numFmt = '"$"#,##0.00'; // Monthly Change (column 10)
-    row.getCell(11).numFmt = '"$"#,##0.00'; // Annual Impact (column 11)
+    // Format currency cells (adjusted column indices for Property Type column)
+    row.getCell(7).numFmt = '"$"#,##0.00'; // Current Rent
+    if (!isCompetitor) {
+      row.getCell(8).numFmt = '"$"#,##0.00'; // AI Recommended
+      row.getCell(10).numFmt = '"$"#,##0.00'; // Monthly Change
+      row.getCell(11).numFmt = '"$"#,##0.00'; // Annual Impact
+    }
   });
   
   worksheet.addRow([]);
