@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3, Save } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { ArrowRight, AlertCircle, Loader2, Building2, Home, BarChart3, Save, FileSpreadsheet } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import AnalysisFilters from "@/components/analysis-filters";
 import FilteredAnalysisResults from "@/components/filtered-analysis-results";
 import PropertyFilterSidebar from "@/components/property-filter-sidebar";
@@ -14,6 +14,7 @@ import SaveSelectionTemplateDialog from "@/components/save-selection-template-di
 import { useWorkflowState } from "@/hooks/use-workflow-state";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { exportMarketAnalysisToExcel, type MarketAnalysisExportData, type MarketAnalysisUnit } from "@/lib/market-analysis-excel-export";
 import type { FilterCriteria, FilteredAnalysis, AnalysisSession, PropertyProfile } from "@shared/schema";
 
 // Type for competitive relationships
@@ -46,6 +47,7 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
   const [isInitialized, setIsInitialized] = useState(false);
   const [isDebouncing, setIsDebouncing] = useState(false);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   // Determine session mode and ID based on URL pattern
   const isSessionMode = !!params.sessionId;
@@ -190,6 +192,141 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
       setLocation(`/session/optimize/${params.sessionId}`);
     } else {
       setLocation(`/optimize/${params.id}`);
+    }
+  };
+
+  const handleExportToExcel = async () => {
+    if (!analysisData) {
+      toast({
+        title: "No Data Available",
+        description: "Please wait for the analysis to complete before exporting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsExporting(true);
+
+    try {
+      // Check if optimization data is available
+      let optimizationData = null;
+      try {
+        const optimizationEndpoint = isSessionMode 
+          ? `/api/analysis-sessions/${sessionId}/optimization`
+          : `/api/properties/${sessionId}/optimization`;
+        
+        const optimizationResponse = await apiRequest('GET', optimizationEndpoint);
+        if (optimizationResponse.ok) {
+          optimizationData = await optimizationResponse.json();
+        }
+      } catch (error) {
+        console.log('[EXPORT] No optimization data available, continuing with market analysis only');
+      }
+
+      // Prepare units for export
+      const exportUnits: MarketAnalysisUnit[] = [];
+      
+      // Add subject units
+      analysisData.subjectUnits.forEach(unit => {
+        const optimizedUnit = optimizationData?.units?.find((ou: any) => 
+          ou.unitNumber === unit.unitId || ou.id === unit.unitId
+        );
+        
+        exportUnits.push({
+          propertyType: 'Subject',
+          propertyName: unit.propertyName,
+          unitNumber: unit.unitId,
+          unitType: unit.unitType || '-',
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          squareFootage: unit.squareFootage,
+          currentRent: unit.rent,
+          aiRecommendedPrice: optimizedUnit?.recommendedRent ? parseFloat(optimizedUnit.recommendedRent) : null,
+          newPrice: optimizedUnit?.adjustedRent ? parseFloat(optimizedUnit.adjustedRent) : null,
+          availabilityStatus: unit.availabilityDate ? 'available' : 'occupied',
+          availabilityDate: unit.availabilityDate || null,
+          pricePerSqFt: unit.squareFootage ? unit.rent / unit.squareFootage : null
+        });
+      });
+      
+      // Add competitor units
+      analysisData.competitorUnits.forEach(unit => {
+        exportUnits.push({
+          propertyType: 'Competitor',
+          propertyName: unit.propertyName,
+          unitNumber: unit.unitId,
+          unitType: unit.unitType || '-',
+          bedrooms: unit.bedrooms,
+          bathrooms: unit.bathrooms,
+          squareFootage: unit.squareFootage,
+          currentRent: unit.rent,
+          aiRecommendedPrice: null,
+          newPrice: null,
+          availabilityStatus: unit.availabilityDate ? 'available' : 'occupied',
+          availabilityDate: unit.availabilityDate || null,
+          pricePerSqFt: unit.squareFootage ? unit.rent / unit.squareFootage : null
+        });
+      });
+
+      // Calculate summary statistics
+      const subjectAvgRent = analysisData.subjectUnits.length > 0 
+        ? analysisData.subjectUnits.reduce((sum, u) => sum + u.rent, 0) / analysisData.subjectUnits.length
+        : 0;
+      const competitorAvgRent = analysisData.competitorUnits.length > 0
+        ? analysisData.competitorUnits.reduce((sum, u) => sum + u.rent, 0) / analysisData.competitorUnits.length
+        : 0;
+      
+      const subjectAvgSqFt = analysisData.subjectUnits.filter(u => u.squareFootage).length > 0
+        ? analysisData.subjectUnits.filter(u => u.squareFootage).reduce((sum, u) => sum + (u.squareFootage || 0), 0) / analysisData.subjectUnits.filter(u => u.squareFootage).length
+        : 0;
+      const competitorAvgSqFt = analysisData.competitorUnits.filter(u => u.squareFootage).length > 0
+        ? analysisData.competitorUnits.filter(u => u.squareFootage).reduce((sum, u) => sum + (u.squareFootage || 0), 0) / analysisData.competitorUnits.filter(u => u.squareFootage).length
+        : 0;
+      
+      const marketDifference = subjectAvgRent - competitorAvgRent;
+      const marketDifferencePercent = competitorAvgRent > 0 
+        ? ((subjectAvgRent - competitorAvgRent) / competitorAvgRent) * 100
+        : 0;
+
+      // Prepare export data
+      const exportData: MarketAnalysisExportData = {
+        analysisName: isSessionMode ? `Portfolio Analysis - ${sessionId}` : `Property Analysis - ${sessionId}`,
+        generatedAt: new Date().toLocaleString(),
+        filters: {
+          bedroomTypes: filters.bedroomTypes,
+          priceRange: filters.priceRange,
+          availability: filters.availability,
+          squareFootageRange: filters.squareFootageRange
+        },
+        units: exportUnits,
+        summary: {
+          totalSubjectUnits: analysisData.subjectUnits.length,
+          totalCompetitorUnits: analysisData.competitorUnits.length,
+          avgSubjectRent: subjectAvgRent,
+          avgCompetitorRent: competitorAvgRent,
+          avgSubjectSqFt: subjectAvgSqFt,
+          avgCompetitorSqFt: competitorAvgSqFt,
+          marketDifference: marketDifference,
+          marketDifferencePercent: marketDifferencePercent
+        }
+      };
+
+      // Export to Excel
+      await exportMarketAnalysisToExcel(exportData);
+
+      toast({
+        title: "Export Successful",
+        description: "Market analysis has been exported to Excel.",
+      });
+    } catch (error) {
+      console.error('[EXPORT] Export failed:', error);
+      toast({
+        title: "Export Failed",
+        description: "Failed to export market analysis. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -451,6 +588,25 @@ export default function Analyze({ params }: { params: { id?: string, sessionId?:
                   hasCompetitiveRelationships={hasCompetitiveRelationships}
                   relationshipsError={hasLoadingError ? new Error('Failed to load relationships') : null}
                 />
+                
+                {/* Export Button */}
+                {analysisData && (
+                  <div className="mt-6">
+                    <Button
+                      onClick={handleExportToExcel}
+                      disabled={isExporting}
+                      variant="outline"
+                      className="w-full gap-2 bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
+                      data-testid="button-export-market-analysis"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" />
+                      {isExporting ? "Exporting..." : "Export to Excel"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-2 text-center">
+                      Export all subject and competitor data with AI recommendations
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
