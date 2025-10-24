@@ -275,7 +275,11 @@ export default function InteractiveComparisonChart({
           display: true,
           text: metricType === "unitPrice" ? 'Monthly Rent ($)' : 'Price per Sq Ft ($/sq ft)',
         },
-        min: 0,
+        // Dynamic scaling with 5% buffer for better visualization
+        suggestedMin: undefined, // Let Chart.js calculate based on data
+        suggestedMax: undefined, // Let Chart.js calculate based on data
+        beginAtZero: false, // Don't force zero baseline
+        grace: '5%', // Add 5% padding above and below data range
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
         },
@@ -349,7 +353,11 @@ export default function InteractiveComparisonChart({
             display: true,
             text: metricType === "unitPrice" ? 'Monthly Rent ($)' : 'Price per Sq Ft ($/sq ft)',
           },
-          min: 0,
+          // Dynamic scaling with 5% buffer for better visualization
+          suggestedMin: undefined, // Let Chart.js calculate based on data
+          suggestedMax: undefined, // Let Chart.js calculate based on data
+          beginAtZero: false, // Don't force zero baseline
+          grace: '5%', // Add 5% padding above and below data range
           grid: {
             color: 'rgba(0, 0, 0, 0.05)',
           },
