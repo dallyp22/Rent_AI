@@ -73,7 +73,13 @@ export default function MarketPositionGauge({
               <span className="text-sm text-muted-foreground">Market Percentile</span>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  <button 
+                    type="button"
+                    className="inline-flex items-center justify-center rounded-md hover:bg-accent hover:text-accent-foreground"
+                    aria-label="Market Percentile explanation"
+                  >
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </button>
                 </TooltipTrigger>
                 <TooltipContent side="right" className="max-w-xs p-3 space-y-2">
                   <div className="font-medium">How Market Percentile is calculated:</div>
