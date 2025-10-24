@@ -51,7 +51,8 @@ export default function MarketPositionGauge({
   const positionLabel = getPositionLabel(percentileRank);
 
   return (
-    <Card data-testid="market-position-gauge">
+    <TooltipProvider>
+      <Card data-testid="market-position-gauge">
       <CardHeader className="pb-4">
         <CardTitle className="flex items-center justify-between">
           <span>Market Position</span>
@@ -70,25 +71,23 @@ export default function MarketPositionGauge({
           <div className="flex justify-between items-center mb-2">
             <div className="flex items-center gap-1">
               <span className="text-sm text-muted-foreground">Market Percentile</span>
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent side="right" className="max-w-xs p-3 space-y-2">
-                    <div className="font-medium">How Market Percentile is calculated:</div>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>Shows where your property's average rent sits compared to all competitors.</p>
-                      <p className="pt-1">• <strong>0%</strong> = Your rent is the lowest (all competitors charge more)</p>
-                      <p>• <strong>50%</strong> = Your rent is in the middle (half charge more, half charge less)</p>
-                      <p>• <strong>100%</strong> = Your rent is the highest (all competitors charge less)</p>
-                    </div>
-                    <div className="text-xs text-muted-foreground pt-2 italic">
-                      Example: If 3 out of 10 competitors charge less than you, you're at 30%
-                    </div>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                </TooltipTrigger>
+                <TooltipContent side="right" className="max-w-xs p-3 space-y-2">
+                  <div className="font-medium">How Market Percentile is calculated:</div>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>Shows where your property's average rent sits compared to all competitors.</p>
+                    <p className="pt-1">• <strong>0%</strong> = Your rent is the lowest (all competitors charge more)</p>
+                    <p>• <strong>50%</strong> = Your rent is in the middle (half charge more, half charge less)</p>
+                    <p>• <strong>100%</strong> = Your rent is the highest (all competitors charge less)</p>
+                  </div>
+                  <div className="text-xs text-muted-foreground pt-2 italic">
+                    Example: If 3 out of 10 competitors charge less than you, you're at 30%
+                  </div>
+                </TooltipContent>
+              </Tooltip>
             </div>
             <div className={`flex items-center gap-1 ${positionColor}`}>
               {positionIcon}
@@ -144,5 +143,6 @@ export default function MarketPositionGauge({
         </div>
       </CardContent>
     </Card>
+    </TooltipProvider>
   );
 }
