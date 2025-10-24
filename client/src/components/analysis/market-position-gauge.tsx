@@ -1,7 +1,13 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@/components/ui/tooltip";
+import { TrendingUp, TrendingDown, Minus, Info } from "lucide-react";
 
 interface MarketPositionGaugeProps {
   percentileRank: number;
@@ -62,7 +68,28 @@ export default function MarketPositionGauge({
         {/* Percentile Gauge */}
         <div className="relative">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-sm text-muted-foreground">Market Percentile</span>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground">Market Percentile</span>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                  </TooltipTrigger>
+                  <TooltipContent side="right" className="max-w-xs p-3 space-y-2">
+                    <div className="font-medium">How Market Percentile is calculated:</div>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>Shows where your property's average rent sits compared to all competitors.</p>
+                      <p className="pt-1">• <strong>0%</strong> = Your rent is the lowest (all competitors charge more)</p>
+                      <p>• <strong>50%</strong> = Your rent is in the middle (half charge more, half charge less)</p>
+                      <p>• <strong>100%</strong> = Your rent is the highest (all competitors charge less)</p>
+                    </div>
+                    <div className="text-xs text-muted-foreground pt-2 italic">
+                      Example: If 3 out of 10 competitors charge less than you, you're at 30%
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
             <div className={`flex items-center gap-1 ${positionColor}`}>
               {positionIcon}
               <span className="text-2xl font-bold" data-testid="percentile-value">
