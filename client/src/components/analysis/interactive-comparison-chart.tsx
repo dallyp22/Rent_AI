@@ -42,9 +42,10 @@ export default function InteractiveComparisonChart({
   isLoading = false,
   selectedBedroomTypes = []
 }: InteractiveComparisonChartProps) {
-  // State for chart type and metric type
+  // State for chart type, metric type, and display mode
   const [chartType, setChartType] = useState<"scatter" | "bar">("scatter");
   const [metricType, setMetricType] = useState<"unitPrice" | "pricePerSqFt">("unitPrice");
+  const [displayMode, setDisplayMode] = useState<"vacancies" | "avgByUnitType">("vacancies");
 
   // Calculate price per sq ft for a unit
   const getPricePerSqFt = (unit: UnitComparison) => {
@@ -56,6 +57,44 @@ export default function InteractiveComparisonChart({
   // Truncate property name for bar chart labels
   const truncatePropertyName = (name: string, maxLength: number = 15) => {
     return name.length > maxLength ? name.substring(0, maxLength) + '...' : name;
+  };
+
+  // Group units by property and unit type for average mode
+  const groupUnitsByPropertyAndType = (units: UnitComparison[]) => {
+    const grouped = new Map<string, Map<string, UnitComparison[]>>();
+    
+    units.forEach(unit => {
+      if (!grouped.has(unit.propertyName)) {
+        grouped.set(unit.propertyName, new Map());
+      }
+      const propertyGroup = grouped.get(unit.propertyName)!;
+      
+      // Normalize unit type (e.g., "1BR", "1 BR", "1 Bedroom" -> "1BR")
+      const unitType = unit.unitType?.replace(/\s+/g, '').replace(/Bedroom/i, 'BR')
+                       || `${unit.bedrooms}BR`;
+      
+      if (!propertyGroup.has(unitType)) {
+        propertyGroup.set(unitType, []);
+      }
+      propertyGroup.get(unitType)!.push(unit);
+    });
+    
+    return grouped;
+  };
+
+  // Calculate average unit data for a group
+  const calculateAverageUnit = (units: UnitComparison[]): UnitComparison & { unitCount: number } => {
+    const avgRent = units.reduce((sum, u) => sum + u.rent, 0) / units.length;
+    const avgSqFt = units.filter(u => u.squareFootage).reduce((sum, u) => sum + (u.squareFootage || 0), 0) / 
+                   units.filter(u => u.squareFootage).length || 0;
+    const firstUnit = units[0];
+    
+    return {
+      ...firstUnit,
+      rent: avgRent,
+      squareFootage: avgSqFt || null,
+      unitCount: units.length
+    };
   };
 
   // Color palette for competitor properties (20 distinct colors)
@@ -92,72 +131,151 @@ export default function InteractiveComparisonChart({
       ? competitorUnits.filter(unit => getPricePerSqFt(unit) !== null)
       : competitorUnits;
     
-    // Group competitor units by property name
-    const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
-    filteredCompetitorUnits.forEach(unit => {
-      if (!competitorsByProperty.has(unit.propertyName)) {
-        competitorsByProperty.set(unit.propertyName, []);
+    if (displayMode === "avgByUnitType") {
+      // Group units by property and unit type
+      const subjectGroups = groupUnitsByPropertyAndType(filteredSubjectUnits);
+      const competitorGroups = groupUnitsByPropertyAndType(filteredCompetitorUnits);
+      
+      // Create averaged units
+      const avgSubjectUnits: any[] = [];
+      const avgCompetitorUnits: any[] = [];
+      
+      subjectGroups.forEach((unitTypes, propertyName) => {
+        unitTypes.forEach((units, unitType) => {
+          const avgUnit = calculateAverageUnit(units);
+          avgSubjectUnits.push({ ...avgUnit, propertyName, unitType, isSubject: true });
+        });
+      });
+      
+      competitorGroups.forEach((unitTypes, propertyName) => {
+        unitTypes.forEach((units, unitType) => {
+          const avgUnit = calculateAverageUnit(units);
+          avgCompetitorUnits.push({ ...avgUnit, propertyName, unitType, isSubject: false });
+        });
+      });
+      
+      // Sort by property name and then unit type for consistent ordering
+      const allAvgUnits = [...avgSubjectUnits, ...avgCompetitorUnits].sort((a, b) => {
+        const propCompare = a.propertyName.localeCompare(b.propertyName);
+        if (propCompare !== 0) return propCompare;
+        return a.unitType.localeCompare(b.unitType);
+      });
+      
+      // Create labels for averaged data
+      const barLabels = allAvgUnits.map(unit => 
+        `${truncatePropertyName(unit.propertyName, 12)} - ${unit.unitType}`
+      );
+      
+      // Group by property for datasets
+      const unitsByProperty = new Map<string, typeof allAvgUnits>();
+      allAvgUnits.forEach(unit => {
+        if (!unitsByProperty.has(unit.propertyName)) {
+          unitsByProperty.set(unit.propertyName, []);
+        }
+        unitsByProperty.get(unit.propertyName)!.push(unit);
+      });
+      
+      // Create datasets - one per property
+      const datasets: any[] = [];
+      let colorIndex = 0;
+      
+      unitsByProperty.forEach((units, propertyName) => {
+        const isSubject = units.some(u => u.isSubject);
+        const color = isSubject 
+          ? { bg: 'rgba(59, 130, 246, 0.6)', border: 'rgba(59, 130, 246, 1)' }
+          : competitorColorPalette[colorIndex % competitorColorPalette.length];
+        
+        datasets.push({
+          label: truncatePropertyName(propertyName, 25),
+          data: allAvgUnits.map(unit => 
+            units.includes(unit) 
+              ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
+              : null
+          ),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          borderWidth: isSubject ? 2 : 1,
+          categoryPercentage: 0.8,
+          barPercentage: 0.9,
+          unitData: allAvgUnits // Store for tooltip
+        });
+        
+        if (!isSubject) colorIndex++;
+      });
+      
+      return {
+        labels: barLabels,
+        datasets,
+      };
+    } else {
+      // Original code for individual units (vacancies mode)
+      // Group competitor units by property name
+      const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
+      filteredCompetitorUnits.forEach(unit => {
+        if (!competitorsByProperty.has(unit.propertyName)) {
+          competitorsByProperty.set(unit.propertyName, []);
+        }
+        competitorsByProperty.get(unit.propertyName)!.push(unit);
+      });
+
+      // Get unique subject property names
+      const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
+      const subjectPropertyName = subjectPropertyNames.size === 1 
+        ? Array.from(subjectPropertyNames)[0] 
+        : 'Your Properties';
+      
+      const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
+      const barLabels = allUnits.map((unit, index) => {
+        const prefix = filteredSubjectUnits.includes(unit) ? 'S' : 'C';
+        return `${prefix}${index + 1}: ${truncatePropertyName(unit.propertyName)}`;
+      });
+
+      // Create datasets - one for subject property, one for each competitor property
+      const datasets = [];
+      
+      // Add subject property dataset
+      if (filteredSubjectUnits.length > 0) {
+        datasets.push({
+          label: truncatePropertyName(subjectPropertyName, 25),
+          data: allUnits.map(unit => 
+            filteredSubjectUnits.includes(unit) 
+              ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
+              : null
+          ),
+          backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2,
+          categoryPercentage: 0.8,
+          barPercentage: 0.9,
+        });
       }
-      competitorsByProperty.get(unit.propertyName)!.push(unit);
-    });
 
-    // Get unique subject property names
-    const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
-    const subjectPropertyName = subjectPropertyNames.size === 1 
-      ? Array.from(subjectPropertyNames)[0] 
-      : 'Your Properties';
-    
-    const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
-    const barLabels = allUnits.map((unit, index) => {
-      const prefix = filteredSubjectUnits.includes(unit) ? 'S' : 'C';
-      return `${prefix}${index + 1}: ${truncatePropertyName(unit.propertyName)}`;
-    });
-
-    // Create datasets - one for subject property, one for each competitor property
-    const datasets = [];
-    
-    // Add subject property dataset
-    if (filteredSubjectUnits.length > 0) {
-      datasets.push({
-        label: truncatePropertyName(subjectPropertyName, 25),
-        data: allUnits.map(unit => 
-          filteredSubjectUnits.includes(unit) 
-            ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
-            : null
-        ),
-        backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
-        borderColor: 'rgba(59, 130, 246, 1)',
-        borderWidth: 2,
-        categoryPercentage: 0.8,
-        barPercentage: 0.9,
+      // Add competitor property datasets with unique colors
+      let colorIndex = 0;
+      competitorsByProperty.forEach((units, propertyName) => {
+        const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
+        datasets.push({
+          label: truncatePropertyName(propertyName, 25),
+          data: allUnits.map(unit => 
+            units.includes(unit) 
+              ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
+              : null
+          ),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          borderWidth: 1,
+          categoryPercentage: 0.8,
+          barPercentage: 0.9,
+        });
+        colorIndex++;
       });
+
+      return {
+        labels: barLabels,
+        datasets,
+      };
     }
-
-    // Add competitor property datasets with unique colors
-    let colorIndex = 0;
-    competitorsByProperty.forEach((units, propertyName) => {
-      const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
-      datasets.push({
-        label: truncatePropertyName(propertyName, 25),
-        data: allUnits.map(unit => 
-          units.includes(unit) 
-            ? (metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit))
-            : null
-        ),
-        backgroundColor: color.bg,
-        borderColor: color.border,
-        borderWidth: 1,
-        categoryPercentage: 0.8,
-        barPercentage: 0.9,
-      });
-      colorIndex++;
-    });
-
-    return {
-      labels: barLabels,
-      datasets,
-    };
-  }, [subjectUnits, competitorUnits, metricType]);
+  }, [subjectUnits, competitorUnits, metricType, displayMode]);
 
   const scatterData = useMemo(() => {
     const datasets: any[] = [];
@@ -170,66 +288,149 @@ export default function InteractiveComparisonChart({
       ? competitorUnits.filter(unit => getPricePerSqFt(unit) !== null)
       : competitorUnits;
 
-    // Get unique subject property names for labeling
-    const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
-    const subjectPropertyLabel = subjectPropertyNames.size === 1 
-      ? Array.from(subjectPropertyNames)[0] 
-      : 'Your Properties';
-
-    // Group competitor units by property name
-    const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
-    filteredCompetitorUnits.forEach(unit => {
-      if (!competitorsByProperty.has(unit.propertyName)) {
-        competitorsByProperty.set(unit.propertyName, []);
+    if (displayMode === "avgByUnitType") {
+      // Group units by property and unit type for average mode
+      const subjectGroups = groupUnitsByPropertyAndType(filteredSubjectUnits);
+      const competitorGroups = groupUnitsByPropertyAndType(filteredCompetitorUnits);
+      
+      // Process subject properties
+      let allSubjectAvgUnits: any[] = [];
+      subjectGroups.forEach((unitTypes, propertyName) => {
+        unitTypes.forEach((units, unitType) => {
+          const avgUnit = calculateAverageUnit(units);
+          allSubjectAvgUnits.push({ 
+            ...avgUnit, 
+            propertyName, 
+            unitType,
+            isSubject: true 
+          });
+        });
+      });
+      
+      // Get unique subject property names for labeling
+      const subjectPropertyNames = new Set(allSubjectAvgUnits.map(u => u.propertyName));
+      const subjectPropertyLabel = subjectPropertyNames.size === 1 
+        ? Array.from(subjectPropertyNames)[0] 
+        : 'Your Properties';
+      
+      // Add subject dataset
+      if (allSubjectAvgUnits.length > 0) {
+        datasets.push({
+          label: `${truncatePropertyName(subjectPropertyLabel, 25)} (Avg)`,
+          data: allSubjectAvgUnits.map(unit => ({
+            x: unit.squareFootage || 0,
+            y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+            unitInfo: unit
+          })),
+          backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2,
+          pointStyle: 'circle',
+          pointRadius: (context: any) => {
+            const unit = context.raw?.unitInfo;
+            // Larger radius for averaged data to show importance
+            return unit ? 6 + Math.min(unit.unitCount * 0.5, 6) : 8;
+          },
+        });
       }
-      competitorsByProperty.get(unit.propertyName)!.push(unit);
-    });
+      
+      // Add competitor property datasets
+      let colorIndex = 0;
+      competitorGroups.forEach((unitTypes, propertyName) => {
+        const propertyAvgUnits: any[] = [];
+        unitTypes.forEach((units, unitType) => {
+          const avgUnit = calculateAverageUnit(units);
+          propertyAvgUnits.push({ 
+            ...avgUnit, 
+            propertyName, 
+            unitType,
+            isSubject: false 
+          });
+        });
+        
+        const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
+        datasets.push({
+          label: `${truncatePropertyName(propertyName, 25)} (Avg)`,
+          data: propertyAvgUnits.map(unit => ({
+            x: unit.squareFootage || 0,
+            y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+            unitInfo: unit
+          })),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          borderWidth: 1,
+          pointStyle: 'circle',
+          pointRadius: (context: any) => {
+            const unit = context.raw?.unitInfo;
+            // Larger radius for averaged data to show importance
+            return unit ? 6 + Math.min(unit.unitCount * 0.5, 6) : 8;
+          },
+        });
+        colorIndex++;
+      });
+    } else {
+      // Original code for individual units (vacancies mode)
+      // Get unique subject property names for labeling
+      const subjectPropertyNames = new Set(filteredSubjectUnits.map(u => u.propertyName));
+      const subjectPropertyLabel = subjectPropertyNames.size === 1 
+        ? Array.from(subjectPropertyNames)[0] 
+        : 'Your Properties';
 
-    // Add subject property dataset (all subject properties in one blue dataset)
-    if (filteredSubjectUnits.length > 0) {
-      datasets.push({
-        label: truncatePropertyName(subjectPropertyLabel, 25),
-        data: filteredSubjectUnits.map(unit => ({
-          x: unit.squareFootage || 0,
-          y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
-          unitInfo: unit
-        })),
-        backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
-        borderColor: 'rgba(59, 130, 246, 1)',
-        borderWidth: 2,
-        pointStyle: 'circle',
-        pointRadius: (context: any) => {
-          const unit = context.raw?.unitInfo;
-          return unit ? 4 + (unit.bedrooms * 2) : 6;
-        },
+      // Group competitor units by property name
+      const competitorsByProperty = new Map<string, typeof filteredCompetitorUnits>();
+      filteredCompetitorUnits.forEach(unit => {
+        if (!competitorsByProperty.has(unit.propertyName)) {
+          competitorsByProperty.set(unit.propertyName, []);
+        }
+        competitorsByProperty.get(unit.propertyName)!.push(unit);
+      });
+
+      // Add subject property dataset (all subject properties in one blue dataset)
+      if (filteredSubjectUnits.length > 0) {
+        datasets.push({
+          label: truncatePropertyName(subjectPropertyLabel, 25),
+          data: filteredSubjectUnits.map(unit => ({
+            x: unit.squareFootage || 0,
+            y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+            unitInfo: unit
+          })),
+          backgroundColor: 'rgba(59, 130, 246, 0.6)', // Blue for subject
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 2,
+          pointStyle: 'circle',
+          pointRadius: (context: any) => {
+            const unit = context.raw?.unitInfo;
+            return unit ? 4 + (unit.bedrooms * 2) : 6;
+          },
+        });
+      }
+
+      // Add competitor property datasets with unique colors
+      let colorIndex = 0;
+      competitorsByProperty.forEach((units, propertyName) => {
+        const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
+        datasets.push({
+          label: truncatePropertyName(propertyName, 25),
+          data: units.map(unit => ({
+            x: unit.squareFootage || 0,
+            y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
+            unitInfo: unit
+          })),
+          backgroundColor: color.bg,
+          borderColor: color.border,
+          borderWidth: 1,
+          pointStyle: 'circle',
+          pointRadius: (context: any) => {
+            const unit = context.raw?.unitInfo;
+            return unit ? 4 + (unit.bedrooms * 2) : 6;
+          },
+        });
+        colorIndex++;
       });
     }
 
-    // Add competitor property datasets with unique colors
-    let colorIndex = 0;
-    competitorsByProperty.forEach((units, propertyName) => {
-      const color = competitorColorPalette[colorIndex % competitorColorPalette.length];
-      datasets.push({
-        label: truncatePropertyName(propertyName, 25),
-        data: units.map(unit => ({
-          x: unit.squareFootage || 0,
-          y: metricType === "unitPrice" ? unit.rent : getPricePerSqFt(unit),
-          unitInfo: unit
-        })),
-        backgroundColor: color.bg,
-        borderColor: color.border,
-        borderWidth: 1,
-        pointStyle: 'circle',
-        pointRadius: (context: any) => {
-          const unit = context.raw?.unitInfo;
-          return unit ? 4 + (unit.bedrooms * 2) : 6;
-        },
-      });
-      colorIndex++;
-    });
-
     return { datasets };
-  }, [subjectUnits, competitorUnits, metricType]);
+  }, [subjectUnits, competitorUnits, metricType, displayMode]);
 
   const scatterOptions = useMemo(() => ({
     responsive: true,
@@ -246,15 +447,30 @@ export default function InteractiveComparisonChart({
           label: function(context: any) {
             const unitInfo = context.raw.unitInfo;
             const pricePerSqFt = getPricePerSqFt(unitInfo);
-            return [
-              `Property: ${unitInfo.propertyName}`,
-              `Type: ${unitInfo.unitType}`,
-              `Rent: $${unitInfo.rent.toLocaleString()}`,
-              `Size: ${unitInfo.squareFootage || 'N/A'} sq ft`,
-              `Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
-              `Bedrooms: ${unitInfo.bedrooms}`,
-              `Bathrooms: ${unitInfo.bathrooms || 'N/A'}`
-            ];
+            
+            if (displayMode === "avgByUnitType" && unitInfo.unitCount) {
+              // Average mode tooltip
+              return [
+                `Property: ${unitInfo.propertyName}`,
+                `Unit Type: ${unitInfo.unitType}`,
+                `Avg Rent: $${Math.round(unitInfo.rent).toLocaleString()}`,
+                `Avg Size: ${unitInfo.squareFootage ? `${Math.round(unitInfo.squareFootage)} sq ft` : 'N/A'}`,
+                `Avg Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
+                `Units Averaged: ${unitInfo.unitCount}`,
+                `Bedrooms: ${unitInfo.bedrooms}`
+              ];
+            } else {
+              // Vacancies mode tooltip
+              return [
+                `Property: ${unitInfo.propertyName}`,
+                `Type: ${unitInfo.unitType}`,
+                `Rent: $${unitInfo.rent.toLocaleString()}`,
+                `Size: ${unitInfo.squareFootage || 'N/A'} sq ft`,
+                `Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
+                `Bedrooms: ${unitInfo.bedrooms}`,
+                `Bathrooms: ${unitInfo.bathrooms || 'N/A'}`
+              ];
+            }
           }
         }
       }
@@ -292,7 +508,7 @@ export default function InteractiveComparisonChart({
         }
       }
     }
-  }), [metricType]);
+  }), [metricType, displayMode]);
 
   const barOptions = useMemo(() => {
     const filteredSubjectUnits = metricType === "pricePerSqFt" 
@@ -301,7 +517,16 @@ export default function InteractiveComparisonChart({
     const filteredCompetitorUnits = metricType === "pricePerSqFt"
       ? competitorUnits.filter(unit => getPricePerSqFt(unit) !== null)
       : competitorUnits;
-    const allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
+    
+    let allUnits: any[] = [];
+    
+    if (displayMode === "avgByUnitType") {
+      // For average mode, use the unitData stored in datasets
+      // We'll retrieve this from the context
+      allUnits = []; // Will be populated from context
+    } else {
+      allUnits = [...filteredSubjectUnits, ...filteredCompetitorUnits];
+    }
     
     return {
       responsive: true,
@@ -316,18 +541,39 @@ export default function InteractiveComparisonChart({
         tooltip: {
           callbacks: {
             label: function(context: any) {
-              const index = context.dataIndex;
-              const unit = allUnits[index];
-              const pricePerSqFt = getPricePerSqFt(unit);
-              return [
-                `Property: ${unit.propertyName}`,
-                `Type: ${unit.unitType}`,
-                `Rent: $${unit.rent.toLocaleString()}`,
-                `Size: ${unit.squareFootage || 'N/A'} sq ft`,
-                `Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
-                `Bedrooms: ${unit.bedrooms}`,
-                `Bathrooms: ${unit.bathrooms || 'N/A'}`
-              ];
+              if (displayMode === "avgByUnitType") {
+                // In average mode, get the unit from the dataset's unitData
+                const unit = context.dataset.unitData?.[context.dataIndex];
+                if (unit) {
+                  const pricePerSqFt = getPricePerSqFt(unit);
+                  return [
+                    `Property: ${unit.propertyName}`,
+                    `Unit Type: ${unit.unitType}`,
+                    `Avg Rent: $${Math.round(unit.rent).toLocaleString()}`,
+                    `Avg Size: ${unit.squareFootage ? `${Math.round(unit.squareFootage)} sq ft` : 'N/A'}`,
+                    `Avg Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
+                    `Units Averaged: ${unit.unitCount}`,
+                    `Bedrooms: ${unit.bedrooms}`
+                  ];
+                }
+              } else {
+                // In vacancies mode
+                const index = context.dataIndex;
+                const unit = [...filteredSubjectUnits, ...filteredCompetitorUnits][index];
+                if (unit) {
+                  const pricePerSqFt = getPricePerSqFt(unit);
+                  return [
+                    `Property: ${unit.propertyName}`,
+                    `Type: ${unit.unitType}`,
+                    `Rent: $${unit.rent.toLocaleString()}`,
+                    `Size: ${unit.squareFootage || 'N/A'} sq ft`,
+                    `Price/SqFt: ${pricePerSqFt !== null ? `$${pricePerSqFt.toFixed(2)}` : 'N/A'}`,
+                    `Bedrooms: ${unit.bedrooms}`,
+                    `Bathrooms: ${unit.bathrooms || 'N/A'}`
+                  ];
+                }
+              }
+              return [];
             }
           }
         }
@@ -371,7 +617,7 @@ export default function InteractiveComparisonChart({
         }
       }
     };
-  }, [subjectUnits, competitorUnits, metricType]);
+  }, [subjectUnits, competitorUnits, metricType, displayMode]);
 
   // Calculate summary statistics
   const totalUnits = subjectUnits.length + competitorUnits.length;
@@ -430,7 +676,7 @@ export default function InteractiveComparisonChart({
           </div>
           
           {/* Chart Controls */}
-          <div className="flex gap-4 items-center">
+          <div className="flex gap-4 items-center flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium">Chart Type:</span>
               <ToggleGroup 
@@ -461,6 +707,23 @@ export default function InteractiveComparisonChart({
                 </ToggleGroupItem>
                 <ToggleGroupItem value="pricePerSqFt" aria-label="Price per sq ft" data-testid="toggle-price-per-sqft">
                   Price per Sq Ft
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">Display:</span>
+              <ToggleGroup 
+                type="single" 
+                value={displayMode} 
+                onValueChange={(value) => value && setDisplayMode(value as "vacancies" | "avgByUnitType")}
+                data-testid="toggle-display-mode"
+              >
+                <ToggleGroupItem value="vacancies" aria-label="Individual units" data-testid="toggle-vacancies">
+                  Vacancies
+                </ToggleGroupItem>
+                <ToggleGroupItem value="avgByUnitType" aria-label="Average by unit type" data-testid="toggle-avg-by-unit-type">
+                  Avg by Unit Type
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>
@@ -529,9 +792,13 @@ export default function InteractiveComparisonChart({
 
             {/* Chart Legend Info */}
             <div className="mt-4 text-xs text-muted-foreground text-center">
-              {chartType === "scatter" 
-                ? "Bubble size represents bedroom count. Hover over points for detailed unit information."
-                : "Each property has its own color. S = Subject (Your) Units, C = Competitor Units. Hover over bars for detailed information."}
+              {displayMode === "avgByUnitType" 
+                ? chartType === "scatter" 
+                  ? "Bubble size represents number of units averaged. Hover over points for average unit information by type."
+                  : "Bars show average rent by unit type for each property. Hover over bars for detailed average information."
+                : chartType === "scatter" 
+                  ? "Bubble size represents bedroom count. Hover over points for detailed unit information."
+                  : "Each property has its own color. S = Subject (Your) Units, C = Competitor Units. Hover over bars for detailed information."}
             </div>
           </>
         ) : (
