@@ -1181,7 +1181,14 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                           <div className="text-right">
                             <div className="text-lg font-bold">{propertyData.totalUnits} Total Units</div>
                             <div className="text-sm text-muted-foreground">
-                              {propertyData.availableUnits} available • {propertyData.vacancyRate >= 0 ? `${propertyData.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
+                              {propertyData.availableUnits} available • 
+                              <span className={`font-medium ${
+                                propertyData.vacancyRate >= 6 
+                                  ? 'text-red-600 dark:text-red-400' 
+                                  : ''
+                              }`}>
+                                {propertyData.vacancyRate >= 0 ? `${propertyData.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1437,9 +1444,11 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                             <div className="text-xs text-muted-foreground">{property.availableUnits} vacant</div>
                           </div>
                           <div className={`px-2 py-1 rounded text-xs font-medium ${
-                            property.vacancyRate < sessionVacancyQuery.data.portfolioMetrics.competitorAvgVacancy
+                            property.vacancyRate >= 6
+                              ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200 animate-pulse-danger'
+                              : property.vacancyRate < sessionVacancyQuery.data.portfolioMetrics.competitorAvgVacancy
                               ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-                              : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
                           }`}>
                             {property.vacancyRate >= 0 ? `${property.vacancyRate.toFixed(1)}% vacancy` : 'Vacancy N/A'}
                           </div>
