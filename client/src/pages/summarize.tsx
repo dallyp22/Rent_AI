@@ -7,8 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home, Save, Filter } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, CheckCircle, XCircle, Download, TrendingUp, TrendingDown, AlertCircle, BarChart3, Building2, Home, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import CompetitorSelection from "@/components/competitor-selection";
@@ -17,7 +16,6 @@ import UnitListingsTable from "@/components/unit-listings-table";
 import SaveSelectionTemplateDialog from "@/components/save-selection-template-dialog";
 import { ScrapingProgressModal } from "@/components/scraping-progress-modal";
 import { useWorkflowState } from "@/hooks/use-workflow-state";
-import { BedroomFilter } from "@/components/bedroom-filter";
 import type { Property, PropertyAnalysis, ScrapedProperty, AnalysisSession, PropertyProfile, ScrapedUnit } from "@shared/schema";
 
 interface PropertyWithAnalysis {
@@ -417,32 +415,19 @@ const organizeLegacyUnitsByProperty = (vacancyData: VacancyData): PropertyUnitsO
 };
 
 // Component for rendering bedroom tabs with unit counts
-const BedroomTabsView = ({ 
-  propertyData, 
-  selectedBedroomTypes 
-}: { 
-  propertyData: PropertyUnitsOrganized; 
-  selectedBedroomTypes?: string[]; 
-}) => {
-  // Filter bedroom types based on selected types
-  const filteredBedroomTypes = selectedBedroomTypes 
-    ? propertyData.bedroomTypes.filter(bt => selectedBedroomTypes.includes(bt.type))
-    : propertyData.bedroomTypes;
-
-  if (!filteredBedroomTypes.length) {
+const BedroomTabsView = ({ propertyData }: { propertyData: PropertyUnitsOrganized }) => {
+  if (!propertyData.bedroomTypes.length) {
     return (
       <div className="text-center py-8 text-muted-foreground">
-        {selectedBedroomTypes && selectedBedroomTypes.length > 0 
-          ? "No units available for selected bedroom types"
-          : "No unit data available for this property"}
+        No unit data available for this property
       </div>
     );
   }
 
   return (
-    <Tabs defaultValue={filteredBedroomTypes[0]?.displayKey} className="w-full">
-      <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${filteredBedroomTypes.length}, 1fr)` }}>
-        {filteredBedroomTypes.map((bedroomType) => (
+    <Tabs defaultValue={propertyData.bedroomTypes[0]?.displayKey} className="w-full">
+      <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${propertyData.bedroomTypes.length}, 1fr)` }}>
+        {propertyData.bedroomTypes.map((bedroomType) => (
           <TabsTrigger 
             key={bedroomType.displayKey} 
             value={bedroomType.displayKey}
@@ -453,7 +438,7 @@ const BedroomTabsView = ({
         ))}
       </TabsList>
       
-      {filteredBedroomTypes.map((bedroomType) => (
+      {propertyData.bedroomTypes.map((bedroomType) => (
         <TabsContent key={bedroomType.displayKey} value={bedroomType.displayKey} className="mt-4">
           <div className="space-y-4">
             {/* Bedroom Type Metrics */}
@@ -583,8 +568,6 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   const [showVacancyChart, setShowVacancyChart] = useState(false);
   const [isSaveTemplateDialogOpen, setIsSaveTemplateDialogOpen] = useState(false);
   const [isScrapingModalOpen, setIsScrapingModalOpen] = useState(false);
-  const [selectedBedroomTypes, setSelectedBedroomTypes] = useState<string[]>(['1BR', '2BR', '3BR']);
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const { toast } = useToast();
   
   // Determine the current mode and ID - use immediate detection instead of useEffect
@@ -1076,90 +1059,8 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
   const subjectProperties = sessionData?.propertyProfiles?.filter(p => p.profileType === 'subject') || [];
   const competitorProfiles = sessionData?.propertyProfiles?.filter(p => p.profileType === 'competitor') || [];
 
-  // Calculate bedroom counts across all properties
-  const calculateBedroomCounts = () => {
-    const counts: Record<string, number> = {
-      '1BR': 0,
-      '2BR': 0,
-      '3BR': 0
-    };
-
-    // For session mode - count from scraped units
-    if (isSessionMode && scrapedUnitsQuery.data) {
-      const organizedData = organizeUnitsByProperty(scrapedUnitsQuery.data, sessionData);
-      organizedData.forEach(property => {
-        property.bedroomTypes.forEach(bedroomType => {
-          if (bedroomType.type === '1BR') counts['1BR'] += bedroomType.totalUnits || 0;
-          if (bedroomType.type === '2BR') counts['2BR'] += bedroomType.totalUnits || 0;
-          if (bedroomType.type === '3BR') counts['3BR'] += bedroomType.totalUnits || 0;
-        });
-      });
-    }
-    // For legacy mode - count from vacancy data
-    else if (!isSessionMode && vacancyQuery.data) {
-      const legacyData = organizeLegacyUnitsByProperty(vacancyQuery.data);
-      legacyData.forEach(property => {
-        property.bedroomTypes.forEach(bedroomType => {
-          if (bedroomType.type === '1BR') counts['1BR'] += bedroomType.totalUnits || 0;
-          if (bedroomType.type === '2BR') counts['2BR'] += bedroomType.totalUnits || 0;
-          if (bedroomType.type === '3BR') counts['3BR'] += bedroomType.totalUnits || 0;
-        });
-      });
-    }
-
-    return counts;
-  };
-
-  const bedroomCounts = calculateBedroomCounts();
-
   return (
-    <div className="flex gap-6" data-testid="summarize-page">
-      {/* Left Sidebar - Bedroom Filter (Desktop) */}
-      <aside className="w-[200px] shrink-0 lg:block hidden">
-        <div className="sticky top-4">
-          <BedroomFilter
-            selectedBedroomTypes={selectedBedroomTypes}
-            onBedroomTypeChange={setSelectedBedroomTypes}
-            bedroomCounts={bedroomCounts}
-            disabled={false}
-          />
-        </div>
-      </aside>
-
-      {/* Main Content Area */}
-      <div className="flex-1 min-w-0">
-        <div className="space-y-6">
-          
-      {/* Mobile Filter Button and Sheet */}
-      <div className="lg:hidden mb-4">
-        <Sheet open={mobileFilterOpen} onOpenChange={setMobileFilterOpen}>
-          <SheetTrigger asChild>
-            <Button variant="outline" className="w-full" data-testid="mobile-filter-button">
-              <Filter className="h-4 w-4 mr-2" />
-              Filter Units ({selectedBedroomTypes.length} selected)
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-[280px] sm:w-[300px]">
-            <SheetHeader>
-              <SheetTitle>Filter Units</SheetTitle>
-            </SheetHeader>
-            <div className="mt-6">
-              <BedroomFilter
-                selectedBedroomTypes={selectedBedroomTypes}
-                onBedroomTypeChange={(types) => {
-                  setSelectedBedroomTypes(types);
-                  // Auto-close sheet after selection on mobile for better UX
-                  if (types.length > 0) {
-                    setTimeout(() => setMobileFilterOpen(false), 300);
-                  }
-                }}
-                bedroomCounts={bedroomCounts}
-                disabled={false}
-              />
-            </div>
-          </SheetContent>
-        </Sheet>
-      </div>
+    <div className="space-y-6" data-testid="summarize-page">
       {/* Header with mode indicator */}
       <div className="bg-card rounded-lg border border-border p-6">
         <div className="flex items-center justify-between">
@@ -1275,10 +1176,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                       </div>
                       
                       {/* Bedroom Tabs */}
-                      <BedroomTabsView 
-                        propertyData={propertyData} 
-                        selectedBedroomTypes={selectedBedroomTypes}
-                      />
+                      <BedroomTabsView propertyData={propertyData} />
                     </div>
                   ))}
                 </div>
@@ -1892,10 +1790,7 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
                           </div>
                           
                           {/* Bedroom Tabs */}
-                          <BedroomTabsView 
-                            propertyData={propertyData} 
-                            selectedBedroomTypes={selectedBedroomTypes}
-                          />
+                          <BedroomTabsView propertyData={propertyData} />
                         </div>
                       ))}
                     </div>
@@ -1995,8 +1890,6 @@ export default function Summarize({ params }: { params: { id?: string; sessionId
           }}
         />
       )}
-    </div>
-    </div>
     </div>
   );
 }
