@@ -457,9 +457,21 @@ const BedroomTabsView = ({ propertyData }: { propertyData: PropertyUnitsOrganize
                 </div>
               </div>
               
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-lg border border-amber-200 dark:border-amber-800">
-                <div className="text-sm font-medium text-amber-700 dark:text-amber-300">Vacancy Rate</div>
-                <div className="text-lg font-bold text-amber-900 dark:text-amber-100">
+              <div className={`p-3 rounded-lg border transition-all ${
+                bedroomType.vacancyRate >= 6 
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 animate-pulse-danger' 
+                  : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'
+              }`}>
+                <div className={`text-sm font-medium ${
+                  bedroomType.vacancyRate >= 6
+                    ? 'text-red-700 dark:text-red-300'
+                    : 'text-amber-700 dark:text-amber-300'
+                }`}>Vacancy Rate</div>
+                <div className={`text-lg font-bold ${
+                  bedroomType.vacancyRate >= 6
+                    ? 'text-red-900 dark:text-red-100'
+                    : 'text-amber-900 dark:text-amber-100'
+                }`}>
                   {bedroomType.vacancyRate >= 0 ? `${bedroomType.vacancyRate.toFixed(1)}%` : 'N/A'}
                 </div>
               </div>
