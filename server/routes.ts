@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type PropertyUnit, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
-import { clerkMiddleware, requireAuth as clerkRequireAuth, getAuth } from '@clerk/backend';
+import { clerkMiddleware, getAuth } from '@clerk/backend';
 import { isAuthenticated, getAuthenticatedUserId } from "./clerkAuth";
 import { extractPropertyData, parseFirecrawlData } from "./firecrawl";
 import OpenAI from "openai";
