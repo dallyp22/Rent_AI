@@ -1,5 +1,8 @@
-import { getAuth } from '@clerk/backend';
+import { clerkMiddleware, getAuth, requireAuth } from '@clerk/express';
 import type { Request, Response, NextFunction } from 'express';
+
+// Export Clerk Express middleware
+export { clerkMiddleware, requireAuth };
 
 /**
  * Get the authenticated Clerk user ID from the request
