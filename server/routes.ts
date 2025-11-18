@@ -3,8 +3,9 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertPropertySchema, insertPropertyAnalysisSchema, insertOptimizationReportSchema, insertScrapingJobSchema, insertPropertyProfileSchema, insertAnalysisSessionSchema, insertSessionPropertyProfileSchema, filterCriteriaSchema, sessionFilteredAnalysisRequestSchema, insertSavedPortfolioSchema, insertSavedPropertyProfileSchema, insertCompetitiveRelationshipSchema, insertPropertyUnitSchema, insertTagDefinitionSchema, type PropertyUnit, type ScrapedUnit, type UnitMix } from "@shared/schema";
 import { normalizeAmenities } from "@shared/utils";
-import { setupAuth, isAuthenticated, isAuthenticatedAny, getAuthenticatedUserId } from "./replitAuth";
-import { setupLocalAuth, registerLocalUser, loginLocal, resetPasswordRequest, resetPasswordConfirm } from "./localAuth";
+import { clerkMiddleware, requireAuth as clerkRequireAuth, getAuth } from '@clerk/backend';
+import { isAuthenticated, getAuthenticatedUserId } from "./clerkAuth";
+import { extractPropertyData, parseFirecrawlData } from "./firecrawl";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
@@ -16,8 +17,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const SCRAPEZY_API_KEY = process.env.SCRAPEZY_API_KEY;
-const SCRAPEZY_BASE_URL = "https://scrapezy.com/api/extract";
+// Firecrawl is now used for web scraping (imported from firecrawl.ts)
 
 // Validation schemas for scraping endpoints
 const scrapePropertyProfileSchema = z.object({
@@ -68,11 +68,11 @@ class ScrapingJobProcessor {
       }
 
       try {
-        // Call Scrapezy API for direct property scraping
-        const scrapingResult = await callScrapezyScrapeDirectProperty(propertyProfile.url);
+        // Call Firecrawl API for direct property scraping with structured extraction
+        const scrapingResult = await extractPropertyData(propertyProfile.url);
         
         // Parse the results
-        const parsedData = parseDirectPropertyData(scrapingResult);
+        const parsedData = parseFirecrawlData(scrapingResult);
         
         // IMPORTANT: Update property profile METADATA (amenities, builtYear, totalUnits)
         // This updates property-level information but NOT individual units
@@ -208,7 +208,10 @@ class ScrapingJobProcessor {
 
 const scrapingJobProcessor = new ScrapingJobProcessor();
 
-// NEW: Direct property URL scraping function for property profiles
+// DEPRECATED: Old Scrapezy functions - replaced by Firecrawl
+// These functions are kept for reference but are no longer used
+// The application now uses extractPropertyData() and parseFirecrawlData() from firecrawl.ts
+
 async function callScrapezyScrapeDirectProperty(url: string): Promise<any> {
   console.log(`🚀 [SCRAPEZY_DIRECT] Starting direct property scraping for URL: ${url}`);
   console.log(`🚀 [SCRAPEZY_DIRECT] API Key configured: ${!!SCRAPEZY_API_KEY}`);
@@ -1061,28 +1064,28 @@ function parseNumber(value: any): number | undefined {
 
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Auth middleware - MUST be first
-  await setupAuth(app);
-  setupLocalAuth(); // Setup local authentication strategy
-
-  // Auth routes
-  // Local auth routes
-  app.post('/api/auth/register', registerLocalUser);
-  app.post('/api/auth/login/local', loginLocal);
+  // Clerk middleware - MUST be first
+  app.use(clerkMiddleware());
   
-  // Password reset routes
-  app.post('/api/auth/reset/request', resetPasswordRequest);
-  app.post('/api/auth/reset/confirm', resetPasswordConfirm);
-  
-  // Unified auth route that works for both Replit and local auth
-  app.get('/api/auth/user', isAuthenticatedAny, async (req: any, res) => {
+  // Auth routes - Clerk handles authentication, but we keep user endpoint for compatibility
+  app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
-      const user = await storage.getUser(userId);
-      res.json(user);
+      
+      // Return user info from Clerk
+      const { userId: clerkUserId } = getAuth(req);
+      if (!clerkUserId) {
+        return res.status(401).json({ message: "Unauthorized" });
+      }
+      
+      // Return minimal user object (Clerk manages full user data)
+      res.json({
+        id: clerkUserId,
+        // Additional user data would come from Clerk's user object if needed
+      });
     } catch (error) {
       console.error("Error fetching user:", error);
       res.status(500).json({ message: "Failed to fetch user" });
@@ -1600,7 +1603,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based filtered analysis (consistent API pattern)
-  app.post("/api/analysis-sessions/:sessionId/filtered-analysis", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions/:sessionId/filtered-analysis", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_FILTERED_ANALYSIS] ===========================================');
       console.log('[SESSION_FILTERED_ANALYSIS] Starting session-based filtered analysis');
@@ -1701,7 +1704,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Generate optimization report
-  app.post("/api/properties/:id/optimize", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/properties/:id/optimize", isAuthenticated, async (req: any, res) => {
     try {
       const propertyId = req.params.id;
       const { goal, targetOccupancy, riskTolerance } = req.body;
@@ -1927,7 +1930,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get optimization report
-  app.get("/api/properties/:id/optimization", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/properties/:id/optimization", isAuthenticated, async (req: any, res) => {
     try {
       const report = await storage.getOptimizationReport(req.params.id);
       const units = await storage.getPropertyUnits(req.params.id);
@@ -1944,7 +1947,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Apply pricing changes
-  app.post("/api/properties/:id/apply-pricing", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/properties/:id/apply-pricing", isAuthenticated, async (req: any, res) => {
     try {
       const propertyId = req.params.id;
       const { unitPrices } = req.body; // { unitId: newPrice }
@@ -1991,7 +1994,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based apply pricing changes (portfolio-aware)
-  app.post("/api/analysis-sessions/:sessionId/apply-pricing", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions/:sessionId/apply-pricing", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       const { unitPrices } = req.body; // { unitId: newPrice }
@@ -3269,7 +3272,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Session-based Workflow State Management
-  app.get("/api/analysis-sessions/:sessionId/workflow", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions/:sessionId/workflow", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       let state = await storage.getWorkflowStateBySession(sessionId);
@@ -3292,7 +3295,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
     }
   });
 
-  app.put("/api/analysis-sessions/:sessionId/workflow", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/analysis-sessions/:sessionId/workflow", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       const state = {
@@ -3647,7 +3650,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Analysis Sessions endpoints
   
   // Get all analysis sessions
-  app.get("/api/analysis-sessions", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3663,7 +3666,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get specific analysis session
-  app.get("/api/analysis-sessions/:sessionId", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions/:sessionId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3690,7 +3693,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Create analysis session
-  app.post("/api/analysis-sessions", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3713,7 +3716,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Update analysis session
-  app.put("/api/analysis-sessions/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/analysis-sessions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3742,7 +3745,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Delete analysis session
-  app.delete("/api/analysis-sessions/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/analysis-sessions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3769,7 +3772,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Session Property Profiles endpoints
   
   // Add property profile to session
-  app.post("/api/analysis-sessions/:sessionId/properties", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions/:sessionId/properties", isAuthenticated, async (req: any, res) => {
     try {
       const { propertyProfileId } = req.body;
       
@@ -3799,7 +3802,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Remove property profile from session
-  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/analysis-sessions/:sessionId/properties/:propertyProfileId", isAuthenticated, async (req: any, res) => {
     try {
       const removed = await storage.removePropertyProfileFromSession(
         req.params.sessionId, 
@@ -3816,7 +3819,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get property profiles in session
-  app.get("/api/analysis-sessions/:sessionId/properties", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions/:sessionId/properties", isAuthenticated, async (req: any, res) => {
     try {
       const propertyProfiles = await storage.getPropertyProfilesInSession(req.params.sessionId);
       res.json(propertyProfiles);
@@ -3829,7 +3832,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // Property Profiles CRUD Routes
   
   // Get all property profiles
-  app.get("/api/property-profiles", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
       // Comprehensive logging for debugging data isolation issue
       console.log('[DEBUG] GET /api/property-profiles - Request started');
@@ -3867,7 +3870,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get single property profile
-  app.get("/api/property-profiles/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3893,7 +3896,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Create property profile
-  app.post("/api/property-profiles", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -3936,7 +3939,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Update property profile
-  app.put("/api/property-profiles/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
       const rawData = req.body;
       
@@ -3991,7 +3994,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Create test property profile for authenticated user
-  app.post("/api/create-test-property", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/create-test-property", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -4075,7 +4078,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Delete property profile
-  app.delete("/api/property-profiles/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/property-profiles/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -4103,7 +4106,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   // NEW: Property Profile Direct URL Scraping Endpoints
   
   // Scrape a single property profile by direct URL (NON-BLOCKING)
-  app.post("/api/property-profiles/:id/scrape", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/property-profiles/:id/scrape", isAuthenticated, async (req: any, res) => {
     try {
       // Validate request body
       const validationResult = scrapePropertyProfileSchema.safeParse(req.body);
@@ -4162,7 +4165,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get scraping status for a single property profile
-  app.get("/api/property-profiles/:id/scraping-status", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:id/scraping-status", isAuthenticated, async (req: any, res) => {
     try {
       const propertyProfileId = req.params.id;
       const propertyProfile = await storage.getPropertyProfile(propertyProfileId);
@@ -4205,7 +4208,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
   
   // Scrape all properties in an analysis session (NON-BLOCKING)
-  app.post("/api/analysis-sessions/:sessionId/scrape", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions/:sessionId/scrape", isAuthenticated, async (req: any, res) => {
     try {
       // Validate request body
       const validationResult = scrapeAnalysisSessionSchema.safeParse(req.body);
@@ -4380,7 +4383,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // NEW: Get all scraped units grouped by property for a specific analysis session
-  app.get("/api/analysis-sessions/:sessionId/scraped-units", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions/:sessionId/scraped-units", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_SCRAPED_UNITS] ===========================================');
       console.log('[SESSION_SCRAPED_UNITS] Starting scraped units retrieval for session');
@@ -4713,7 +4716,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   }
   
   // Session-based optimization for multi-property portfolio
-  app.post("/api/analysis-sessions/:sessionId/optimize", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/analysis-sessions/:sessionId/optimize", isAuthenticated, async (req: any, res) => {
     try {
       console.log('[SESSION_OPTIMIZE] ===========================================');
       console.log('[SESSION_OPTIMIZE] Starting session-based optimization');
@@ -5222,7 +5225,7 @@ Based on this data, provide exactly 3 specific, actionable insights that would h
   });
 
   // Get session-based optimization report
-  app.get("/api/analysis-sessions/:sessionId/optimization", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/analysis-sessions/:sessionId/optimization", isAuthenticated, async (req: any, res) => {
     try {
       const sessionId = req.params.sessionId;
       console.log('[GET_SESSION_OPTIMIZATION] Getting optimization report for session:', sessionId);
@@ -6240,7 +6243,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // NEW: PORTFOLIO MANAGEMENT API ENDPOINTS
 
   // GET/POST /api/portfolios (list and create portfolios for authenticated user)
-  app.get("/api/portfolios", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/portfolios", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6258,7 +6261,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.post("/api/portfolios", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/portfolios", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6282,7 +6285,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET/PUT/DELETE /api/portfolios/:id (get, update, delete specific portfolio)
-  app.get("/api/portfolios/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6312,7 +6315,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.put("/api/portfolios/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6346,7 +6349,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.delete("/api/portfolios/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/portfolios/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6379,7 +6382,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET/POST /api/portfolios/:id/property-profiles (list and add properties to portfolio)
-  app.get("/api/portfolios/:id/property-profiles", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6407,7 +6410,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.post("/api/portfolios/:id/property-profiles", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/portfolios/:id/property-profiles", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6441,7 +6444,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // PUT/DELETE for individual property profiles
-  app.put("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6475,7 +6478,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.delete("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/portfolios/:portfolioId/property-profiles/:profileId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6508,7 +6511,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/portfolios/:id/competitive-relationships (manage competitive relationships)
-  app.post("/api/portfolios/:id/competitive-relationships", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6541,7 +6544,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.get("/api/portfolios/:id/competitive-relationships", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/portfolios/:id/competitive-relationships", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6569,7 +6572,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.put("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6603,7 +6606,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.post("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId/toggle", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId/toggle", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6636,7 +6639,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
     }
   });
 
-  app.delete("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/portfolios/:portfolioId/competitive-relationships/:relationshipId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6723,7 +6726,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // ============ TAG Definition Routes ============
 
   // GET /api/tag-definitions - List all tag definitions (optionally filtered by property)
-  app.get("/api/tag-definitions", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/tag-definitions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6755,7 +6758,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/tag-definitions - Create new tag definition
-  app.post("/api/tag-definitions", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/tag-definitions", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6782,7 +6785,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // PUT /api/tag-definitions/:id - Update tag definition
-  app.put("/api/tag-definitions/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/tag-definitions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6820,7 +6823,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // DELETE /api/tag-definitions/:id - Delete tag definition
-  app.delete("/api/tag-definitions/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/tag-definitions/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6857,7 +6860,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // PUT /api/tag-definitions/reorder - Update display order
-  app.put("/api/tag-definitions/reorder", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/tag-definitions/reorder", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6890,7 +6893,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // ============ Unit CRUD Routes ============
 
   // GET /api/property-profiles/:id/units/test-large - Generate large test dataset for virtualization testing
-  app.get("/api/property-profiles/:id/units/test-large", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:id/units/test-large", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -6985,7 +6988,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/property-profiles/:id/units - List units for a property
-  app.get("/api/property-profiles/:id/units", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:id/units", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7026,7 +7029,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/property-profiles/:id/units/hierarchical - Get units organized by bedroom and tag hierarchy
-  app.get("/api/property-profiles/:id/units/hierarchical", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:id/units/hierarchical", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7103,7 +7106,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/property-profiles/:propertyId/hierarchy - Get hierarchical unit data
-  app.get("/api/property-profiles/:propertyId/hierarchy", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:propertyId/hierarchy", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7149,7 +7152,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/units - Create new unit
-  app.post("/api/units", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/units", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7178,7 +7181,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // PUT /api/units/:id - Update unit
-  app.put("/api/units/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/units/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7218,7 +7221,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // DELETE /api/units/:id - Delete unit
-  app.delete("/api/units/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/units/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7257,7 +7260,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/units/bulk-update - Bulk update units
-  app.post("/api/units/bulk-update", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/units/bulk-update", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7293,7 +7296,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/units/bulk-delete - Bulk delete units
-  app.post("/api/units/bulk-delete", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/units/bulk-delete", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7332,7 +7335,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/property-profiles/:propertyId/market-comparison - Compare internal units with market data
-  app.get("/api/property-profiles/:propertyId/market-comparison", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/property-profiles/:propertyId/market-comparison", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7472,7 +7475,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // ============ Excel Import/Export Routes ============
 
   // POST /api/import-excel - Import units from Excel file
-  app.post("/api/import-excel", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
+  app.post("/api/import-excel", isAuthenticated, upload.single('file'), async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7580,7 +7583,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/import-excel-portfolio - Import units for multiple properties from Excel
-  app.post("/api/import-excel-portfolio", isAuthenticatedAny, upload.single('file'), async (req: any, res) => {
+  app.post("/api/import-excel-portfolio", isAuthenticated, upload.single('file'), async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7878,7 +7881,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/export-excel/:propertyId - Export units to Excel file
-  app.get("/api/export-excel/:propertyId", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/export-excel/:propertyId", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -7962,7 +7965,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   // ============================================================================
   
   // GET /api/saved-selection-templates - Get all templates for the current user
-  app.get("/api/saved-selection-templates", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/saved-selection-templates", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -8006,7 +8009,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // GET /api/saved-selection-templates/:id - Get a specific template
-  app.get("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.get("/api/saved-selection-templates/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -8042,7 +8045,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/saved-selection-templates - Create a new template
-  app.post("/api/saved-selection-templates", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/saved-selection-templates", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -8101,7 +8104,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // PUT /api/saved-selection-templates/:id - Update a template
-  app.put("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.put("/api/saved-selection-templates/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -8188,7 +8191,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // DELETE /api/saved-selection-templates/:id - Delete a template
-  app.delete("/api/saved-selection-templates/:id", isAuthenticatedAny, async (req: any, res) => {
+  app.delete("/api/saved-selection-templates/:id", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
@@ -8225,7 +8228,7 @@ Provide exactly 3 strategic insights as a JSON array of strings. Each insight sh
   });
 
   // POST /api/saved-selection-templates/:id/apply - Create a new analysis session from a template
-  app.post("/api/saved-selection-templates/:id/apply", isAuthenticatedAny, async (req: any, res) => {
+  app.post("/api/saved-selection-templates/:id/apply", isAuthenticated, async (req: any, res) => {
     try {
       const userId = getAuthenticatedUserId(req);
       if (!userId) {
