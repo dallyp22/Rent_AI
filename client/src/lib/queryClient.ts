@@ -10,6 +10,23 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+// Get Clerk session token from cookies
+function getClerkSessionToken(): string | null {
+  try {
+    // Get __session cookie which contains the Clerk JWT
+    const cookies = document.cookie.split(';');
+    for (const cookie of cookies) {
+      const [name, value] = cookie.trim().split('=');
+      if (name === '__session') {
+        return value;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiRequest(
   method: string,
   url: string,
@@ -18,9 +35,17 @@ export async function apiRequest(
   // Build full URL with API base URL
   const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
   
+  // Get Clerk session token and include in Authorization header
+  const sessionToken = getClerkSessionToken();
+  
+  const headers: Record<string, string> = {
+    ...(data ? { "Content-Type": "application/json" } : {}),
+    ...(sessionToken ? { "Authorization": `Bearer ${sessionToken}` } : {}),
+  };
+  
   const res = await fetch(fullUrl, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -39,7 +64,15 @@ export const getQueryFn: <T>(options: {
     const url = queryKey.join("/") as string;
     const fullUrl = url.startsWith('http') ? url : `${API_BASE_URL}${url}`;
     
+    // Get Clerk session token and include in Authorization header
+    const sessionToken = getClerkSessionToken();
+    
+    const headers: Record<string, string> = {
+      ...(sessionToken ? { "Authorization": `Bearer ${sessionToken}` } : {}),
+    };
+    
     const res = await fetch(fullUrl, {
+      headers,
       credentials: "include",
     });
 
