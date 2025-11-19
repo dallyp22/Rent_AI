@@ -111,14 +111,6 @@ export default function PropertySelectionMatrix() {
   const { data: templates = [], isLoading: isLoadingTemplates } = useQuery<TemplateWithCounts[]>({
     queryKey: ["/api/saved-selection-templates"],
     enabled: viewMode === "templates",
-    queryFn: async () => {
-      const response = await fetch("/api/saved-selection-templates");
-      if (!response.ok) {
-        throw new Error("Failed to fetch templates");
-      }
-      const data = await response.json();
-      return data;
-    }
   });
 
   // Fetch all analysis sessions
