@@ -1066,11 +1066,12 @@ function parseNumber(value: any): number | undefined {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Clerk middleware - MUST be first
-  // Configure with explicit keys from environment
-  app.use(clerkMiddleware({
-    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
-    secretKey: process.env.CLERK_SECRET_KEY,
-  }));
+  // @clerk/express auto-reads from CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY env vars
+  console.log('[CLERK] Initializing Clerk middleware...');
+  console.log('[CLERK] CLERK_PUBLISHABLE_KEY present:', !!process.env.CLERK_PUBLISHABLE_KEY);
+  console.log('[CLERK] CLERK_SECRET_KEY present:', !!process.env.CLERK_SECRET_KEY);
+  
+  app.use(clerkMiddleware());
   
   // Auth routes - Clerk handles authentication, but we keep user endpoint for compatibility
   app.get('/api/auth/user', isAuthenticated, async (req: any, res) => {

@@ -19,9 +19,15 @@ export function getClerkUserId(req: Request): string | null {
  */
 export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   const auth = getAuth(req);
+  console.log('[CLERK_AUTH] isAuthenticated check - userId:', auth.userId);
+  console.log('[CLERK_AUTH] Full auth object:', JSON.stringify(auth, null, 2));
+  
   if (!auth.userId) {
+    console.log('[CLERK_AUTH] No userId found - returning 401');
     return res.status(401).json({ message: "Authentication required" });
   }
+  
+  console.log('[CLERK_AUTH] User authenticated successfully:', auth.userId);
   next();
 }
 
