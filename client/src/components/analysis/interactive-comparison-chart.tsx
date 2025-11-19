@@ -481,7 +481,11 @@ export default function InteractiveComparisonChart({
           display: true,
           text: 'Square Footage',
         },
-        min: 0,
+        // Dynamic scaling with 5% buffer for better visualization
+        suggestedMin: undefined, // Let Chart.js calculate based on data
+        suggestedMax: undefined, // Let Chart.js calculate based on data
+        beginAtZero: false, // Don't force zero baseline
+        grace: '5%', // Add 5% padding on left and right of data range
         grid: {
           color: 'rgba(0, 0, 0, 0.05)',
         }
