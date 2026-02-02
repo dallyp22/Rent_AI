@@ -35,36 +35,50 @@ export async function scrapePropertyUrl(url: string) {
  */
 export async function extractPropertyData(url: string) {
   console.log(`[FIRECRAWL] Extracting structured data from: ${url}`);
-  
+
   try {
     const result = await firecrawl.scrapeUrl(url, {
       formats: ['extract'],
       extract: {
+        prompt: 'Extract all property information and every individual available or listed apartment unit. For each unit, extract the unit number/identifier, floor plan name, unit type (Studio, 1 Bedroom, 2 Bedroom, etc.), bedroom count, bathroom count, square footage, monthly rent price, and availability date. Also extract the total unit mix showing how many units of each bedroom type exist in the entire property. Be thorough - extract every single unit listing shown on the page.',
         schema: {
           type: 'object',
           properties: {
-            propertyName: { type: 'string' },
-            address: { type: 'string' },
-            builtYear: { type: 'number' },
-            totalUnits: { type: 'number' },
-            amenities: { 
-              type: 'array', 
-              items: { type: 'string' } 
+            propertyName: { type: 'string', description: 'Name of the apartment property' },
+            address: { type: 'string', description: 'Full street address of the property' },
+            builtYear: { type: 'number', description: 'Year the property was built' },
+            totalUnits: { type: 'number', description: 'Total number of units in the property' },
+            amenities: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'List of property amenities'
+            },
+            unitMix: {
+              type: 'object',
+              description: 'Total number of units by bedroom type across the entire property',
+              properties: {
+                studio: { type: 'number', description: 'Total number of studio units' },
+                oneBedroom: { type: 'number', description: 'Total number of 1-bedroom units' },
+                twoBedroom: { type: 'number', description: 'Total number of 2-bedroom units' },
+                threeBedroom: { type: 'number', description: 'Total number of 3-bedroom units' },
+                fourPlusBedroom: { type: 'number', description: 'Total number of 4+ bedroom units' }
+              }
             },
             units: {
               type: 'array',
+              description: 'All individual apartment units listed on the page with pricing and availability details',
               items: {
                 type: 'object',
                 properties: {
-                  unitNumber: { type: 'string' },
-                  floorPlanName: { type: 'string' },
-                  unitType: { type: 'string' },
-                  bedrooms: { type: 'number' },
-                  bathrooms: { type: 'number' },
-                  squareFootage: { type: 'number' },
-                  rent: { type: 'number' },
-                  availabilityDate: { type: 'string' },
-                  status: { type: 'string' }
+                  unitNumber: { type: 'string', description: 'Unit number or identifier (e.g. Unit 101, Apt 2B)' },
+                  floorPlanName: { type: 'string', description: 'Name of the floor plan (e.g. The Studio, The Franc)' },
+                  unitType: { type: 'string', description: 'Type of unit: Studio, 1 Bedroom, 2 Bedroom, 3 Bedroom, etc.' },
+                  bedrooms: { type: 'number', description: 'Number of bedrooms (0 for studio)' },
+                  bathrooms: { type: 'number', description: 'Number of bathrooms' },
+                  squareFootage: { type: 'number', description: 'Unit size in square feet' },
+                  rent: { type: 'number', description: 'Monthly rent price in dollars (numbers only, no $ sign)' },
+                  availabilityDate: { type: 'string', description: 'Move-in or availability date' },
+                  status: { type: 'string', description: 'Availability status (available, occupied, etc.)' }
                 },
               },
             },
@@ -72,8 +86,9 @@ export async function extractPropertyData(url: string) {
         },
       },
     });
-    
+
     console.log(`[FIRECRAWL] Successfully extracted structured data from: ${url}`);
+    console.log(`[FIRECRAWL] Extracted ${result.extract?.units?.length || 0} units, unitMix:`, result.extract?.unitMix);
     return result.extract;
   } catch (error) {
     console.error(`[FIRECRAWL] Error extracting data from ${url}:`, error);
@@ -167,6 +182,13 @@ export function parseFirecrawlData(result: any): {
     amenities: string[];
     builtYear: number | null;
     totalUnits: number | null;
+    unitMix: {
+      studio: number;
+      oneBedroom: number;
+      twoBedroom: number;
+      threeBedroom: number;
+      fourPlusBedroom: number;
+    } | null;
   };
   units: Array<{
     unitNumber: string;
@@ -181,7 +203,17 @@ export function parseFirecrawlData(result: any): {
 } {
   // If using structured extraction, data will be in result.extract
   const data = result.extract || result;
-  
+
+  // Parse unitMix if available
+  const rawUnitMix = data.unitMix;
+  const unitMix = rawUnitMix && typeof rawUnitMix === 'object' ? {
+    studio: Number(rawUnitMix.studio) || 0,
+    oneBedroom: Number(rawUnitMix.oneBedroom) || 0,
+    twoBedroom: Number(rawUnitMix.twoBedroom) || 0,
+    threeBedroom: Number(rawUnitMix.threeBedroom) || 0,
+    fourPlusBedroom: Number(rawUnitMix.fourPlusBedroom) || 0,
+  } : null;
+
   // Parse property information
   const property = {
     name: data.propertyName || data.name || 'Unknown Property',
@@ -189,10 +221,11 @@ export function parseFirecrawlData(result: any): {
     amenities: Array.isArray(data.amenities) ? data.amenities : [],
     builtYear: data.builtYear || null,
     totalUnits: data.totalUnits || null,
+    unitMix,
   };
-  
+
   // Parse units
-  const units = Array.isArray(data.units) 
+  const units = Array.isArray(data.units)
     ? data.units.map((unit: any) => ({
         unitNumber: unit.unitNumber || '',
         floorPlanName: unit.floorPlanName || null,
@@ -204,7 +237,9 @@ export function parseFirecrawlData(result: any): {
         availabilityDate: unit.availabilityDate || null,
       }))
     : [];
-  
+
+  console.log(`[FIRECRAWL] Parsed ${units.length} units from extraction data`);
+
   return { property, units };
 }
 

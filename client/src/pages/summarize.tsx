@@ -177,7 +177,7 @@ const getBedroomDisplayLabel = (bedrooms: number | null | undefined): string => 
 };
 
 const calculateBedroomMetrics = (
-  units: ScrapedUnit[], 
+  units: ScrapedUnit[],
   propertyTotalUnits: number = 0,
   unitMixBreakdown?: {
     studio: number;
@@ -187,6 +187,36 @@ const calculateBedroomMetrics = (
     fourPlusBedroom: number;
   } | null
 ): BedroomTypeMetrics[] => {
+  // If we have no individual scraped units but DO have unitMixBreakdown, create metrics from breakdown
+  // This handles the case where Firecrawl extracted property-level data but not individual unit listings
+  if (units.length === 0 && unitMixBreakdown) {
+    const mixMapping: Array<{ key: string; field: keyof typeof unitMixBreakdown; label: string }> = [
+      { key: 'studio', field: 'studio', label: 'Studio' },
+      { key: 'oneBed', field: 'oneBedroom', label: '1BR' },
+      { key: 'twoBed', field: 'twoBedroom', label: '2BR' },
+      { key: 'threeBed', field: 'threeBedroom', label: '3BR' },
+      { key: 'fourPlusBed', field: 'fourPlusBedroom', label: '4+BR' },
+    ];
+
+    const breakdownEntries = mixMapping
+      .filter(m => unitMixBreakdown[m.field] > 0)
+      .map(m => ({
+        type: m.label,
+        displayKey: m.key,
+        units: [] as ScrapedUnit[],
+        totalUnits: unitMixBreakdown[m.field],
+        availableUnits: 0,
+        vacancyRate: -1, // Cannot calculate without individual unit data
+        avgRent: 0,
+        avgSqFt: 0,
+        pricePerSqFt: 0,
+      }));
+
+    if (breakdownEntries.length > 0) {
+      return breakdownEntries;
+    }
+  }
+
   // Group units by bedroom count
   const bedroomGroups = units.reduce((acc, unit) => {
     const key = getBedroomDisplayKey(unit.bedrooms);
@@ -497,8 +527,9 @@ const BedroomTabsView = ({ propertyData }: { propertyData: PropertyUnitsOrganize
 const BedroomUnitsTable = ({ bedroomType, propertyId }: { bedroomType: BedroomTypeMetrics; propertyId: string }) => {
   if (!bedroomType.units.length) {
     return (
-      <div className="text-center py-4 text-muted-foreground">
-        No units available for this bedroom type
+      <div className="text-center py-4 text-muted-foreground text-sm">
+        <p>{bedroomType.totalUnits} total {bedroomType.type} units in property</p>
+        <p className="text-xs mt-1">Individual unit details could not be extracted from this property's website</p>
       </div>
     );
   }

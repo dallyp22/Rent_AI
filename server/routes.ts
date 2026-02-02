@@ -6,7 +6,7 @@ import { normalizeAmenities } from "@shared/utils";
 import { clerkMiddleware } from './clerkAuth';
 import { isAuthenticated, getAuthenticatedUserId } from "./clerkAuth";
 import { getAuth } from '@clerk/express';
-import { extractPropertyData, parseFirecrawlData } from "./firecrawl";
+import { extractPropertyData, parseFirecrawlData, scrapePropertyUrl } from "./firecrawl";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
@@ -71,32 +71,89 @@ class ScrapingJobProcessor {
       try {
         // Call Firecrawl API for direct property scraping with structured extraction
         const scrapingResult = await extractPropertyData(propertyProfile.url);
-        
+
         // Parse the results
-        const parsedData = parseFirecrawlData(scrapingResult);
-        
-        // IMPORTANT: Update property profile METADATA (amenities, builtYear, totalUnits)
+        let parsedData = parseFirecrawlData(scrapingResult);
+
+        // IMPORTANT: Update property profile METADATA (amenities, builtYear, totalUnits, unitMix)
         // This updates property-level information but NOT individual units
         // The unit-level data goes to scrapedUnits table only
         await storage.updatePropertyProfile(job.propertyProfileId!, {
           amenities: parsedData.property.amenities.length > 0 ? parsedData.property.amenities : propertyProfile.amenities,
           builtYear: parsedData.property.builtYear || propertyProfile.builtYear,
-          totalUnits: parsedData.property.totalUnits || propertyProfile.totalUnits
+          totalUnits: parsedData.property.totalUnits || propertyProfile.totalUnits,
+          unitMix: parsedData.property.unitMix || (propertyProfile.unitMix as UnitMix) || undefined
         });
-        console.log(`[JOB_PROCESSOR] Updated property profile metadata for ${job.propertyProfileId}`);
-        
+        console.log(`[JOB_PROCESSOR] Updated property profile metadata for ${job.propertyProfileId} (unitMix: ${JSON.stringify(parsedData.property.unitMix)})`);
+
+        // FALLBACK: If structured extraction returned 0 units, try markdown scraping + OpenAI parsing
+        if (parsedData.units.length === 0) {
+          console.log(`[JOB_PROCESSOR] Structured extraction returned 0 units for ${propertyProfile.url}, attempting markdown fallback...`);
+          try {
+            const markdownResult = await scrapePropertyUrl(propertyProfile.url);
+            const markdownContent = markdownResult?.markdown || '';
+
+            if (markdownContent.length > 100) {
+              console.log(`[JOB_PROCESSOR] Got ${markdownContent.length} chars of markdown, parsing with OpenAI...`);
+
+              // Truncate to avoid token limits (keep first ~12000 chars which covers most unit listings)
+              const truncatedMarkdown = markdownContent.slice(0, 12000);
+
+              const aiResponse = await openai.chat.completions.create({
+                model: "gpt-4o",
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are a data extraction assistant. Extract apartment unit listings from the provided webpage content. Return a JSON array of units. Each unit should have: unitNumber (string), floorPlanName (string or null), unitType (e.g. 'Studio', '1 Bedroom', '2 Bedroom'), bedrooms (number, 0 for studio), bathrooms (number), squareFootage (number or null), rent (number, monthly price), availabilityDate (string or null). Only include units that have at least a rent price or unit type. Return ONLY the JSON array, no other text."
+                  },
+                  {
+                    role: "user",
+                    content: `Extract all available apartment unit listings from this property page content:\n\n${truncatedMarkdown}`
+                  }
+                ],
+                temperature: 0,
+                response_format: { type: "json_object" }
+              });
+
+              const aiContent = aiResponse.choices[0]?.message?.content || '{}';
+              try {
+                const parsed = JSON.parse(aiContent);
+                const fallbackUnits = Array.isArray(parsed) ? parsed : (parsed.units || []);
+                if (fallbackUnits.length > 0) {
+                  console.log(`[JOB_PROCESSOR] OpenAI fallback extracted ${fallbackUnits.length} units`);
+                  parsedData = {
+                    ...parsedData,
+                    units: fallbackUnits.map((unit: any) => ({
+                      unitNumber: unit.unitNumber || '',
+                      floorPlanName: unit.floorPlanName || null,
+                      unitType: unit.unitType || `${unit.bedrooms || 0}BR`,
+                      bedrooms: unit.bedrooms ?? null,
+                      bathrooms: unit.bathrooms ?? null,
+                      squareFootage: unit.squareFootage ?? null,
+                      rent: unit.rent ?? null,
+                      availabilityDate: unit.availabilityDate || null,
+                    }))
+                  };
+                } else {
+                  console.log(`[JOB_PROCESSOR] OpenAI fallback also returned 0 units`);
+                }
+              } catch (parseError) {
+                console.error(`[JOB_PROCESSOR] Failed to parse OpenAI fallback response:`, parseError);
+              }
+            } else {
+              console.log(`[JOB_PROCESSOR] Markdown content too short (${markdownContent.length} chars), skipping fallback`);
+            }
+          } catch (fallbackError) {
+            console.error(`[JOB_PROCESSOR] Markdown fallback failed:`, fallbackError);
+            // Continue with empty units - don't fail the entire job
+          }
+        }
+
         // IMPORTANT: WE DO NOT UPDATE propertyUnits TABLE DURING SCRAPING
         // The propertyUnits table contains user-managed internal data (TAGs, custom classifications)
         // We only update the scrapedUnits table with external market data
-        // The optimization process will later merge these two data sources intelligently
-        
-        // Previously, this code would replace all units in propertyUnits, causing loss of user's TAG data
-        // const unitsToReplace = parsedData.units...
-        // await storage.replacePropertyUnitsByProfile(job.propertyProfileId!, unitsToReplace);
-        
-        // Instead, we only update the scrapedUnits table below (see lines 104-127)
         console.log(`[JOB_PROCESSOR] Skipping propertyUnits update to preserve user's TAG data for profile ${job.propertyProfileId}`);
-        
+
         // Create scraped property record
         const scrapedProperty = await storage.createScrapedProperty({
           scrapingJobId: jobId,
@@ -105,7 +162,7 @@ class ScrapingJobProcessor {
           address: parsedData.property.address,
           isSubjectProperty: propertyProfile.profileType === 'subject'
         });
-        
+
         // CRITICAL: Update scrapedUnits table with latest market data
         // This replaces all scraped units for this property with fresh data from the scraping
         // The scrapedUnits table contains external market data (prices, availability, etc.)
@@ -122,7 +179,7 @@ class ScrapingJobProcessor {
             rent: unitData.rent?.toString(),
             availabilityDate: unitData.availabilityDate
           }));
-        
+
         await storage.replaceScrapedUnitsForProperty(scrapedProperty.id, unitsToInsert);
         console.log(`[JOB_PROCESSOR] Updated scrapedUnits table with ${unitsToInsert.length} units for property ${scrapedProperty.id}`);
 
@@ -132,12 +189,12 @@ class ScrapingJobProcessor {
           completedAt: new Date(),
           results: {
             propertyData: parsedData.property,
-            unitsCount: parsedData.units.length,
+            unitsCount: unitsToInsert.length,
             scrapedPropertyId: scrapedProperty.id
           }
         });
 
-        console.log(`[JOB_PROCESSOR] Job ${jobId} completed successfully`);
+        console.log(`[JOB_PROCESSOR] Job ${jobId} completed successfully (${unitsToInsert.length} units saved)`);
 
       } catch (scrapingError) {
         console.error(`[JOB_PROCESSOR] Scraping failed for job ${jobId}:`, scrapingError);
