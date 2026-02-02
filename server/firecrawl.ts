@@ -33,12 +33,15 @@ export async function scrapePropertyUrl(url: string) {
  * Extract structured property data using Firecrawl's extract feature
  * This provides more consistent data extraction using JSON schema
  */
-export async function extractPropertyData(url: string) {
-  console.log(`[FIRECRAWL] Extracting structured data from: ${url}`);
+export async function extractPropertyData(url: string): Promise<{ extract: any; markdown: string }> {
+  console.log(`[FIRECRAWL] Extracting structured data + markdown from: ${url}`);
 
   try {
+    // Request BOTH extract and markdown in a single API call
+    // This ensures we always have markdown content for the OpenAI fallback
+    // without needing a second API call that might fail
     const result = await firecrawl.scrapeUrl(url, {
-      formats: ['extract'],
+      formats: ['extract', 'markdown'],
       waitFor: 5000, // Wait for dynamic JS content (unit listings) to load
       extract: {
         prompt: 'Extract all property information and every individual available or listed apartment unit. On sites like apartments.com, units are listed under floor plan sections - extract each individual unit row with its specific unit number, rent price, sq ft, and availability. If units are grouped by floor plan, extract each unit separately. For each unit, extract the unit number/identifier, floor plan name, unit type (Studio, 1 Bedroom, 2 Bedroom, etc.), bedroom count, bathroom count, square footage, monthly rent price, and availability date. Also extract the total unit mix showing how many units of each bedroom type exist in the entire property. Be thorough - extract every single unit listing shown on the page, even if they are in expandable or tabbed sections.',
@@ -88,9 +91,14 @@ export async function extractPropertyData(url: string) {
       },
     });
 
-    console.log(`[FIRECRAWL] Successfully extracted structured data from: ${url}`);
-    console.log(`[FIRECRAWL] Extracted ${result.extract?.units?.length || 0} units, unitMix:`, result.extract?.unitMix);
-    return result.extract;
+    const extractData = result.extract || {};
+    const markdownContent = result.markdown || '';
+
+    console.log(`[FIRECRAWL] Successfully scraped: ${url}`);
+    console.log(`[FIRECRAWL] Extract: ${extractData?.units?.length || 0} units, unitMix:`, extractData?.unitMix);
+    console.log(`[FIRECRAWL] Markdown: ${markdownContent.length} chars`);
+
+    return { extract: extractData, markdown: markdownContent };
   } catch (error) {
     console.error(`[FIRECRAWL] Error extracting data from ${url}:`, error);
     throw error;

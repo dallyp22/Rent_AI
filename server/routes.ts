@@ -6,7 +6,7 @@ import { normalizeAmenities } from "@shared/utils";
 import { clerkMiddleware } from './clerkAuth';
 import { isAuthenticated, getAuthenticatedUserId } from "./clerkAuth";
 import { getAuth } from '@clerk/express';
-import { extractPropertyData, parseFirecrawlData, scrapePropertyUrl } from "./firecrawl";
+import { extractPropertyData, parseFirecrawlData } from "./firecrawl";
 import OpenAI from "openai";
 import { z } from "zod";
 import crypto from "crypto";
@@ -69,11 +69,15 @@ class ScrapingJobProcessor {
       }
 
       try {
-        // Call Firecrawl API for direct property scraping with structured extraction
+        // Call Firecrawl API - gets BOTH structured extraction AND markdown in a single call
+        // This ensures we always have markdown content for the OpenAI fallback
         const scrapingResult = await extractPropertyData(propertyProfile.url);
 
-        // Parse the results
-        let parsedData = parseFirecrawlData(scrapingResult);
+        // Parse the structured extraction results
+        let parsedData = parseFirecrawlData(scrapingResult.extract);
+        const markdownContent = scrapingResult.markdown || '';
+
+        console.log(`[JOB_PROCESSOR] Firecrawl returned: ${parsedData.units.length} extracted units, ${markdownContent.length} chars markdown`);
 
         // IMPORTANT: Update property profile METADATA (amenities, builtYear, totalUnits, unitMix)
         // This updates property-level information but NOT individual units
@@ -86,26 +90,21 @@ class ScrapingJobProcessor {
         });
         console.log(`[JOB_PROCESSOR] Updated property profile metadata for ${job.propertyProfileId} (unitMix: ${JSON.stringify(parsedData.property.unitMix)})`);
 
-        // FALLBACK: If structured extraction returned 0 units, try markdown scraping + OpenAI parsing
-        if (parsedData.units.length === 0) {
-          console.log(`[JOB_PROCESSOR] Structured extraction returned 0 units for ${propertyProfile.url}, attempting markdown fallback...`);
+        // FALLBACK: If structured extraction returned 0 units, use the markdown from the SAME
+        // Firecrawl response (no second API call needed) and parse with OpenAI
+        if (parsedData.units.length === 0 && markdownContent.length > 200) {
+          console.log(`[JOB_PROCESSOR] Structured extraction returned 0 units for ${propertyProfile.url}, parsing ${markdownContent.length} chars of markdown with OpenAI...`);
           try {
-            const markdownResult = await scrapePropertyUrl(propertyProfile.url);
-            const markdownContent = markdownResult?.markdown || '';
+            // Use up to 50000 chars - apartments.com pages are large and unit listings
+            // are often far below the property overview/photos/amenities sections
+            const truncatedMarkdown = markdownContent.slice(0, 50000);
 
-            if (markdownContent.length > 100) {
-              console.log(`[JOB_PROCESSOR] Got ${markdownContent.length} chars of markdown, parsing with OpenAI...`);
-
-              // Use up to 50000 chars - apartments.com pages are large and unit listings
-              // are often far below the property overview/photos/amenities sections
-              const truncatedMarkdown = markdownContent.slice(0, 50000);
-
-              const aiResponse = await openai.chat.completions.create({
-                model: "gpt-4o",
-                messages: [
-                  {
-                    role: "system",
-                    content: `You are a data extraction assistant specializing in apartment listing websites. Extract every individual available apartment unit from the provided webpage content.
+            const aiResponse = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                {
+                  role: "system",
+                  content: `You are a data extraction assistant specializing in apartment listing websites. Extract every individual available apartment unit from the provided webpage content.
 
 On sites like apartments.com, units are organized under floor plans. Each floor plan section contains individual available units with specific unit numbers, rent prices, square footage, and availability dates. Extract EACH individual unit as a separate entry.
 
@@ -116,8 +115,10 @@ For example, if you see:
 
 Extract each as a separate unit with the floor plan name "The Franc", unitType "1 Bedroom", etc.
 
+If units are shown as floor plan summaries without individual unit numbers (e.g. "1 Bedroom - from $1,200 - 5 available"), still extract them as units using the floor plan name as the unitNumber.
+
 Return a JSON object with a "units" array. Each unit should have:
-- unitNumber (string): The specific unit number/identifier
+- unitNumber (string): The specific unit number/identifier (or floor plan name if no unit number)
 - floorPlanName (string or null): Name of the floor plan
 - unitType (string): "Studio", "1 Bedroom", "2 Bedroom", "3 Bedroom", etc.
 - bedrooms (number): Number of bedrooms (0 for studio)
@@ -126,49 +127,48 @@ Return a JSON object with a "units" array. Each unit should have:
 - rent (number): Monthly rent price as a number
 - availabilityDate (string or null): When available
 
-Only include units that have at least a rent price listed.`
-                  },
-                  {
-                    role: "user",
-                    content: `Extract all individual available apartment units from this property listing page:\n\n${truncatedMarkdown}`
-                  }
-                ],
-                temperature: 0,
-                response_format: { type: "json_object" }
-              });
-
-              const aiContent = aiResponse.choices[0]?.message?.content || '{}';
-              try {
-                const parsed = JSON.parse(aiContent);
-                const fallbackUnits = Array.isArray(parsed) ? parsed : (parsed.units || []);
-                if (fallbackUnits.length > 0) {
-                  console.log(`[JOB_PROCESSOR] OpenAI fallback extracted ${fallbackUnits.length} units`);
-                  parsedData = {
-                    ...parsedData,
-                    units: fallbackUnits.map((unit: any) => ({
-                      unitNumber: unit.unitNumber || '',
-                      floorPlanName: unit.floorPlanName || null,
-                      unitType: unit.unitType || `${unit.bedrooms || 0}BR`,
-                      bedrooms: unit.bedrooms ?? null,
-                      bathrooms: unit.bathrooms ?? null,
-                      squareFootage: unit.squareFootage ?? null,
-                      rent: unit.rent ?? null,
-                      availabilityDate: unit.availabilityDate || null,
-                    }))
-                  };
-                } else {
-                  console.log(`[JOB_PROCESSOR] OpenAI fallback also returned 0 units`);
+Include units that have at least a rent price or square footage listed.`
+                },
+                {
+                  role: "user",
+                  content: `Extract all individual available apartment units from this property listing page:\n\n${truncatedMarkdown}`
                 }
-              } catch (parseError) {
-                console.error(`[JOB_PROCESSOR] Failed to parse OpenAI fallback response:`, parseError);
+              ],
+              temperature: 0,
+              response_format: { type: "json_object" }
+            });
+
+            const aiContent = aiResponse.choices[0]?.message?.content || '{}';
+            try {
+              const parsed = JSON.parse(aiContent);
+              const fallbackUnits = Array.isArray(parsed) ? parsed : (parsed.units || []);
+              if (fallbackUnits.length > 0) {
+                console.log(`[JOB_PROCESSOR] OpenAI fallback extracted ${fallbackUnits.length} units from markdown`);
+                parsedData = {
+                  ...parsedData,
+                  units: fallbackUnits.map((unit: any) => ({
+                    unitNumber: unit.unitNumber || '',
+                    floorPlanName: unit.floorPlanName || null,
+                    unitType: unit.unitType || `${unit.bedrooms || 0}BR`,
+                    bedrooms: unit.bedrooms ?? null,
+                    bathrooms: unit.bathrooms ?? null,
+                    squareFootage: unit.squareFootage ?? null,
+                    rent: unit.rent ?? null,
+                    availabilityDate: unit.availabilityDate || null,
+                  }))
+                };
+              } else {
+                console.log(`[JOB_PROCESSOR] OpenAI fallback also returned 0 units from ${markdownContent.length} chars of markdown`);
               }
-            } else {
-              console.log(`[JOB_PROCESSOR] Markdown content too short (${markdownContent.length} chars), skipping fallback`);
+            } catch (parseError) {
+              console.error(`[JOB_PROCESSOR] Failed to parse OpenAI fallback response:`, parseError);
             }
           } catch (fallbackError) {
-            console.error(`[JOB_PROCESSOR] Markdown fallback failed:`, fallbackError);
+            console.error(`[JOB_PROCESSOR] OpenAI markdown fallback failed:`, fallbackError);
             // Continue with empty units - don't fail the entire job
           }
+        } else if (parsedData.units.length === 0) {
+          console.log(`[JOB_PROCESSOR] No units extracted and markdown too short (${markdownContent.length} chars) for fallback`);
         }
 
         // IMPORTANT: WE DO NOT UPDATE propertyUnits TABLE DURING SCRAPING
