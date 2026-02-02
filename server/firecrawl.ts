@@ -14,14 +14,14 @@ const firecrawl = new FirecrawlApp({
  */
 export async function scrapePropertyUrl(url: string) {
   console.log(`[FIRECRAWL] Scraping single URL: ${url}`);
-  
+
   try {
     const result = await firecrawl.scrapeUrl(url, {
-      formats: ['markdown', 'html'],
-      onlyMainContent: true,
+      formats: ['markdown'],
+      waitFor: 5000, // Wait for dynamic content (floor plans, unit listings) to load
     });
-    
-    console.log(`[FIRECRAWL] Successfully scraped URL: ${url}`);
+
+    console.log(`[FIRECRAWL] Successfully scraped URL: ${url} (${result?.markdown?.length || 0} chars)`);
     return result;
   } catch (error) {
     console.error(`[FIRECRAWL] Error scraping URL ${url}:`, error);
@@ -39,8 +39,9 @@ export async function extractPropertyData(url: string) {
   try {
     const result = await firecrawl.scrapeUrl(url, {
       formats: ['extract'],
+      waitFor: 5000, // Wait for dynamic JS content (unit listings) to load
       extract: {
-        prompt: 'Extract all property information and every individual available or listed apartment unit. For each unit, extract the unit number/identifier, floor plan name, unit type (Studio, 1 Bedroom, 2 Bedroom, etc.), bedroom count, bathroom count, square footage, monthly rent price, and availability date. Also extract the total unit mix showing how many units of each bedroom type exist in the entire property. Be thorough - extract every single unit listing shown on the page.',
+        prompt: 'Extract all property information and every individual available or listed apartment unit. On sites like apartments.com, units are listed under floor plan sections - extract each individual unit row with its specific unit number, rent price, sq ft, and availability. If units are grouped by floor plan, extract each unit separately. For each unit, extract the unit number/identifier, floor plan name, unit type (Studio, 1 Bedroom, 2 Bedroom, etc.), bedroom count, bathroom count, square footage, monthly rent price, and availability date. Also extract the total unit mix showing how many units of each bedroom type exist in the entire property. Be thorough - extract every single unit listing shown on the page, even if they are in expandable or tabbed sections.',
         schema: {
           type: 'object',
           properties: {

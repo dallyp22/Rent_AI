@@ -96,19 +96,41 @@ class ScrapingJobProcessor {
             if (markdownContent.length > 100) {
               console.log(`[JOB_PROCESSOR] Got ${markdownContent.length} chars of markdown, parsing with OpenAI...`);
 
-              // Truncate to avoid token limits (keep first ~12000 chars which covers most unit listings)
-              const truncatedMarkdown = markdownContent.slice(0, 12000);
+              // Use up to 50000 chars - apartments.com pages are large and unit listings
+              // are often far below the property overview/photos/amenities sections
+              const truncatedMarkdown = markdownContent.slice(0, 50000);
 
               const aiResponse = await openai.chat.completions.create({
                 model: "gpt-4o",
                 messages: [
                   {
                     role: "system",
-                    content: "You are a data extraction assistant. Extract apartment unit listings from the provided webpage content. Return a JSON array of units. Each unit should have: unitNumber (string), floorPlanName (string or null), unitType (e.g. 'Studio', '1 Bedroom', '2 Bedroom'), bedrooms (number, 0 for studio), bathrooms (number), squareFootage (number or null), rent (number, monthly price), availabilityDate (string or null). Only include units that have at least a rent price or unit type. Return ONLY the JSON array, no other text."
+                    content: `You are a data extraction assistant specializing in apartment listing websites. Extract every individual available apartment unit from the provided webpage content.
+
+On sites like apartments.com, units are organized under floor plans. Each floor plan section contains individual available units with specific unit numbers, rent prices, square footage, and availability dates. Extract EACH individual unit as a separate entry.
+
+For example, if you see:
+  "The Franc - 1 Bed, 1 Bath"
+  "Unit 135 - 515 sq ft - $910 - Available Now"
+  "Unit 146 - 593 sq ft - $960 - Available Now"
+
+Extract each as a separate unit with the floor plan name "The Franc", unitType "1 Bedroom", etc.
+
+Return a JSON object with a "units" array. Each unit should have:
+- unitNumber (string): The specific unit number/identifier
+- floorPlanName (string or null): Name of the floor plan
+- unitType (string): "Studio", "1 Bedroom", "2 Bedroom", "3 Bedroom", etc.
+- bedrooms (number): Number of bedrooms (0 for studio)
+- bathrooms (number): Number of bathrooms
+- squareFootage (number or null): Size in sq ft
+- rent (number): Monthly rent price as a number
+- availabilityDate (string or null): When available
+
+Only include units that have at least a rent price listed.`
                   },
                   {
                     role: "user",
-                    content: `Extract all available apartment unit listings from this property page content:\n\n${truncatedMarkdown}`
+                    content: `Extract all individual available apartment units from this property listing page:\n\n${truncatedMarkdown}`
                   }
                 ],
                 temperature: 0,
