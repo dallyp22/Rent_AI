@@ -494,14 +494,16 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
                   property.units.forEach((unit: any) => {
                     competitorUnits.push({
                       propertyName: property.propertyName,
-                      propertyType: 'Competitor', // Add property type identifier
+                      propertyType: 'Competitor',
                       unitNumber: unit.unitNumber || unit.floorPlanName || 'N/A',
+                      floorPlanName: unit.floorPlanName || null,
                       unitType: unit.unitType || 'Unknown',
+                      bedrooms: unit.bedrooms ?? null,
+                      bathrooms: unit.bathrooms ?? null,
                       squareFootage: unit.squareFootage || undefined,
-                      currentRent: unit.rent || 0,
-                      status: unit.availabilityDate?.toLowerCase().includes('available') ? 'available' : 'occupied',
+                      currentRent: Number(unit.rent) || 0,
+                      status: unit.status || 'available',
                       availabilityDate: unit.availabilityDate || null,
-                      // No optimization fields for competitors
                       tag: undefined,
                       recommendedRent: undefined,
                       adjustmentReason: undefined,
@@ -554,10 +556,13 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
           
           return {
             propertyName: propertyProfile?.name || propertyProfile?.address || 'Unknown Property',
-            propertyType: 'Subject', // Add property type identifier
+            propertyType: 'Subject' as const,
             unitNumber: unit.unitNumber,
+            floorPlanName: (unit as any).floorPlanName || null,
             tag: unit.tag ?? undefined,
             unitType: unit.unitType,
+            bedrooms: (unit as any).bedrooms ?? null,
+            bathrooms: (unit as any).bathrooms ?? null,
             squareFootage: (unit as any).squareFootage || undefined,
             currentRent: currentRent,
             recommendedRent: adjustedPrice,
@@ -566,12 +571,12 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             annualImpact: change * 12,
             status: unit.status,
             availabilityDate: (unit as any).availabilityDate || null,
-            reasoning: currentModifiedPrices[unit.id] 
-              ? 'User-adjusted pricing recommendation' 
+            reasoning: currentModifiedPrices[unit.id]
+              ? 'User-adjusted pricing recommendation'
               : 'AI-generated portfolio optimization recommendation'
           };
         });
-        
+
         // Combine subject and competitor units
         const allUnits = [...subjectUnitsData, ...competitorUnits];
         
@@ -658,8 +663,11 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
             return {
               propertyName: property.propertyName || property.address || 'Unknown Property',
               unitNumber: unit.unitNumber,
+              floorPlanName: (unit as any).floorPlanName || null,
               tag: unit.tag ?? undefined,
               unitType: unit.unitType,
+              bedrooms: (unit as any).bedrooms ?? null,
+              bathrooms: (unit as any).bathrooms ?? null,
               squareFootage: (unit as any).squareFootage || undefined,
               currentRent: currentRent,
               recommendedRent: adjustedPrice,
@@ -667,8 +675,8 @@ export default function Optimize({ params }: { params: { id?: string, sessionId?
               annualImpact: change * 12,
               status: unit.status,
               availabilityDate: (unit as any).availabilityDate || null,
-              reasoning: currentModifiedPrices[unit.id] 
-                ? 'User-adjusted pricing recommendation' 
+              reasoning: currentModifiedPrices[unit.id]
+                ? 'User-adjusted pricing recommendation'
                 : 'AI-generated pricing recommendation'
             };
           }),

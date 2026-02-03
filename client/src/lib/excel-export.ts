@@ -67,6 +67,9 @@ export interface ExcelExportData {
     unitNumber: string;
     tag?: string;
     unitType: string;
+    floorPlanName?: string | null;
+    bedrooms?: number | null;
+    bathrooms?: number | string | null;
     pricingPowerScore?: number;
     squareFootage?: number;
     currentRent: number;
@@ -111,8 +114,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     { header: 'Property Type', key: 'propertyType', width: 15 },
     { header: 'Property', key: 'propertyName', width: 25 },
     { header: 'Unit Number', key: 'unitNumber', width: 15 },
+    { header: 'Floor Plan', key: 'floorPlanName', width: 18 },
     { header: 'TAG', key: 'tag', width: 20 },
     { header: 'Unit Type', key: 'unitType', width: 15 },
+    { header: 'Beds', key: 'bedrooms', width: 8 },
+    { header: 'Baths', key: 'bathrooms', width: 8 },
     { header: 'Square Footage', key: 'squareFootage', width: 15 },
     { header: 'Current Rent', key: 'currentRent', width: 15 },
     { header: 'AI Recommended', key: 'recommendedRent', width: 18 },
@@ -152,8 +158,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
     'Property Type',
     'Property',
     'Unit Number',
+    'Floor Plan',
     'TAG',
     'Unit Type',
+    'Beds',
+    'Baths',
     'Square Footage',
     'Current Rent',
     'AI Recommended',
@@ -191,8 +200,11 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       unit.propertyType || 'Subject',
       unit.propertyName || '',
       unit.unitNumber,
+      unit.floorPlanName || '-',
       unit.tag || '-',
       unit.unitType,
+      unit.bedrooms ?? '-',
+      unit.bathrooms ?? '-',
       formatSquareFootage(unit.squareFootage),
       unit.currentRent,
       isCompetitor ? '-' : (unit.recommendedRent || unit.currentRent),
@@ -203,10 +215,10 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       formatAvailabilityDate(unit.availabilityDate, unit.status),
       unit.reasoning || 'No additional notes'
     ]);
-    
+
     // Apply conditional formatting based on change amount (only for subject properties)
-    const changeCell = row.getCell(10); // Monthly Change column (adjusted for Property Type column)
-    const impactCell = row.getCell(11); // Annual Impact column (adjusted for Property Type column)
+    const changeCell = row.getCell(13); // Monthly Change column
+    const impactCell = row.getCell(14); // Annual Impact column
     
     if (!isCompetitor) {
       if (unit.change > 0) {
@@ -265,12 +277,12 @@ export async function exportToExcel(data: ExcelExportData): Promise<void> {
       };
     });
     
-    // Format currency cells (adjusted column indices for Property Type column)
-    row.getCell(7).numFmt = '"$"#,##0.00'; // Current Rent
+    // Format currency cells
+    row.getCell(10).numFmt = '"$"#,##0.00'; // Current Rent
     if (!isCompetitor) {
-      row.getCell(8).numFmt = '"$"#,##0.00'; // AI Recommended
-      row.getCell(10).numFmt = '"$"#,##0.00'; // Monthly Change
-      row.getCell(11).numFmt = '"$"#,##0.00'; // Annual Impact
+      row.getCell(11).numFmt = '"$"#,##0.00'; // AI Recommended
+      row.getCell(13).numFmt = '"$"#,##0.00'; // Monthly Change
+      row.getCell(14).numFmt = '"$"#,##0.00'; // Annual Impact
     }
   });
   
